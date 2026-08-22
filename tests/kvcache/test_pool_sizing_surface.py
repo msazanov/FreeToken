@@ -50,11 +50,12 @@ def test_resolve_pool_class_follows_attn_type():
     assert resolve_pool_class(SimpleNamespace()) is MHAKVCache
 
 
-def _generic_config(num_page_override=None):
+def _generic_config(num_page_override=None, kv_cache_dtype="bf16"):
     mc = _model_config((_spec("full", AttnType.FULL),))
     mc.linear_attention_group = lambda: None
     return SimpleNamespace(
         model_config=mc, page_size=16, dtype=SimpleNamespace(itemsize=2),
+        kv_cache_dtype=kv_cache_dtype,
         tp_info=SimpleNamespace(size=1), cache_type="radix",
         swa_full_tokens_ratio=1.0, swa_num_pages_override=None,
         num_page_override=num_page_override, max_running_req=4, max_seq_len=1024,
@@ -76,6 +77,17 @@ def test_generic_kv_cost_and_solve_parity():
     assert MHAKVCache.solve_num_pages(config, available_memory=per_page * 100 + fixed) == 100
     assert MHAKVCache.solve_num_pages(_generic_config(num_page_override=7), 0) == 7
     assert MHAKVCache.min_kv_tokens(config) == config.page_size
+
+
+def test_int8_mha_cost_counts_one_byte_values_and_bf16_scales():
+    """Each K/V vector has head_dim data bytes and one BF16 scale byte pair."""
+    from freetoken.kvcache.base import spec_kv_bytes_per_token
+
+    config = _generic_config(kv_cache_dtype="int8")
+    (spec,) = config.model_config.kv_cache_group_specs()
+
+    # 2 K/V slabs x 2 layers x 2 KV heads x (64 int8 values + 2 scale bytes).
+    assert spec_kv_bytes_per_token(spec, config) == 2 * 2 * 2 * (64 + 2)
 
 
 def _dsv4_config(num_page_override=None):

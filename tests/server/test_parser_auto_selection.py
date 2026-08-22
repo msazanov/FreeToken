@@ -94,3 +94,13 @@ def test_an_explicit_choice_beats_inference():
         pinned, _ = parse_args(["--model", ANON_PATH, "--reasoning-parser", "qwen3"])
     assert off.reasoning_parser is None
     assert pinned.reasoning_parser == "qwen3"
+
+
+def test_kv_cache_dtype_defaults_to_bf16_and_accepts_turing_fp8():
+    config = _Config({"architectures": ["Qwen3_5MoeForConditionalGeneration"], "torch_dtype": "bfloat16"})
+    with patch("freetoken.utils.cached_load_hf_config", lambda _path: config):
+        default, _ = parse_args(["--model", ANON_PATH])
+        fp8, _ = parse_args(["--model", ANON_PATH, "--kv-cache-dtype", "fp8-e5m2"])
+
+    assert default.kv_cache_dtype == "bf16"
+    assert fp8.kv_cache_dtype == "fp8-e5m2"

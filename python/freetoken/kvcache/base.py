@@ -9,6 +9,21 @@ from freetoken.utils import div_even, init_logger, mem_GB
 
 logger = init_logger(__name__)
 
+KV_CACHE_DTYPES = frozenset({"bf16", "fp8-e5m2", "int8"})
+
+
+def kv_cache_storage_bytes_per_vector(
+    head_dim: int, *, value_dtype_bytes: int, mode: str
+) -> int:
+    """Bytes used to store one K or V vector and, when quantized, its BF16 scale."""
+    if mode == "bf16":
+        return head_dim * value_dtype_bytes
+    if mode in {"fp8-e5m2", "int8"}:
+        return head_dim + 2
+    raise ValueError(
+        f"unsupported kv_cache_dtype {mode!r}; expected one of {sorted(KV_CACHE_DTYPES)}"
+    )
+
 
 class CacheRebuildRejected(Exception):
     """A runtime cache rebuild was rejected BEFORE any destructive free (e.g. the
@@ -22,11 +37,15 @@ def spec_kv_bytes_per_token(spec, config) -> int:
     per-spec arithmetic -- pool families compose it over THEIR OWN groups; no family
     branching here. (2 bytes/elem == the torch.bfloat16 dsa_pool.DSAKVCache._alloc
     hardcodes; keep the two in lockstep if the slab dtype ever changes.)"""
+    kv_vector_bytes = kv_cache_storage_bytes_per_vector(
+        spec.head_dim,
+        value_dtype_bytes=config.dtype.itemsize,
+        mode=getattr(config, "kv_cache_dtype", "bf16"),
+    )
     per_token = (
         (1 if spec.mla else 2)  # MLA latent groups store one slab (V aliases K)
-        * spec.head_dim
+        * kv_vector_bytes
         * div_even(spec.num_kv_heads, config.tp_info.size, allow_replicate=True)
-        * config.dtype.itemsize
         * spec.num_layers
     )
     return per_token + spec.index_head_dim * spec.num_index_layers * 2
