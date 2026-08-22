@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+import pytest
 
 from freetoken.distributed import set_tp_info, try_get_tp_info
 
@@ -44,6 +45,38 @@ def test_mha_rebuild_from_config_adds_the_dummy_page():
     assert pool._kv_buffer.shape[2] == 11
     # per-token cost is page-count invariant
     assert pool.unit_bytes() == (2 * 3 * 8 * 64 * 2, 0)
+
+
+@pytest.mark.parametrize(
+    ("mode", "data_dtype"),
+    [("fp8-e5m2", torch.float8_e5m2), ("int8", torch.int8)],
+)
+def test_quantized_mha_pool_allocates_scales_and_rebuilds(mode, data_dtype):
+    from freetoken.kvcache.mha_pool import MHAKVCache
+
+    _init_tp()
+    pool = MHAKVCache(
+        num_kv_heads=2,
+        num_layers=3,
+        head_dim=64,
+        num_pages=4,
+        page_size=16,
+        dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+        kv_cache_dtype=mode,
+    )
+
+    assert pool.k_cache(0).dtype is data_dtype
+    assert pool.v_cache(0).dtype is data_dtype
+    assert pool.k_scale(0).shape == (4, 16, 2)
+    assert pool.v_scale(0).shape == (4, 16, 2)
+    # Two K/V slabs x three layers x two heads x (64 one-byte values + BF16 scale).
+    assert pool.unit_bytes() == (2 * 3 * 2 * (64 + 2), 0)
+
+    pool.rebuild(10)
+
+    assert pool.k_cache(0).shape == (10, 16, 2, 64)
+    assert pool.k_scale(0).shape == (10, 16, 2)
 
 
 def test_mla_and_dsa_rebuild_from_config_and_unit_bytes():

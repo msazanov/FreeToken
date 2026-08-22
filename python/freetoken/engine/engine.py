@@ -1225,6 +1225,33 @@ _DENSE_MOE_SETTINGS = {
 }
 
 
+def _validate_quantized_kv_config(config: EngineConfig) -> None:
+    """Reject KV quantization combinations without a scale-aware attention implementation."""
+    from freetoken.kvcache import resolve_pool_class
+    from freetoken.kvcache.base import KV_CACHE_DTYPES
+    from freetoken.kvcache.mha_pool import MHAKVCache
+
+    mode = getattr(config, "kv_cache_dtype", "bf16")
+    if mode not in KV_CACHE_DTYPES:
+        raise ValueError(
+            f"unsupported --kv-cache-dtype {mode!r}; expected one of {sorted(KV_CACHE_DTYPES)}"
+        )
+    if mode == "bf16":
+        return
+    backend_parts = [part.strip() for part in config.attention_backend.split(",")]
+    if any(part != "triton" for part in backend_parts):
+        raise ValueError(
+            f"--kv-cache-dtype {mode} requires --attention-backend triton for every "
+            f"attention phase, got {config.attention_backend!r}."
+        )
+    pool_class = resolve_pool_class(config.model_config)
+    if pool_class is not MHAKVCache:
+        raise ValueError(
+            f"--kv-cache-dtype {mode} is currently implemented only for MHAKVCache, "
+            f"but this model resolves to {pool_class.__name__}."
+        )
+
+
 def _adjust_config(config: EngineConfig):
     def override(attr: str, value: Any):  # this is dangerous, use with caution
         object.__setattr__(config, attr, value)
@@ -1329,6 +1356,7 @@ def _adjust_config(config: EngineConfig):
         )
         logger.info_rank0(f"Auto-selected attention backend: {config.attention_backend}")
     _validate_attention_backend_choice(config, override, required_attn_types)
+    _validate_quantized_kv_config(config)
 
     if config.moe_cache_rate is not None:
         total_experts = config.model_config.num_moe_layers * config.model_config.num_experts

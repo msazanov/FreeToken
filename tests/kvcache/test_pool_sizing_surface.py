@@ -251,6 +251,43 @@ def test_create_kv_pool_builds_the_right_family():
     assert pool2.swa_num_tokens == _swa_paged_num_tokens(config2, 9)
 
 
+def test_create_mha_pool_inherits_quantized_kv_storage_mode():
+    import torch
+
+    from freetoken.distributed import set_tp_info, try_get_tp_info
+    from freetoken.kvcache import create_kv_pool
+    from freetoken.kvcache.mha_pool import MHAKVCache
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+
+    mc = SimpleNamespace(
+        has_swa_attention=False,
+        has_linear_attention=False,
+        dsv4_args=None,
+        num_layers=2,
+        num_kv_heads=1,
+        head_dim=8,
+    )
+    mc.kv_cache_group_specs = lambda: (_spec("full", AttnType.FULL),)
+    config = SimpleNamespace(
+        model_config=mc,
+        page_size=1,
+        cache_type="radix",
+        max_running_req=2,
+        swa_full_tokens_ratio=1.0,
+        swa_num_pages_override=None,
+        max_seq_len=64,
+        kv_cache_dtype="int8",
+    )
+
+    pool = create_kv_pool(config, num_pages=8, device=torch.device("cpu"), dtype=torch.bfloat16)
+
+    assert isinstance(pool, MHAKVCache)
+    assert pool.kv_cache_dtype == "int8"
+    assert pool.k_cache(0).dtype is torch.int8
+
+
 def test_linear_state_pool_prices_itself():
     # The GDN state pool is a sibling pool: the KV family's kv_cost excludes it and the
     # engine adds state_pool_bytes -- the sum must equal the old single-walk total.
