@@ -146,7 +146,11 @@ def load_gguf_expert_sources(
       so returned tensors are only valid until the sink releases them.
     """
     from freetoken.models.gguf.reader import iter_gguf_tensors
-    from freetoken.moe.host_banks import LayerCompletionTracker, PinPipeline, alloc_layer_banks
+    from freetoken.moe.host_banks import (
+        LayerCompletionTracker,
+        PinPipeline,
+        alloc_layer_banks_from_specs,
+    )
 
     types = gguf_expert_types(model_path, config.num_layers)
     specs = gguf_expert_specs(config, types)
@@ -157,7 +161,7 @@ def load_gguf_expert_sources(
     I = config.moe_intermediate_size
 
     # Allocate the per-layer banks (lazy mmap, unpinned).
-    hb = alloc_layer_banks(specs, L)
+    hb = alloc_layer_banks_from_specs(specs)
     banks = {name: [b.tensor for b in hb[name]] for name in hb}
 
     # Per-layer buffers to accumulate gate and up before concatenating.
@@ -196,7 +200,7 @@ def load_gguf_expert_sources(
                 # expert-major order. Reshaping to [E, H, row_bytes(I)] is therefore a
                 # plain view, no data movement. (The row_bytes is over I, the fastest
                 # dim, not over E.)
-                down_row_bytes = specs["down"][0][2]
+                down_row_bytes = specs["down"][layer][0][2]
                 banks["down"][layer].copy_(t.packed().reshape(E, H, down_row_bytes))
                 seen_down.add(layer)
                 if tracker is not None:
@@ -207,7 +211,7 @@ def load_gguf_expert_sources(
 
             # Emit gate_up bank once both gate and up are present.
             if layer in gate_buf and layer in up_buf:
-                rb = specs["gate_up"][0][2]
+                rb = specs["gate_up"][layer][0][2]
                 # gate and up each arrive as [rows, row_bytes] = [E*I, row_bytes(H)], and
                 # ggml's fastest-first dims [H, I, E] make E the slowest axis, so those rows
                 # are EXPERT-MAJOR: expert e owns rows [e*I, (e+1)*I).
@@ -252,7 +256,7 @@ def load_gguf_expert_sources(
 
 def dummy_gguf_expert_sources(config: ModelConfig) -> dict[str, list[torch.Tensor]]:
     """Random expert banks shaped like ``load_gguf_expert_sources`` output."""
-    from freetoken.moe.host_banks import alloc_layer_banks, pin_banks
+    from freetoken.moe.host_banks import alloc_layer_banks_from_specs, pin_banks
 
     # Use uniform IQ3_S for all layers (a simplification for the dummy).
     num_layers = config.num_layers
@@ -261,9 +265,7 @@ def dummy_gguf_expert_sources(config: ModelConfig) -> dict[str, list[torch.Tenso
     types = {"gate_up": gate_up_types, "down": down_types}
 
     specs = gguf_expert_specs(config, types)
-    L = config.num_layers
-
-    hb = alloc_layer_banks(specs, L)
+    hb = alloc_layer_banks_from_specs(specs)
     banks = {name: [b.tensor for b in hb[name]] for name in hb}
 
     # Fill with random uint8.

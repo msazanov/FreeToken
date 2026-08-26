@@ -15,6 +15,7 @@ import sys
 from types import SimpleNamespace
 from types import ModuleType
 
+import numpy as np
 import pytest
 import torch
 
@@ -75,6 +76,77 @@ def test_expert_specs_keep_mixed_down_layers_compact():
         ((8, 512, 210), torch.uint8),
         ((8, 512, 144), torch.uint8),
     ]
+
+
+def test_expert_loader_writes_mixed_down_layers_at_native_width(monkeypatch):
+    """The loader reshapes every layer using its own packed row width."""
+    from freetoken.models.gguf.reader import GgufTensor
+    from freetoken.models.qwen3_5_moe import gguf_experts
+
+    config = SimpleNamespace(
+        num_layers=2,
+        num_experts=2,
+        hidden_size=256,
+        moe_intermediate_size=256,
+    )
+    types = {
+        "gate_up": [GGML_Q4_K, GGML_Q4_K],
+        "down": [GGML_Q6_K, GGML_Q4_K],
+    }
+
+    def fake_tensor(name, quant_type, rows, fill):
+        width = row_bytes(256, quant_type)
+        raw = np.full((rows, width), fill, dtype=np.uint8)
+        return GgufTensor(name, (), quant_type, rows, width, raw)
+
+    tensors = []
+    for layer in range(2):
+        tensors.extend(
+            [
+                fake_tensor(
+                    f"blk.{layer}.ffn_gate_exps.weight",
+                    GGML_Q4_K,
+                    config.num_experts * config.moe_intermediate_size,
+                    10 + layer,
+                ),
+                fake_tensor(
+                    f"blk.{layer}.ffn_up_exps.weight",
+                    GGML_Q4_K,
+                    config.num_experts * config.moe_intermediate_size,
+                    20 + layer,
+                ),
+                fake_tensor(
+                    f"blk.{layer}.ffn_down_exps.weight",
+                    types["down"][layer],
+                    config.num_experts * config.hidden_size,
+                    30 + layer,
+                ),
+            ]
+        )
+
+    monkeypatch.setattr(gguf_experts, "gguf_expert_types", lambda *_: types)
+    monkeypatch.setattr(
+        "freetoken.models.gguf.reader.iter_gguf_tensors",
+        lambda _path: iter(tensors),
+    )
+
+    completed = []
+    banks = gguf_experts.load_gguf_expert_sources(
+        "official-q4-k-m.gguf",
+        config,
+        layer_sink=lambda layer, _banks: completed.append(layer),
+    )
+
+    assert [tuple(t.shape) for t in banks["down"]] == [
+        (2, 256, 210),
+        (2, 256, 144),
+    ]
+    assert torch.all(banks["down"][0] == 30)
+    assert torch.all(banks["down"][1] == 31)
+    assert torch.all(banks["gate_up"][0][:, :256] == 10)
+    assert torch.all(banks["gate_up"][0][:, 256:] == 20)
+    assert sorted(completed) == [0, 1]
+
 
 @pytest.fixture
 def mock_kernel_module(monkeypatch):
