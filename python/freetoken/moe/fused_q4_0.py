@@ -44,8 +44,8 @@ def fused_experts_gguf(
 
     ``quant_type`` is the gate_up bank's type; ``down_quant_type`` defaults to it. They may
     differ because gate_up and down are separate banks with separate slot pools, and
-    llama.cpp routinely quantizes the down projection differently from gate/up. What may
-    NOT differ is the type *within* one bank across layers -- that pool is one allocation.
+    llama.cpp routinely quantizes the down projection differently from gate/up. Mixed
+    layers share a max-stride pool; the caller supplies this layer's concrete types.
     """
     from freetoken.kernel.gguf import ggml_moe_a8_vec
 

@@ -49,10 +49,10 @@ class ExpertBanks:
     # streamed straight to its sink instead of staying materialized here) -- set by
     # convert.py's per-format streaming gate; ``sources`` may hold released tensors.
     streamed: bool = False
-    # For quant_format == "gguf": the (gate_up, down) ggml types the checkpoint used.
+    # For quant_format == "gguf": per-layer (gate_up, down) ggml types.
     # Carried here so the engine can hand them to OffloadMoeCache, which hands them to
     # the MoE kernels -- a GGUF bank's row stride is a property of the file, not the format.
-    gguf_expert_types: tuple[int, int] | None = field(default=None)
+    gguf_expert_types: tuple[tuple[int, ...], tuple[int, ...]] | None = field(default=None)
 
 
 _PARALLEL_CHUNK = 8 << 20  # default O_DIRECT chunk for the parallel reader
@@ -306,37 +306,12 @@ def _gguf_banks(model_path, model_config, device, dtype, dummy, parallel=False, 
 
     sink = None if dummy else layer_sink
     types = types_fn(model_path, model_config.num_layers)
-    # One pool per bank is shared by every layer, and moe_vec.cuh addresses it without a
-    # padding allowance, so a bank whose type varies by layer cannot be served. Reject it
-    # here with the layers named rather than reading every block at the wrong offset.
-    resolved = {}
-    for name in ("gate_up", "down"):
-        distinct = sorted(set(types[name]))
-        if len(distinct) != 1:
-            from freetoken.models.gguf.dequant import GGML_NAME
-
-            spread = {
-                GGML_NAME.get(t, t): [i for i, x in enumerate(types[name]) if x == t]
-                for t in distinct
-            }
-            raise NotImplementedError(
-                f"GGUF expert bank {name!r} mixes ggml types across layers ({spread}). "
-                f"The offload slot pool is a single allocation shared by every layer and "
-                f"moe_vec.cuh addresses it as expert * nrows * (ncols / qk) with no padding "
-                f"allowance, so one pool cannot hold two row strides. "
-                f"llama.cpp's mixed quant levels (the *_M and *_XXS families) raise the "
-                f"precision of the first few layers' ffn_down_exps, which is what trips this. "
-                f"Re-quantize with `llama-quantize --pure` to get one type throughout, or pick "
-                f"a level that is already uniform."
-            )
-        resolved[name] = distinct[0]
-
     sources = loader(model_path, model_config, layer_sink=sink)
     return ExpertBanks(
         "gguf",
         {name: sources[name] for name in _BANK_SCHEMAS["gguf"]},
         streamed=sink is not None,
-        gguf_expert_types=(resolved["gate_up"], resolved["down"]),
+        gguf_expert_types=(tuple(types["gate_up"]), tuple(types["down"])),
     )
 
 
@@ -478,9 +453,16 @@ def bank_bytes_estimate(model_config) -> int | None:
             return None
         from freetoken.models.gguf.dequant import row_bytes
 
-        t_gate_up, t_down = types
-        per = 2 * inter * row_bytes(hidden, t_gate_up) + hidden * row_bytes(inter, t_down)
-        return layers * experts * per
+        gate_types = types[0] if isinstance(types[0], (tuple, list)) else (types[0],) * layers
+        down_types = types[1] if isinstance(types[1], (tuple, list)) else (types[1],) * layers
+        if len(gate_types) != layers or len(down_types) != layers:
+            return None
+        total_per_expert = sum(
+            2 * inter * row_bytes(hidden, t_gate_up)
+            + hidden * row_bytes(inter, t_down)
+            for t_gate_up, t_down in zip(gate_types, down_types)
+        )
+        return experts * total_per_expert
     per_expert = _BANK_BYTES_PER_EXPERT.get(fmt)
     if per_expert is None:
         return None

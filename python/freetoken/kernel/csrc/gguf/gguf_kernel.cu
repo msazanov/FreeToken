@@ -585,6 +585,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -598,6 +599,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -611,6 +613,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -624,6 +627,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -637,6 +641,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -650,6 +655,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -663,6 +669,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -676,6 +683,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -689,6 +697,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -702,6 +711,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -715,6 +725,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -728,6 +739,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -741,6 +753,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -754,6 +767,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -767,6 +781,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -780,6 +795,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -793,6 +809,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -806,6 +823,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;
@@ -819,6 +837,7 @@ torch::Tensor ggml_moe_a8_vec(
             tokens,
             col,
             row,
+            W.stride(0) * W.element_size(),
             quant_X.stride(0),
             stream);
         break;

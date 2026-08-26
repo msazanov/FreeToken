@@ -29,6 +29,17 @@ from freetoken.utils import init_logger
 
 logger = init_logger(__name__)
 
+
+def _copy_compact_row_prefix(
+    dst: torch.Tensor, src: torch.Tensor, *, non_blocking: bool = False
+) -> None:
+    """Copy each compact expert into the prefix of its fixed-stride cache slot."""
+    assert dst.shape[0] == src.shape[0], (dst.shape, src.shape)
+    dst_rows = dst.reshape(dst.shape[0], -1)
+    src_rows = src.reshape(src.shape[0], -1)
+    assert dst_rows.shape[1] >= src_rows.shape[1], (dst.shape, src.shape)
+    dst_rows[:, : src_rows.shape[1]].copy_(src_rows, non_blocking=non_blocking)
+
 # quant_format -> bank names, in registration order: the single place a format's bank
 # layout is declared. The cache machinery (copy_missing, the prefill double buffers,
 # bank_views) iterates banks in this order, the layers' kernel dispatch unpacks views
@@ -120,12 +131,12 @@ class OffloadMoeCache:
     # prefill). The format names its bank layout (_BANK_SCHEMAS) and which kernels
     # may read the banks; the cache machinery itself is layout-agnostic.
     quant_format: str = "bf16"
-    # For quant_format == "gguf": the (gate_up, down) ggml types of the two banks. Unlike
+    # For quant_format == "gguf": per-layer (gate_up, down) ggml types. Unlike
     # every other format, "gguf" does not imply a row stride -- the checkpoint picks a ggml
     # type per tensor -- so the MoE kernels need the types handed to them at dispatch.
-    # Per-bank (each bank owns its own slot pool) but NOT per-layer: one pool is shared by
-    # all layers and moe_vec.cuh addresses it with no padding allowance.
-    gguf_expert_types: tuple[int, int] | None = None
+    # The shared slot pool uses the maximum layer stride; the MMVQ kernel receives the
+    # selected layer's type and reads each compact expert from the prefix of that slot.
+    gguf_expert_types: tuple[tuple[int, ...], tuple[int, ...]] | tuple[int, int] | None = None
     # Decode mode + bank layout; per-layer CPU routing is cpu_layer_ids. "gpu":
     # GPU-tiled banks, all decode on GPU (stream misses over PCIe into the slot
     # cache, GEMM on GPU). "cpu": native (CPU-readable) banks + a CPU executor;
@@ -258,7 +269,8 @@ class OffloadMoeCache:
         self._copy_fused_ok = False
         self._copy_dst_ptrs: torch.Tensor | None = None
         self._copy_src_ptrs: list[torch.Tensor] | None = None
-        self._copy_feat_bytes: torch.Tensor | None = None
+        self._copy_feat_bytes: list[torch.Tensor] | None = None
+        self._copy_dst_stride_bytes: torch.Tensor | None = None
         # The layer whose misses ensure_experts/materialize_layer staged last; consumed
         # by copy_missing to pick the per-layer source (part of the same pending-copy
         # state as evict_slots/src_indices/num_indices).
@@ -368,9 +380,11 @@ class OffloadMoeCache:
         self._copy_dst_ptrs = None
         self._copy_src_ptrs = None
         self._copy_feat_bytes = None
+        self._copy_dst_stride_bytes = None
         self._copy_dst_ptrs_host: list[int] = []
         self._copy_src_ptrs_host: list[list[int]] = []
-        self._copy_feat_bytes_host: list[int] = []
+        self._copy_feat_bytes_host: list[list[int]] = []
+        self._copy_dst_stride_bytes_host: list[int] = []
         self._gather_bank_ids: list[int] = []
         self._gather_dst_ptrs: torch.Tensor | None = None
         self._gather_feat_bytes: torch.Tensor | None = None
@@ -378,13 +392,18 @@ class OffloadMoeCache:
             return
         from freetoken.kernel.pinned import device_ptr
 
-        dst_ptrs, feats = [], []
+        dst_ptrs, dst_strides = [], []
         layer_src_ptrs = [[] for _ in range(self.num_layers)]
+        layer_feats = [[] for _ in range(self.num_layers)]
         for per_layer, cache in self.banks:
-            feat = math.prod(per_layer[0].shape[1:]) * per_layer[0].element_size()
-            if feat % 16 != 0 or cache.data_ptr() % 16 != 0:
+            dst_stride = math.prod(cache.shape[1:]) * cache.element_size()
+            if dst_stride % 16 != 0 or cache.data_ptr() % 16 != 0:
                 return  # leave fused disabled; copy_missing uses the per-bank path
             for layer_id, source in enumerate(per_layer):
+                feat = math.prod(source.shape[1:]) * source.element_size()
+                if feat % 16 != 0:
+                    return
+                layer_feats[layer_id].append(feat)
                 if layer_id in self._unpinned_layers:
                     # unregistered layer: no device alias exists, and the row is never consumed (CPU decode; pageable prefill)
                     # a 0 placeholder keeps the descriptor shape
@@ -398,25 +417,36 @@ class OffloadMoeCache:
                     return
                 layer_src_ptrs[layer_id].append(src_dev)
             dst_ptrs.append(cache.data_ptr())
-            feats.append(feat)
+            dst_strides.append(dst_stride)
         self._copy_dst_ptrs = torch.tensor(dst_ptrs, dtype=torch.int64, device=self.device)
         self._copy_src_ptrs = [
             torch.tensor(ptrs, dtype=torch.int64, device=self.device)
             for ptrs in layer_src_ptrs
         ]
-        self._copy_feat_bytes = torch.tensor(feats, dtype=torch.int64, device=self.device)
+        self._copy_feat_bytes = [
+            torch.tensor(feats, dtype=torch.int64, device=self.device)
+            for feats in layer_feats
+        ]
+        self._copy_dst_stride_bytes = torch.tensor(
+            dst_strides, dtype=torch.int64, device=self.device
+        )
         self._copy_dst_ptrs_host = dst_ptrs
         self._copy_src_ptrs_host = layer_src_ptrs
-        self._copy_feat_bytes_host = feats
+        self._copy_feat_bytes_host = layer_feats
+        self._copy_dst_stride_bytes_host = dst_strides
         # hit-D2D gather serves only the big banks; small banks are whole-layer
         # H2D entries (see _SMALL_BANK_FEAT_BYTES), so their rows never need D2D.
-        self._gather_bank_ids = [i for i, f in enumerate(feats) if f >= _SMALL_BANK_FEAT_BYTES]
-        if len(self._gather_bank_ids) == len(feats):
+        self._gather_bank_ids = [
+            i for i, f in enumerate(dst_strides) if f >= _SMALL_BANK_FEAT_BYTES
+        ]
+        if len(self._gather_bank_ids) == len(dst_strides):
             self._gather_dst_ptrs = self._copy_dst_ptrs
-            self._gather_feat_bytes = self._copy_feat_bytes
+            self._gather_feat_bytes = self._copy_dst_stride_bytes
         elif self._gather_bank_ids:
             self._gather_dst_ptrs = self._copy_dst_ptrs[self._gather_bank_ids].contiguous()
-            self._gather_feat_bytes = self._copy_feat_bytes[self._gather_bank_ids].contiguous()
+            self._gather_feat_bytes = self._copy_dst_stride_bytes[
+                self._gather_bank_ids
+            ].contiguous()
         self._copy_fused_ok = True
 
     def validate_rebuild(self, cache_size: int) -> None:
@@ -660,7 +690,9 @@ class OffloadMoeCache:
         def copy() -> None:
             self._invalidate_prefill_buffer(buffer_id)
             for (per_layer, _), buffer in zip(self.banks, self.prefill_bank_buffers):
-                buffer[buffer_id].copy_(per_layer[layer_id], non_blocking=True)
+                _copy_compact_row_prefix(
+                    buffer[buffer_id], per_layer[layer_id], non_blocking=True
+                )
 
         if self._prefill_hit_d2d_active:
             self._prefetch_split(layer_id, buffer_id)
@@ -770,18 +802,45 @@ class OffloadMoeCache:
                 starts = miss[run_starts]
                 lengths = np.diff(np.concatenate((run_starts, [miss.size])))
             dst, src, nbytes = [], [], []
-            for b, feat in enumerate(self._copy_feat_bytes_host):
-                if feat < _SMALL_BANK_FEAT_BYTES:
+            layer_feats = self._copy_feat_bytes_host[layer_id]
+            for b, (feat, dst_stride) in enumerate(
+                zip(layer_feats, self._copy_dst_stride_bytes_host)
+            ):
+                if feat == dst_stride and feat < _SMALL_BANK_FEAT_BYTES:
                     # Whole layer as one entry, EVEN with zero misses: it keeps every
                     # batch entry above the driver's async floor and covers the hit
                     # rows the gather skips for these banks.
-                    dst.append(self._copy_dst_ptrs_host[b] + buffer_id * E * feat)
+                    dst.append(self._copy_dst_ptrs_host[b] + buffer_id * E * dst_stride)
                     src.append(self._copy_src_ptrs_host[layer_id][b])
                     nbytes.append(E * feat)
+                elif feat != dst_stride and dst_stride < _SMALL_BANK_FEAT_BYTES:
+                    # A compact layer in a wider slot pool is not contiguous on the
+                    # destination side. Small banks are copied in full, one expert row
+                    # per entry, so hit rows are covered just like the uniform branch.
+                    expert_ids = np.arange(E)
+                    dst.extend(
+                        self._copy_dst_ptrs_host[b]
+                        + (buffer_id * E + expert_ids) * dst_stride
+                    )
+                    src.extend(
+                        self._copy_src_ptrs_host[layer_id][b] + expert_ids * feat
+                    )
+                    nbytes.extend([feat] * E)
                 elif miss.size:
-                    dst.extend(self._copy_dst_ptrs_host[b] + (buffer_id * E + starts) * feat)
-                    src.extend(self._copy_src_ptrs_host[layer_id][b] + starts * feat)
-                    nbytes.extend(lengths * feat)
+                    if feat == dst_stride:
+                        dst.extend(
+                            self._copy_dst_ptrs_host[b]
+                            + (buffer_id * E + starts) * dst_stride
+                        )
+                        src.extend(self._copy_src_ptrs_host[layer_id][b] + starts * feat)
+                        nbytes.extend(lengths * feat)
+                    else:
+                        dst.extend(
+                            self._copy_dst_ptrs_host[b]
+                            + (buffer_id * E + miss) * dst_stride
+                        )
+                        src.extend(self._copy_src_ptrs_host[layer_id][b] + miss * feat)
+                        nbytes.extend([feat] * miss.size)
             if dst:
                 self._batch_memcpy(
                     torch.tensor(dst, dtype=torch.int64),
@@ -998,7 +1057,7 @@ class OffloadMoeCache:
             # the only copy a non-pinned layer ever needs is the non-overlap prefill materialize, which schedules the whole layer into slots [0, num_experts) with position == expert id -- a plain synchronous pageable H2D copy
             # never CUDA-graph captured: prefill is not captured, and decode never reaches this branch (it routes to the CPU executor)
             for per_layer, cache in self.banks:
-                cache[: self.num_experts].copy_(per_layer[layer_id])
+                _copy_compact_row_prefix(cache[: self.num_experts], per_layer[layer_id])
             return
         if self._copy_fused_ok:
             from freetoken.kernel.fast_index_copy import fast_index_copy_multi_jit
@@ -1010,10 +1069,11 @@ class OffloadMoeCache:
             fast_index_copy_multi_jit(
                 self._copy_dst_ptrs,
                 self._copy_src_ptrs[layer_id],
-                self._copy_feat_bytes,
+                self._copy_feat_bytes[layer_id],
                 self.evict_slots,
                 self.src_indices,
                 self.num_indices,
+                dst_stride_bytes=self._copy_dst_stride_bytes,
             )
             return
 

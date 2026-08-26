@@ -1156,9 +1156,16 @@ def _cpu_moe_executor_viable(model_config) -> bool:
         types = getattr(model_config, "gguf_expert_types", None)
         if not types:
             return False
-        gate_up, down = int(types[0]), int(types[1])
+        gate_types = types[0] if isinstance(types[0], (tuple, list)) else (types[0],)
+        down_types = types[1] if isinstance(types[1], (tuple, list)) else (types[1],)
+        distinct_gate = {int(t) for t in gate_types}
+        distinct_down = {int(t) for t in down_types}
         # one weight_format serves both banks, so mixed types cannot run on the CPU path
-        return gate_up == down and gate_up in _GGML_TO_CPU_FMT
+        return (
+            len(distinct_gate) == 1
+            and distinct_gate == distinct_down
+            and next(iter(distinct_gate)) in _GGML_TO_CPU_FMT
+        )
     return fmt == "mxfp4" or fmt in _WFMT_IDS
 
 

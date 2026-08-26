@@ -545,6 +545,10 @@ class OffloadMoELayer(MoELayer):
                 "(set from ModelConfig.gguf_expert_types at cache construction)"
             )
             t_gate_up, t_down = types
+            if isinstance(t_gate_up, (tuple, list)):
+                t_gate_up = t_gate_up[self.layer_id]
+            if isinstance(t_down, (tuple, list)):
+                t_down = t_down[self.layer_id]
             return fused_experts_gguf(
                 hidden_states, gate_up, down, topk_weights, topk_ids, self.activation,
                 quant_type=t_gate_up, down_quant_type=t_down,

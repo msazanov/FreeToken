@@ -903,14 +903,66 @@ def test_gguf_cache_uses_max_layer_width_without_padding_host_sources():
     cache = OffloadMoeCache(
         num_layers=2,
         num_experts=4,
-        cache_size=6,
+        cache_size=8,
         device=torch.device("cpu"),
+        prefill_overlap=True,
         quant_format="gguf",
         gguf_expert_types=((GGML_Q4_K, GGML_Q4_K), (GGML_Q6_K, GGML_Q4_K)),
     )
 
     cache.set_bank_sources({"gate_up": gate_up, "down": down})
 
-    assert cache.bank_caches["gate_up"].shape == (6, 512, 144)
-    assert cache.bank_caches["down"].shape == (6, 256, 210)
+    assert cache.bank_caches["gate_up"].shape == (8, 512, 144)
+    assert cache.bank_caches["down"].shape == (8, 256, 210)
     assert cache.bank_sources["down"][1].shape == (4, 256, 144)
+
+    down[1].fill_(37)
+    cache.prefetch_prefill_layer(1)
+    copied = cache.prefill_bank_buffers[1][1].reshape(4, -1)
+    native_bytes = 256 * 144
+    assert torch.all(copied[:, :native_bytes] == 37)
+
+
+def test_gguf_layer_dispatch_uses_that_layers_quant_types(monkeypatch):
+    """Each MoE block selects its own gate/up and down ggml type pair."""
+    from types import SimpleNamespace
+
+    from freetoken.layers.moe import OffloadMoELayer
+    from freetoken.models.gguf.dequant import GGML_Q4_K, GGML_Q6_K
+
+    _init_tp()
+    layer = OffloadMoELayer(
+        layer_id=0,
+        num_experts=4,
+        top_k=2,
+        hidden_size=8,
+        intermediate_size=16,
+    )
+    cache = SimpleNamespace(
+        quant_format="gguf",
+        gguf_expert_types=(
+            (GGML_Q4_K, GGML_Q4_K),
+            (GGML_Q6_K, GGML_Q4_K),
+        ),
+    )
+    calls = {}
+
+    def fake_fused(*args, **kwargs):
+        calls.update(kwargs)
+        return args[0]
+
+    monkeypatch.setattr("freetoken.moe.fused_q4_0.fused_experts_gguf", fake_fused)
+    hidden = torch.randn(1, 8)
+    layer._expert_gemm(
+        cache,
+        hidden,
+        torch.ones(1, 2),
+        torch.tensor([[0, 1]], dtype=torch.int32),
+        views=(torch.empty(4, 32, 8), torch.empty(4, 8, 16)),
+        n=None,
+        alphas=None,
+        is_prefill=False,
+    )
+
+    assert calls["quant_type"] == GGML_Q4_K
+    assert calls["down_quant_type"] == GGML_Q6_K

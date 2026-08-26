@@ -96,20 +96,25 @@ def _resolve_gguf_format(cache) -> str:
             "--moe-backend cpu/hybrid needs the GGUF expert bank types, but this cache "
             "did not record them; use --moe-backend offload."
         )
-    gate_up, down = int(types[0]), int(types[1])
+    gate_types = types[0] if isinstance(types[0], (tuple, list)) else (types[0],)
+    down_types = types[1] if isinstance(types[1], (tuple, list)) else (types[1],)
+    distinct_gate = {int(t) for t in gate_types}
+    distinct_down = {int(t) for t in down_types}
 
     def name(t: int) -> str:
         from freetoken.models.gguf.dequant import GGML_NAME
 
         return GGML_NAME.get(t, f"type {t}")
 
-    if gate_up != down:
+    if len(distinct_gate) != 1 or len(distinct_down) != 1 or distinct_gate != distinct_down:
         raise NotImplementedError(
             f"--moe-backend cpu/hybrid runs one weight format for both expert banks, but "
-            f"this checkpoint stores gate_up as {name(gate_up)} and down as {name(down)}. "
+            f"this checkpoint stores gate_up as {[name(t) for t in sorted(distinct_gate)]} "
+            f"and down as {[name(t) for t in sorted(distinct_down)]}. "
             f"Mixed-type banks (Q4_K_M and the _M/_XXS mixes do this) need "
             f"--moe-backend offload; a --pure requantization would also make it uniform."
         )
+    gate_up = next(iter(distinct_gate))
     if gate_up not in _GGML_TO_CPU_FMT:
         raise NotImplementedError(
             f"--moe-backend cpu/hybrid has no CPU kernel for {name(gate_up)} experts "

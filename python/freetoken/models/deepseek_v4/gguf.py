@@ -198,7 +198,7 @@ def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
     from .gguf_experts import gguf_expert_types
 
     types = gguf_expert_types(model_path, served_layers) if model_path else None
-    expert_types = (types["gate_up"][0], types["down"][0]) if types else None
+    expert_types = (tuple(types["gate_up"]), tuple(types["down"])) if types else None
 
     # The schedule derived from compress_ratios must match what the file actually contains.
     # A compressor exists where ratio != 0 and a lightning indexer where ratio == 4, so

@@ -475,7 +475,8 @@ struct FastIndexCopyKernel {
 struct MultiIndexCopyParams {
     const int64_t* __restrict__ dst_ptrs;     // [B] device, each base addr of a bank slot cache
     const int64_t* __restrict__ src_ptrs;     // [B] device, each GPU-visible base addr of a bank host source
-    const int64_t* __restrict__ feat_bytes;   // [B] device, per-row bytes (multiple of 16)
+    const int64_t* __restrict__ feat_bytes;   // [B] device, native source bytes copied per row
+    const int64_t* __restrict__ dst_stride_bytes; // [B] device, destination slot stride
     const void* __restrict__ dst_indices;     // [L]
     const void* __restrict__ src_indices;     // [L]
     const int64_t* __restrict__ valid_length; // [1] or null
@@ -495,6 +496,7 @@ __global__ __launch_bounds__(kNumThreads) void fast_index_copy_multi(
     const auto* src = reinterpret_cast<const uint8_t*>(p.src_ptrs[b]);
     auto* dst = reinterpret_cast<uint8_t*>(p.dst_ptrs[b]);
     const int64_t feat = p.feat_bytes[b];
+    const int64_t dst_stride = p.dst_stride_bytes[b];
     const int64_t n = p.valid_length ? p.valid_length[0] : p.length;
     const int64_t units = feat >> 4;  // 16-byte (uint4) units per row; feat % 16 == 0
     const int64_t total = n * units;
@@ -507,7 +509,7 @@ __global__ __launch_bounds__(kNumThreads) void fast_index_copy_multi(
         const int64_t pd = static_cast<int64_t>(di[row]);
         const int64_t ps = static_cast<int64_t>(si[row]);
         const uint4 v = *reinterpret_cast<const uint4*>(src + ps * feat + col);
-        *reinterpret_cast<uint4*>(dst + pd * feat + col) = v;
+        *reinterpret_cast<uint4*>(dst + pd * dst_stride + col) = v;
     }
 }
 
@@ -517,6 +519,7 @@ struct MultiIndexCopyKernel {
         tvm::ffi::TensorView dst_ptrs,
         tvm::ffi::TensorView src_ptrs,
         tvm::ffi::TensorView feat_bytes,
+        tvm::ffi::TensorView dst_stride_bytes,
         tvm::ffi::TensorView dst_indices,
         tvm::ffi::TensorView src_indices,
         tvm::ffi::Optional<tvm::ffi::TensorView> num_indices
@@ -530,7 +533,7 @@ struct MultiIndexCopyKernel {
         auto num_indices_dtype = SymbolicDType{};
 
         TensorMatcher({B}).with_dtype<int64_t>(ptr_dtype).with_device<kDLCUDA>(device)
-            .verify(dst_ptrs).verify(src_ptrs).verify(feat_bytes);
+            .verify(dst_ptrs).verify(src_ptrs).verify(feat_bytes).verify(dst_stride_bytes);
         TensorMatcher({L}).with_dtype<int32_t, int64_t>(indices_dtype).with_device<kDLCUDA>(device)
             .verify(dst_indices).verify(src_indices);
 
@@ -546,6 +549,7 @@ struct MultiIndexCopyKernel {
             static_cast<const int64_t*>(dst_ptrs.data_ptr()),
             static_cast<const int64_t*>(src_ptrs.data_ptr()),
             static_cast<const int64_t*>(feat_bytes.data_ptr()),
+            static_cast<const int64_t*>(dst_stride_bytes.data_ptr()),
             dst_indices.data_ptr(),
             src_indices.data_ptr(),
             valid_length,

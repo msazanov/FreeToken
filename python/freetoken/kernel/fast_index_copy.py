@@ -158,6 +158,7 @@ def fast_index_copy_multi_jit(
     src_indices: torch.Tensor,
     num_indices: torch.Tensor | None = None,
     *,
+    dst_stride_bytes: torch.Tensor | None = None,
     num_threads: int = 1024,
     blocks_per_bank: int = 8,
 ) -> None:
@@ -172,17 +173,27 @@ def fast_index_copy_multi_jit(
     ~2x past the knee. Launch count is one regardless of grid width, so the zero-copy launch-
     overhead win (and a strict >= over the legacy per-bank kernel across all workloads) holds.
 
-    ``dst_ptrs``/``src_ptrs``/``feat_bytes`` are int64 [num_banks] device tensors built
-    once by the caller (the per-bank slot-cache base addr, host-source base addr, and
-    per-row byte size). Every bank's per-row byte size must be a multiple of 16, and the
-    base addresses 16-byte aligned (true for contiguous torch allocations of these banks).
+    ``feat_bytes`` is the number of native source bytes copied per row.
+    ``dst_stride_bytes`` is the fixed slot-cache row stride and defaults to
+    ``feat_bytes``. Keeping them separate lets compact mixed-quant GGUF layers share a
+    max-width destination pool without reading source padding that does not exist.
     """
     if _skip_fast_index_copy_enabled():
         return
     module = _jit_fast_index_copy_multi_module(
         num_threads=num_threads, blocks_per_bank=blocks_per_bank
     )
-    module.launch(dst_ptrs, src_ptrs, feat_bytes, dst_indices, src_indices, num_indices)
+    if dst_stride_bytes is None:
+        dst_stride_bytes = feat_bytes
+    module.launch(
+        dst_ptrs,
+        src_ptrs,
+        feat_bytes,
+        dst_stride_bytes,
+        dst_indices,
+        src_indices,
+        num_indices,
+    )
 
 
 def update_copy_flag_jit(sync_flag: torch.Tensor, delta: int) -> None:
