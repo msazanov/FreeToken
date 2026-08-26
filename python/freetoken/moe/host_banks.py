@@ -214,6 +214,23 @@ def alloc_layer_banks(
     }
 
 
+def alloc_layer_banks_from_specs(
+    specs: dict[str, list[tuple[tuple[int, ...], torch.dtype]]],
+) -> dict[str, list[HostBank]]:
+    """Allocate independently shaped host banks from explicit per-layer specs.
+
+    GGUF mixed quants may use a different packed row width in each layer. Unlike
+    :func:`alloc_layer_banks`, this form intentionally does not impose one shared shape.
+    """
+    lengths = {len(per_layer) for per_layer in specs.values()}
+    if len(lengths) > 1:
+        raise ValueError(f"per-layer bank spec lengths differ: {sorted(lengths)}")
+    return {
+        name: [HostBank(shape, dtype) for shape, dtype in per_layer]
+        for name, per_layer in specs.items()
+    }
+
+
 class _ResidencyPlan:
     """Per-layer ``HostResidency`` labels, ambiently visible to the bank settle points.
 

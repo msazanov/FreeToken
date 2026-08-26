@@ -868,3 +868,23 @@ def test_lock_failure_downgrades_echoed_residency(monkeypatch):
         with hb.PinPipeline() as pins:
             pins(1, {"gate_up": hb.HostBank((4,), torch.uint8)})
     assert plan2.actual == {1: hb.HostResidency.PAGEABLE.value}
+
+def test_alloc_layer_banks_from_specs_preserves_each_layer_shape():
+    """Variable GGUF host layers remain compact instead of inheriting a max shape."""
+    from freetoken.moe.host_banks import alloc_layer_banks_from_specs
+
+    banks = alloc_layer_banks_from_specs(
+        {
+            "gate_up": [((8, 512, 288), torch.uint8), ((8, 512, 288), torch.uint8)],
+            "down": [((8, 512, 210), torch.uint8), ((8, 512, 144), torch.uint8)],
+        }
+    )
+
+    assert [tuple(bank.tensor.shape) for bank in banks["gate_up"]] == [
+        (8, 512, 288),
+        (8, 512, 288),
+    ]
+    assert [tuple(bank.tensor.shape) for bank in banks["down"]] == [
+        (8, 512, 210),
+        (8, 512, 144),
+    ]
