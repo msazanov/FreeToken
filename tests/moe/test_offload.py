@@ -888,3 +888,29 @@ def test_alloc_layer_banks_from_specs_preserves_each_layer_shape():
         (8, 512, 210),
         (8, 512, 144),
     ]
+
+
+def test_gguf_cache_uses_max_layer_width_without_padding_host_sources():
+    """Mixed GGUF layers share a max-stride GPU pool but stay compact in RAM."""
+    from freetoken.models.gguf.dequant import GGML_Q4_K, GGML_Q6_K
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    gate_up = [torch.zeros(4, 512, 144, dtype=torch.uint8) for _ in range(2)]
+    down = [
+        torch.zeros(4, 256, 210, dtype=torch.uint8),
+        torch.zeros(4, 256, 144, dtype=torch.uint8),
+    ]
+    cache = OffloadMoeCache(
+        num_layers=2,
+        num_experts=4,
+        cache_size=6,
+        device=torch.device("cpu"),
+        quant_format="gguf",
+        gguf_expert_types=((GGML_Q4_K, GGML_Q4_K), (GGML_Q6_K, GGML_Q4_K)),
+    )
+
+    cache.set_bank_sources({"gate_up": gate_up, "down": down})
+
+    assert cache.bank_caches["gate_up"].shape == (6, 512, 144)
+    assert cache.bank_caches["down"].shape == (6, 256, 210)
+    assert cache.bank_sources["down"][1].shape == (4, 256, 144)

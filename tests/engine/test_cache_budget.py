@@ -97,6 +97,21 @@ def test_expert_bytes_per_slot_sums_row_bytes_over_banks():
     assert expert_bytes_per_slot(sources) == 512 + 256
 
 
+def test_expert_bytes_per_slot_uses_widest_layer_in_each_bank():
+    sources = {
+        "gate_up": [
+            torch.zeros(4, 512, 144, dtype=torch.uint8),
+            torch.zeros(4, 512, 144, dtype=torch.uint8),
+        ],
+        "down": [
+            torch.zeros(4, 256, 210, dtype=torch.uint8),
+            torch.zeros(4, 256, 144, dtype=torch.uint8),
+        ],
+    }
+
+    assert expert_bytes_per_slot(sources) == 512 * 144 + 256 * 210
+
+
 def test_resolve_auto_applies_ratio_once_and_marlin_cap():
     # baseline 1000, weights 100, ratio 0.9 -> budget = 900 - 100 - 0(fixed) = 800
     size, pages, overlap = resolve_moe_cache_auto(

@@ -207,6 +207,7 @@ class OffloadMoeCache:
         self.bank_schema = _BANK_SCHEMAS[self.quant_format]
         self.bank_sources: dict[str, list[torch.Tensor]] = {}
         self.bank_caches: dict[str, torch.Tensor] = {}
+        self._bank_cache_row_shapes: dict[str, tuple[int, ...]] = {}
         # per-layer host residency: the GPU movement paths require "pinned"; LOCKED/PAGEABLE layers decode on the CPU executor and prefill via copy_missing's pageable branch
         # _unpinned_layers is the derived id set the hot paths test against
         self.layer_residency: list[str] = []
@@ -334,15 +335,19 @@ class OffloadMoeCache:
             per_layer = sources[name]
             assert len(per_layer) == self.num_layers, (name, len(per_layer))
             head = per_layer[0]
+            max_last = head.shape[-1]
             for layer_id, source in enumerate(per_layer):
                 assert source.is_contiguous(), f"bank {name!r} layer {layer_id} must be contiguous"
                 assert source.size(0) == self.num_experts, (name, layer_id, source.shape)
-                assert source.shape == head.shape and source.dtype == head.dtype, (
+                assert source.shape[1:-1] == head.shape[1:-1] and source.dtype == head.dtype, (
                     name, layer_id, source.shape, source.dtype,
                 )
+                max_last = max(max_last, source.shape[-1])
+            cache_row_shape = (*head.shape[1:-1], max_last)
             self.bank_sources[name] = list(per_layer)
+            self._bank_cache_row_shapes[name] = cache_row_shape
             self.bank_caches[name] = torch.empty(
-                (self.cache_size, *head.shape[1:]),
+                (self.cache_size, *cache_row_shape),
                 dtype=head.dtype,
                 device=self.device,
             )
@@ -462,7 +467,9 @@ class OffloadMoeCache:
         for name in self.bank_schema:
             head = self.bank_sources[name][0]
             self.bank_caches[name] = torch.empty(
-                (cache_size, *head.shape[1:]), dtype=head.dtype, device=self.device
+                (cache_size, *self._bank_cache_row_shapes[name]),
+                dtype=head.dtype,
+                device=self.device,
             )
         self.banks = [(self.bank_sources[n], self.bank_caches[n]) for n in self.bank_schema]
         self._build_copy_plan()  # slot caches were reallocated -> refresh fused-copy addrs
