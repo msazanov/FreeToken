@@ -75,16 +75,15 @@ def _kv(shim: "GgufConfigShim", key: str, default: Any = None) -> Any:
     return val
 
 
-def _uniform_expert_types(model_path: str, num_layers: int) -> tuple[int, int] | None:
-    """``(gate_up, down)`` ggml types of the routed-expert banks, or None if not uniform.
+def _layer_expert_types(
+    model_path: str, num_layers: int
+) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+    """Per-layer ``(gate_up, down)`` GGML types of the routed-expert banks.
 
-    The offload slot pool is one allocation per bank shared by every layer, and
-    ``moe_vec.cuh`` addresses it as ``expert * nrows * (ncols / qk)`` with no padding
-    allowance -- so a bank whose type varies by layer cannot be served. We return None
-    rather than raising here because ``parse_gguf_config`` also runs for metadata-only
-    inspection; ``expert_banks._gguf_banks`` is where the load actually fails, with the
-    offending layers named. (llama.cpp's *_M mixes hit this: Ornith IQ3_M splits
-    ffn_down_exps across Q4_K and IQ3_S, while IQ3_S / IQ3_XXS are uniform.)
+    Keeping the complete type vectors is required for mixed ``*_M`` checkpoints: the
+    official Ornith Q4_K_M keeps gate/up at Q4_K but chooses Q4_K or Q6_K for down on a
+    layer-by-layer basis. Metadata-only inspection may have no tensor table, in which
+    case the layout remains unknown until a real checkpoint is supplied.
     """
     from .gguf_experts import gguf_expert_types
 
@@ -92,10 +91,11 @@ def _uniform_expert_types(model_path: str, num_layers: int) -> tuple[int, int] |
         types = gguf_expert_types(model_path, num_layers)
     except Exception:
         return None
-    gate_up, down = set(types["gate_up"]), set(types["down"])
-    if len(gate_up) != 1 or len(down) != 1:
+    gate_up = tuple(int(t) for t in types["gate_up"])
+    down = tuple(int(t) for t in types["down"])
+    if len(gate_up) != num_layers or len(down) != num_layers:
         return None
-    return (next(iter(gate_up)), next(iter(down)))
+    return gate_up, down
 
 
 def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
@@ -207,7 +207,7 @@ def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
         # runs for both.
         expert_quant="gguf" if moe_enabled else "none",
         gguf_expert_types=(
-            _uniform_expert_types(shim.model_path, num_layers) if moe_enabled else None
+            _layer_expert_types(shim.model_path, num_layers) if moe_enabled else None
         ),
         gguf_model_path=shim.model_path,
         weight_block_size=None,

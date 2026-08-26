@@ -21,10 +21,36 @@ from freetoken.layers.gguf import GGUFLinear, GGUFMergedLinear, gguf_merged_or_p
 from freetoken.models.gguf.dequant import (
     GGML_IQ3_S,
     GGML_Q4_K,
+    GGML_Q6_K,
     BLOCK_SHAPE,
     row_bytes,
 )
 from freetoken.models.qwen3_5_moe.gguf import gguf_name_to_freetoken
+
+
+def test_layer_expert_types_preserve_official_q4_k_m_mixed_down(monkeypatch):
+    """A Q4_K_M down bank that changes type by layer remains representable.
+
+    This catches collapsing GGUF expert metadata to one type per bank: the official
+    Ornith Q4_K_M uses uniform Q4_K gate/up weights but alternates Q6_K and Q4_K for
+    down weights across its served layers.
+    """
+    from freetoken.models.qwen3_5_moe import gguf as qwen_gguf
+    from freetoken.models.qwen3_5_moe import gguf_experts
+
+    monkeypatch.setattr(
+        gguf_experts,
+        "gguf_expert_types",
+        lambda _path, _layers: {
+            "gate_up": [GGML_Q4_K, GGML_Q4_K],
+            "down": [GGML_Q6_K, GGML_Q4_K],
+        },
+    )
+
+    assert qwen_gguf._layer_expert_types("official-q4-k-m.gguf", 2) == (
+        (GGML_Q4_K, GGML_Q4_K),
+        (GGML_Q6_K, GGML_Q4_K),
+    )
 
 
 @pytest.fixture
