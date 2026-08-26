@@ -12,6 +12,7 @@ Ornith-1.5-35B-A3B-GGUF checkpoint geometry (ORNITH_SPEC.md).
 from __future__ import annotations
 
 import sys
+from types import SimpleNamespace
 from types import ModuleType
 
 import pytest
@@ -46,12 +47,34 @@ def test_layer_expert_types_preserve_official_q4_k_m_mixed_down(monkeypatch):
             "down": [GGML_Q6_K, GGML_Q4_K],
         },
     )
-
     assert qwen_gguf._layer_expert_types("official-q4-k-m.gguf", 2) == (
         (GGML_Q4_K, GGML_Q4_K),
         (GGML_Q6_K, GGML_Q4_K),
     )
 
+
+def test_expert_specs_keep_mixed_down_layers_compact():
+    """Host layers use their native row width instead of padding Q4_K to Q6_K."""
+    from freetoken.models.qwen3_5_moe.gguf_experts import gguf_expert_specs
+
+    config = SimpleNamespace(num_layers=2, num_experts=8, hidden_size=512,
+                             moe_intermediate_size=256)
+    specs = gguf_expert_specs(
+        config,
+        {
+            "gate_up": [GGML_Q4_K, GGML_Q4_K],
+            "down": [GGML_Q6_K, GGML_Q4_K],
+        },
+    )
+
+    assert specs["gate_up"] == [
+        ((8, 512, 288), torch.uint8),
+        ((8, 512, 288), torch.uint8),
+    ]
+    assert specs["down"] == [
+        ((8, 512, 210), torch.uint8),
+        ((8, 512, 144), torch.uint8),
+    ]
 
 @pytest.fixture
 def mock_kernel_module(monkeypatch):

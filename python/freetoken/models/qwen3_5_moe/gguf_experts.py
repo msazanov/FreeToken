@@ -96,33 +96,31 @@ def gguf_expert_types(model_path: str, num_layers: int) -> dict[str, list[int]]:
 
 def gguf_expert_specs(
     config: ModelConfig, types: dict[str, list[int]]
-) -> dict[str, tuple[tuple[int, ...], torch.dtype]]:
-    """Expert bank shapes as ``{name: (shape, dtype)}`` -- ``alloc_layer_banks``' contract.
+) -> dict[str, list[tuple[tuple[int, ...], torch.dtype]]]:
+    """Native packed host-bank shape for every layer of each expert bank.
 
     The routed experts are 3D stacks in torch order::
 
         gate_up  (E, 2*I, row_bytes(H, t_gate_up))   uint8, packed blocks
         down     (E, H,   row_bytes(I, t_down))      uint8, packed blocks
 
-    One spec per bank, not per layer: every layer of a bank MUST share a ggml type. The
-    GPU slot pool is a single allocation shared by all layers and ``moe_vec.cuh`` indexes
-    it as ``expert * nrows * (ncols / qk)`` with no padding allowance, so two strides in
-    one pool would read every block at the wrong offset. A non-uniform bank is rejected
-    here rather than mis-decoded; ``expert_banks._gguf_banks`` raises the user-facing
-    error naming the offending layers.
+    Host sources stay compact even when an ``*_M`` checkpoint raises selected layers to
+    another quant type. The GPU cache separately allocates its slots at the maximum bank
+    stride and copies only each layer's native bytes.
     """
     E, H, I = config.num_experts, config.hidden_size, config.moe_intermediate_size
-    out = {}
+    out: dict[str, list[tuple[tuple[int, ...], torch.dtype]]] = {}
     for name, elems in (("gate_up", H), ("down", I)):
-        distinct = sorted(set(types[name]))
-        if len(distinct) != 1:
+        if len(types[name]) != config.num_layers:
             raise ValueError(
-                f"expert bank {name!r} mixes ggml types across layers ({distinct}); a bank "
-                f"must be uniform because its slot pool is one allocation with one stride"
+                f"expert bank {name!r} has {len(types[name])} type entries for "
+                f"{config.num_layers} layers"
             )
-        rb = row_bytes(elems, distinct[0])
-        shape = (E, 2 * I, rb) if name == "gate_up" else (E, H, rb)
-        out[name] = (shape, torch.uint8)
+        out[name] = []
+        for quant_type in types[name]:
+            rb = row_bytes(elems, quant_type)
+            shape = (E, 2 * I, rb) if name == "gate_up" else (E, H, rb)
+            out[name].append((shape, torch.uint8))
     return out
 
 
