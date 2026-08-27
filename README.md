@@ -23,6 +23,18 @@ FreeToken is an edge-native Mixture-of-Experts (MoE) serving engine designed for
 - **Broad MoE & Ecosystem Support**: Supports frontier open-weight MoE models (e.g., DeepSeek-V4-Flash, Qwen3.6-35B-A3B, GLM-5.2) across various parameter scales and quantization formats (e.g., MXFP4, NVFP4, FP8, BF16), with Anthropic/OpenAI-compatible APIs for seamless integration with real-world coding and tool-calling agents (e.g., Codex, Claude Code, OpenCode, OpenClaw, DeepSeek Harness). 
 - **Diverse Consumer Hardware**: Scales across consumer laptops, gaming desktops, and workstation GPUs, with native support for NVIDIA RTX 30, RTX 40, and RTX 50 series GPUs.  
 
+## RTX 2070 fork mission
+
+This fork focuses on useful, fast and high-quality local inference on a constrained
+mobile workstation: **RTX 2070 Mobile (8 GiB VRAM), Intel i7-8750H, 32 GiB DDR4
+and 1 TB NVMe**. The current primary target is **Ornith 1.5 35B A3B**: its MoE
+architecture is the most effective candidate found so far for this hardware when
+served by FreeToken with CPU/RAM/NVMe-assisted expert offload.
+
+Every performance or quality claim in this fork must be reproducible. See
+[TESTLOG.md](TESTLOG.md) for raw benchmark records and [CHANGELOG.md](CHANGELOG.md)
+for hypotheses, changes, successful experiments and rejected experiments.
+
 ## Getting Started
 
 ### Desktop app

@@ -1,0 +1,1738 @@
+{
+  "schema": 1,
+  "timestamp_utc": "2026-08-27T12:58:06.002164+00:00",
+  "scenario": "repository-compression",
+  "requested_context_tokens": 1024,
+  "dossier_body_tokens": 864,
+  "model": "Ornith 1.5 35b",
+  "origin": "http://127.0.0.1:1919",
+  "metrics": {
+    "wall_s": 15.035751914954744,
+    "ttft_s": 5.5451627229340374,
+    "decode_window_s": 9.488819433026947,
+    "prompt_tokens": 1011,
+    "completion_tokens": 255,
+    "response_text": "Here's the compressed dossier for a new maintainer:\n\n- **Target hardware:** RTX 2070 Mobile (8 GiB VRAM), Intel i7-8750H, 32 GiB DDR4, 1 TB NVMe.\n- **Primary model:** Ornith 1.5 35B A3B (MoE), served via FreeToken with CPU/RAM/NVMe-assisted expert offload.\n- **Runtime stats endpoint:** `GET /v1/stats` on `127.0.0.1:8000`, served by the `stats()` function in `python/freetoken/server/control_api.py`.\n- **Active TQ4 optimization:** SM75 TQ4-NC decode uses a fixed 18-way split-K (vs. 8); long prefill uses packed TQ4 only for the historical KV prefix and reads the transformed current block directly.\n- **Rejected optimization:** FP16 Tensor-Core operands for Ornith attention on SM75 — emitted PTX used scalar FMA, not `mma.sync`, because the per-KV-head group is only M=8.\n- **Files to update after an experiment",
+    "prefill_tps_estimate": 182.32106982517246,
+    "decode_tps": 26.768345819283194
+  },
+  "quality": {
+    "required_anchors": [
+      "ornith",
+      "rtx 2070",
+      "control_api.py",
+      "build_stats",
+      "tq4"
+    ],
+    "found_anchors": [
+      "ornith",
+      "rtx 2070",
+      "control_api.py",
+      "tq4"
+    ],
+    "score": 4
+  },
+  "runtime_before": {
+    "stats": {
+      "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+      "model": {
+        "id": "Ornith 1.5 35b",
+        "ctx": 122880,
+        "attn": "hybrid_linear",
+        "moe": true,
+        "sampling": {
+          "temperature": 1.0,
+          "top_k": 20,
+          "top_p": 0.949999988079071
+        }
+      },
+      "uptime_s": 8914,
+      "kv": {
+        "used_pages": 0,
+        "total_pages": 122880,
+        "page_size": 1,
+        "dtype": "tq4-nc",
+        "bytes_per_token": 5200
+      },
+      "mamba": {
+        "used_slots": 0,
+        "total_slots": 8
+      },
+      "swa": null,
+      "moe": {
+        "cache_slots": 1429,
+        "total_expert_slots": 10240,
+        "residency_pct": 14.0,
+        "cache_policy": "lru",
+        "runtime": null
+      },
+      "vram_bytes": 6501171200,
+      "throughput": {
+        "decode_tps": 0.0,
+        "prefill_tps": 0.0
+      },
+      "inference": {
+        "phase": "idle",
+        "elapsed_ms": 0,
+        "active_requests": 0,
+        "queued_requests": 0,
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "new_prompt_tokens": 0,
+        "completion_tokens": 0,
+        "processed_prompt_tokens": 0,
+        "remaining_prompt_tokens": 0,
+        "throughput_tps": 0.0,
+        "batch_tokens": 0,
+        "scheduler_running_requests": 0,
+        "semantic": null
+      },
+      "tool_recovery": {
+        "recovered_tool_calls_total": 0,
+        "stop_failures_total": 0,
+        "last": null
+      },
+      "requests": {
+        "active": 0,
+        "completed": 3,
+        "p95_ms": 19501,
+        "ttft_mean_ms": 3797,
+        "prompt_tokens_total": 3771,
+        "completion_tokens_total": 258
+      }
+    },
+    "cache": {
+      "state": "serving",
+      "last_rebuild": null,
+      "geometry": {
+        "num_pages": 122880,
+        "page_size": 1,
+        "moe_cache_size": 1429,
+        "num_mamba_slots": 8,
+        "num_experts": 256,
+        "num_moe_layers": 40,
+        "moe_cache_policy": "lru",
+        "unit_bytes": {
+          "kv_per_token": 5200,
+          "moe_per_expert": 2039808,
+          "mamba_per_slot": 64389120,
+          "swa_per_token": 0
+        },
+        "swa_full_tokens_ratio": 0.0,
+        "swa_page_size": 0,
+        "num_swa_pages": 0,
+        "cache_budget_bytes": 4763294105,
+        "reasoning": {
+          "gears": [
+            "off",
+            "on"
+          ],
+          "default": "on",
+          "kwargs": {
+            "off": {
+              "enable_thinking": false,
+              "thinking_mode": "disabled"
+            },
+            "on": {
+              "enable_thinking": true,
+              "thinking_mode": "enabled"
+            }
+          }
+        },
+        "limits": {
+          "kv_tokens": {
+            "min": 1,
+            "max": 916018
+          },
+          "moe_experts": {
+            "min": 256,
+            "max": 2335
+          },
+          "mamba_slots": {
+            "min": 4,
+            "max": 73
+          },
+          "swa_tokens": {
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "runtime_after": {
+    "stats": {
+      "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+      "model": {
+        "id": "Ornith 1.5 35b",
+        "ctx": 122880,
+        "attn": "hybrid_linear",
+        "moe": true,
+        "sampling": {
+          "temperature": 1.0,
+          "top_k": 20,
+          "top_p": 0.949999988079071
+        }
+      },
+      "uptime_s": 8929,
+      "kv": {
+        "used_pages": 0,
+        "total_pages": 122880,
+        "page_size": 1,
+        "dtype": "tq4-nc",
+        "bytes_per_token": 5200
+      },
+      "mamba": {
+        "used_slots": 0,
+        "total_slots": 8
+      },
+      "swa": null,
+      "moe": {
+        "cache_slots": 1429,
+        "total_expert_slots": 10240,
+        "residency_pct": 14.0,
+        "cache_policy": "lru",
+        "runtime": null
+      },
+      "vram_bytes": 6501171200,
+      "throughput": {
+        "decode_tps": 25.6,
+        "prefill_tps": 0.0
+      },
+      "inference": {
+        "phase": "idle",
+        "elapsed_ms": 0,
+        "active_requests": 0,
+        "queued_requests": 0,
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "new_prompt_tokens": 0,
+        "completion_tokens": 0,
+        "processed_prompt_tokens": 0,
+        "remaining_prompt_tokens": 0,
+        "throughput_tps": 0.0,
+        "batch_tokens": 0,
+        "scheduler_running_requests": 0,
+        "semantic": null
+      },
+      "tool_recovery": {
+        "recovered_tool_calls_total": 0,
+        "stop_failures_total": 0,
+        "last": null
+      },
+      "requests": {
+        "active": 0,
+        "completed": 4,
+        "p95_ms": 19501,
+        "ttft_mean_ms": 4666,
+        "prompt_tokens_total": 4782,
+        "completion_tokens_total": 513
+      }
+    },
+    "cache": {
+      "state": "serving",
+      "last_rebuild": null,
+      "geometry": {
+        "num_pages": 122880,
+        "page_size": 1,
+        "moe_cache_size": 1429,
+        "num_mamba_slots": 8,
+        "num_experts": 256,
+        "num_moe_layers": 40,
+        "moe_cache_policy": "lru",
+        "unit_bytes": {
+          "kv_per_token": 5200,
+          "moe_per_expert": 2039808,
+          "mamba_per_slot": 64389120,
+          "swa_per_token": 0
+        },
+        "swa_full_tokens_ratio": 0.0,
+        "swa_page_size": 0,
+        "num_swa_pages": 0,
+        "cache_budget_bytes": 4763294105,
+        "reasoning": {
+          "gears": [
+            "off",
+            "on"
+          ],
+          "default": "on",
+          "kwargs": {
+            "off": {
+              "enable_thinking": false,
+              "thinking_mode": "disabled"
+            },
+            "on": {
+              "enable_thinking": true,
+              "thinking_mode": "enabled"
+            }
+          }
+        },
+        "limits": {
+          "kv_tokens": {
+            "min": 1,
+            "max": 916018
+          },
+          "moe_experts": {
+            "min": 256,
+            "max": 2335
+          },
+          "mamba_slots": {
+            "min": 4,
+            "max": 73
+          },
+          "swa_tokens": {
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "runtime_samples": [
+    {
+      "monotonic_s": 536449.384980913,
+      "gpu_util_percent": 0.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 58.0,
+      "gpu_power_w": 11.24,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2090672128,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13498568704,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8914,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": null
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "queued",
+          "elapsed_ms": 79,
+          "active_requests": 1,
+          "queued_requests": 1,
+          "prompt_tokens": 0,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 0,
+          "completion_tokens": 0,
+          "processed_prompt_tokens": 0,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 0.0,
+          "batch_tokens": 0,
+          "scheduler_running_requests": 0,
+          "semantic": {
+            "phase": "waiting",
+            "reasoning_chars": 0,
+            "content_chars": 0,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": null,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 3771,
+          "completion_tokens_total": 258
+        }
+      }
+    },
+    {
+      "monotonic_s": 536450.472219042,
+      "gpu_util_percent": 24.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 65.0,
+      "gpu_power_w": 112.46,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2260627456,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13435621376,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8915,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": null
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 1020.4
+        },
+        "inference": {
+          "phase": "prefill",
+          "elapsed_ms": 1109,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 0,
+          "processed_prompt_tokens": 0,
+          "remaining_prompt_tokens": 1011,
+          "throughput_tps": 0.0,
+          "batch_tokens": 0,
+          "scheduler_running_requests": 0,
+          "semantic": {
+            "phase": "waiting",
+            "reasoning_chars": 0,
+            "content_chars": 0,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": null,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 258
+        }
+      }
+    },
+    {
+      "monotonic_s": 536451.502091915,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 67.0,
+      "gpu_power_w": 102.9,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2309836800,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13372260352,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8916,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": null
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 500.0
+        },
+        "inference": {
+          "phase": "prefill",
+          "elapsed_ms": 2140,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 0,
+          "processed_prompt_tokens": 0,
+          "remaining_prompt_tokens": 1011,
+          "throughput_tps": 0.0,
+          "batch_tokens": 0,
+          "scheduler_running_requests": 0,
+          "semantic": {
+            "phase": "waiting",
+            "reasoning_chars": 0,
+            "content_chars": 0,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": null,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 258
+        }
+      }
+    },
+    {
+      "monotonic_s": 536452.533343875,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 67.0,
+      "gpu_power_w": 114.81,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2310897664,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13362679808,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8917,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": null
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 331.1
+        },
+        "inference": {
+          "phase": "prefill",
+          "elapsed_ms": 3171,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 0,
+          "processed_prompt_tokens": 0,
+          "remaining_prompt_tokens": 1011,
+          "throughput_tps": 0.0,
+          "batch_tokens": 0,
+          "scheduler_running_requests": 0,
+          "semantic": {
+            "phase": "waiting",
+            "reasoning_chars": 0,
+            "content_chars": 0,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": null,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 258
+        }
+      }
+    },
+    {
+      "monotonic_s": 536453.564892008,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 68.0,
+      "gpu_power_w": 109.7,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2322558976,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13336150016,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8918,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": null
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 247.3
+        },
+        "inference": {
+          "phase": "prefill",
+          "elapsed_ms": 4205,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 0,
+          "processed_prompt_tokens": 0,
+          "remaining_prompt_tokens": 1011,
+          "throughput_tps": 0.0,
+          "batch_tokens": 0,
+          "scheduler_running_requests": 0,
+          "semantic": {
+            "phase": "waiting",
+            "reasoning_chars": 0,
+            "content_chars": 0,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": null,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 258
+        }
+      }
+    },
+    {
+      "monotonic_s": 536454.599057176,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 69.0,
+      "gpu_power_w": 104.99,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2359328768,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13300822016,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8919,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": null
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "prefill",
+          "elapsed_ms": 5237,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 0,
+          "processed_prompt_tokens": 0,
+          "remaining_prompt_tokens": 1011,
+          "throughput_tps": 0.0,
+          "batch_tokens": 0,
+          "scheduler_running_requests": 0,
+          "semantic": {
+            "phase": "waiting",
+            "reasoning_chars": 0,
+            "content_chars": 0,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": null,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 258
+        }
+      }
+    },
+    {
+      "monotonic_s": 536455.630203648,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 71.0,
+      "gpu_power_w": 112.75,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2384740352,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13273608192,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8920,
+        "kv": {
+          "used_pages": 1032,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": null
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 28.6,
+          "prefill_tps": 7.8
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 6271,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 21,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 7.8,
+          "batch_tokens": 1011,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 82,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 18,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 279
+        }
+      }
+    },
+    {
+      "monotonic_s": 536456.664392108,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 72.0,
+      "gpu_power_w": 112.44,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2392784896,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13250297856,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8921,
+        "kv": {
+          "used_pages": 1062,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 11280,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.3338652482269504,
+            "miss_rate": 0.4167331560283688,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.3338652482269504,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 0.3,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 7303,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 51,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 0.3,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 136,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 8,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 309
+        }
+      }
+    },
+    {
+      "monotonic_s": 536457.696994724,
+      "gpu_util_percent": 97.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 73.0,
+      "gpu_power_w": 115.25,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2405625856,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13224927232,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8922,
+        "kv": {
+          "used_pages": 1090,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 12880,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.3486801242236024,
+            "miss_rate": 0.4185850155279503,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.3486801242236024,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 27.9,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 8335,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 79,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 27.9,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 199,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 2,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 337
+        }
+      }
+    },
+    {
+      "monotonic_s": 536458.72897796,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 73.0,
+      "gpu_power_w": 115.33,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2430214144,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13201727488,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8923,
+        "kv": {
+          "used_pages": 1118,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 14480,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.353867403314917,
+            "miss_rate": 0.41923342541436465,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.353867403314917,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 27.8,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 9366,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 107,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 27.8,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 295,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 25,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 365
+        }
+      }
+    },
+    {
+      "monotonic_s": 536459.759289576,
+      "gpu_util_percent": 97.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 113.29,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2469150720,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13166419968,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8924,
+        "kv": {
+          "used_pages": 1149,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 14480,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.353867403314917,
+            "miss_rate": 0.41923342541436465,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.353867403314917,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 27.8,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 10400,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 138,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 27.8,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 373,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 18,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 396
+        }
+      }
+    },
+    {
+      "monotonic_s": 536460.794086651,
+      "gpu_util_percent": 97.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 111.44,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2496999424,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 13104803840,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8925,
+        "kv": {
+          "used_pages": 1177,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 16080,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.3222636815920397,
+            "miss_rate": 0.41528296019900496,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.3222636815920397,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 29.8,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 11432,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 166,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 29.8,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 465,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 2,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 424
+        }
+      }
+    },
+    {
+      "monotonic_s": 536461.825364274,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 75.0,
+      "gpu_power_w": 114.86,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2591440896,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 12981112832,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8926,
+        "kv": {
+          "used_pages": 1202,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 17680,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.3793552036199097,
+            "miss_rate": 0.4224194004524887,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.3793552036199097,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 24.8,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 12464,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 191,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 24.8,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 551,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 8,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 449
+        }
+      }
+    },
+    {
+      "monotonic_s": 536462.857420338,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 76.0,
+      "gpu_power_w": 113.43,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2612994048,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 12938997760,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8927,
+        "kv": {
+          "used_pages": 1228,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 17680,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.3793552036199097,
+            "miss_rate": 0.4224194004524887,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.3793552036199097,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 24.8,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 13500,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 217,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 24.8,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 683,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 24,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 475
+        }
+      }
+    },
+    {
+      "monotonic_s": 536463.894254471,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6646.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 77.0,
+      "gpu_power_w": 116.25,
+      "mem_total_bytes": 33484853248,
+      "mem_available_bytes": 2634522624,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 12915671040,
+      "server_stats": {
+        "instance_id": "a89924e5-5dcc-4697-8bbd-643a022ec7ff",
+        "model": {
+          "id": "Ornith 1.5 35b",
+          "ctx": 122880,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 8928,
+        "kv": {
+          "used_pages": 1254,
+          "total_pages": 122880,
+          "page_size": 1,
+          "dtype": "tq4-nc",
+          "bytes_per_token": 5200
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": {
+          "cache_slots": 1429,
+          "total_expert_slots": 10240,
+          "residency_pct": 14.0,
+          "cache_policy": "lru",
+          "runtime": {
+            "layer_calls": 19280,
+            "active_per_layer": 8.0,
+            "missing_per_layer": 3.4272821576763484,
+            "miss_rate": 0.42841026970954355,
+            "fetched_per_layer": 0.0,
+            "cpu_per_layer": 3.4272821576763484,
+            "fetch_rate": 0.0,
+            "prefill_hit_rows": 0,
+            "prefill_rows": 0
+          }
+        },
+        "vram_bytes": 6501171200,
+        "throughput": {
+          "decode_tps": 25.5,
+          "prefill_tps": 0.0
+        },
+        "inference": {
+          "phase": "decode",
+          "elapsed_ms": 14536,
+          "active_requests": 1,
+          "queued_requests": 0,
+          "prompt_tokens": 1011,
+          "cached_tokens": 0,
+          "new_prompt_tokens": 1011,
+          "completion_tokens": 243,
+          "processed_prompt_tokens": 1011,
+          "remaining_prompt_tokens": 0,
+          "throughput_tps": 25.5,
+          "batch_tokens": 40,
+          "scheduler_running_requests": 1,
+          "semantic": {
+            "phase": "content",
+            "reasoning_chars": 0,
+            "content_chars": 772,
+            "tool_call_chars": 0,
+            "tokens_since_event": 0,
+            "last_event_ms": 25,
+            "tool_name": null,
+            "parser_state": "idle",
+            "parser_withholding": false,
+            "parser_silent_tokens": 0
+          }
+        },
+        "tool_recovery": {
+          "recovered_tool_calls_total": 0,
+          "stop_failures_total": 0,
+          "last": null
+        },
+        "requests": {
+          "active": 1,
+          "completed": 3,
+          "p95_ms": 19501,
+          "ttft_mean_ms": 3797,
+          "prompt_tokens_total": 4782,
+          "completion_tokens_total": 501
+        }
+      }
+    }
+  ]
+}
