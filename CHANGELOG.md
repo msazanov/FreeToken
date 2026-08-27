@@ -41,3 +41,10 @@ failed and inconclusive hypotheses; do not rewrite history.
 - Context-speed artifacts now carry revision and parameter identity, and append a
   concise `slices.jsonl` point for direct curves: context on one axis, decode
   tok/s on the other, with TTFT/prefill retained as separate series.
+
+### Discovered deployment gap
+
+- The active DeepSeek Harness web profile does not enable either its bundled
+  tool-result pruner or basic compaction provider. Do not attribute the current
+  long-context behaviour to those packages until a local Ornith policy is
+  explicitly mounted and benchmarked.

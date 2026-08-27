@@ -19,6 +19,20 @@ labels, runtime cache geometry, sampling mode, actual context, TTFT, prefill and
 decode. Use `temperature=0` / `greedy-argmax` until FreeToken wires API seeds
 through to the sampler; a nominal seed would currently be misleading.
 
+## 2026-08-27 — DeepSeek Harness composition inspection
+
+Read-only inspection of the live `dsh web --no-open` installation and
+`dsh --profile web --dump-config` found that the active web patch mounts only
+`@local/dsh-freetoken-telemetry` and `@local/dsh-ornith-compat`. Both
+`compaction-basic` and `tool-result-pruner` remain explicitly disabled. Their
+available defaults are respectively automatic compaction at 80% of routed
+capacity with a 16% retained tail, and 8192-character tool-result pruning
+(4096-character head plus 1024-character tail), but neither policy currently
+runs. The active FreeToken geometry is 122880 TQ4-NC KV pages, 1429 MoE cache
+slots (14% residency), and 8 Mamba slots. No configuration was changed during
+inspection. This establishes the cache benchmark prerequisite: use the active
+system/tool prefix before enabling or tuning any retention policy.
+
 ## 2026-08-27 — existing TQ4-NC evidence
 
 | Experiment | Method | Result | Scope / limitation |
