@@ -30,6 +30,9 @@
 - Consumes: FreeToken `/v1/chat/completions`, `/v1/stats`, `/v1/cache/status`.
 - Produces: one JSON artifact per cold/exact-warm/append case, and a JSONL slice index.
 
+**Prerequisite:** Task 2 first records the active Harness profile and effective
+prompt contributors. Do not substitute an invented static prefix.
+
 - [ ] Write tests for canonical static-prefix construction, case-marker uniqueness, SSE usage parsing and cache-rate calculation.
 - [ ] Run the focused pytest file and observe each missing implementation failure.
 - [ ] Implement the minimal runner with fixed prefix, real repository dossier, one exact replay and one suffix-only user delta.
