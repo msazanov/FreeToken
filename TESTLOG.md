@@ -13,6 +13,12 @@ For every experiment record:
 - result or failure, plus the path to the raw JSON artifact in `benchmarks/results/`;
 - whether the result is kernel-only, server-level, or an end-to-end quality result.
 
+For context-speed curves, also append a plot-ready point to the sibling
+`slices.jsonl`: each point records the commit, dirty-state, manual parameter
+labels, runtime cache geometry, sampling mode, actual context, TTFT, prefill and
+decode. Use `temperature=0` / `greedy-argmax` until FreeToken wires API seeds
+through to the sampler; a nominal seed would currently be misleading.
+
 ## 2026-08-27 — existing TQ4-NC evidence
 
 | Experiment | Method | Result | Scope / limitation |

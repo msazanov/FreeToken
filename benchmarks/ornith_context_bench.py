@@ -179,6 +179,78 @@ def artifact_path(results_dir: Path, tokens: int, scenario: str) -> Path:
     return results_dir / f"{scenario}-{tokens}.json"
 
 
+def parse_parameters(values: Iterable[str]) -> dict[str, str]:
+    """Parse repeated ``KEY=VALUE`` labels used to identify a benchmark slice."""
+    parameters: dict[str, str] = {}
+    for raw in values:
+        key, separator, value = raw.partition("=")
+        if not separator or not key or not value:
+            raise ValueError(f"parameter must use KEY=VALUE, got {raw!r}")
+        parameters[key] = value
+    return parameters
+
+
+def _git_identity(root: Path) -> dict[str, object]:
+    """Capture the exact source revision, including uncommitted experiment code."""
+    try:
+        commit = subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], text=True, timeout=5
+        ).strip()
+        dirty = bool(
+            subprocess.check_output(
+                ["git", "-C", str(root), "status", "--porcelain"], text=True, timeout=5
+            ).strip()
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"commit": None, "dirty": None}
+    return {"commit": commit, "dirty": dirty}
+
+
+def _runtime_parameters(runtime_before: dict) -> dict[str, object]:
+    """Keep the serving configuration alongside manual ``--parameter`` labels."""
+    stats = runtime_before.get("stats") or {}
+    cache = runtime_before.get("cache") or {}
+    geometry = cache.get("geometry") or {}
+    kv = stats.get("kv") or {}
+    return {
+        "context_budget_tokens": (stats.get("model") or {}).get("ctx"),
+        "kv_dtype": kv.get("dtype"),
+        "kv_pages": kv.get("total_pages"),
+        "moe_cache_slots": geometry.get("moe_cache_size"),
+        "mamba_slots": geometry.get("num_mamba_slots"),
+    }
+
+
+def slice_index_entry(row: dict) -> dict:
+    """Flatten one artifact into a plot-ready point for revision/parameter comparisons."""
+    metrics = row["metrics"]
+    slice_meta = row["slice"]
+    return {
+        "timestamp_utc": row["timestamp_utc"],
+        "artifact": row["artifact"],
+        "series": slice_meta["series"],
+        "label": slice_meta["label"],
+        "git_commit": slice_meta["git"]["commit"],
+        "git_dirty": slice_meta["git"]["dirty"],
+        "parameters": slice_meta["parameters"],
+        "runtime_parameters": slice_meta["runtime_parameters"],
+        "sampling_mode": slice_meta["sampling"]["mode"],
+        "context_tokens": metrics["prompt_tokens"],
+        "requested_context_tokens": row["requested_context_tokens"],
+        "ttft_s": metrics["ttft_s"],
+        "prefill_tps": metrics["prefill_tps_estimate"],
+        "decode_tps": metrics["decode_tps"],
+    }
+
+
+def append_slice_index(results_dir: Path, row: dict) -> Path:
+    """Append a compact, plot-ready point without mutating past measurements."""
+    path = results_dir / "slices.jsonl"
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(slice_index_entry(row), ensure_ascii=False, sort_keys=True) + "\n")
+    return path
+
+
 def _get_json(origin: str, path: str, timeout: float = 15.0) -> dict:
     with urllib.request.urlopen(f"{origin.rstrip('/')}{path}", timeout=timeout) as response:
         return json.load(response)
@@ -332,7 +404,8 @@ def _quality(result: dict) -> dict:
 
 def run_tier(
     *, origin: str, root: Path, model: str, model_path: str, requested_tokens: int,
-    timeout_s: float, output_tokens: int, results_dir: Path
+    timeout_s: float, output_tokens: int, results_dir: Path, slice_series: str,
+    slice_label: str, parameters: dict[str, str]
 ) -> dict:
     prompt, dossier_tokens = build_compression_prompt(
         root=root, model_path=model_path, requested_tokens=requested_tokens
@@ -361,6 +434,7 @@ def run_tier(
     decode_tps = None
     if decode_window and decode_window > 0 and result["completion_tokens"] > 1:
         decode_tps = (result["completion_tokens"] - 1) / decode_window
+    path = artifact_path(results_dir, requested_tokens, "compression")
     row = {
         "schema": 1,
         "timestamp_utc": datetime.now(UTC).isoformat(),
@@ -374,11 +448,21 @@ def run_tier(
         "runtime_before": before,
         "runtime_after": after,
         "runtime_samples": sampler.samples,
+        "slice": {
+            "series": slice_series,
+            "label": slice_label,
+            "git": _git_identity(root),
+            "parameters": parameters,
+            "runtime_parameters": _runtime_parameters(before),
+            # FreeToken's current OpenAI route does not forward a seed to its sampler.
+            # temperature=0 selects argmax, so the result is deterministic without one.
+            "sampling": {"mode": "greedy-argmax", "temperature": 0.0, "seed": None},
+        },
+        "artifact": str(path),
     }
     results_dir.mkdir(parents=True, exist_ok=True)
-    path = artifact_path(results_dir, requested_tokens, "compression")
     path.write_text(json.dumps(row, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    row["artifact"] = str(path)
+    append_slice_index(results_dir, row)
     return row
 
 
@@ -390,11 +474,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).parent / "results")
     parser.add_argument("--timeout-s", type=float, default=3600.0)
     parser.add_argument("--max-output-tokens", type=int, default=384)
+    parser.add_argument("--slice-series", default="ornith-rtx2070")
+    parser.add_argument("--slice-label", default="baseline")
+    parser.add_argument("--parameter", action="append", default=[], metavar="KEY=VALUE")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    try:
+        parameters = parse_parameters(args.parameter)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     model, model_path = _server_model(args.origin)
     for tier in parse_context_tiers(args.tiers):
         row = run_tier(
@@ -406,6 +497,9 @@ def main(argv: list[str] | None = None) -> int:
             timeout_s=args.timeout_s,
             output_tokens=args.max_output_tokens,
             results_dir=args.output_dir,
+            slice_series=args.slice_series,
+            slice_label=args.slice_label,
+            parameters=parameters,
         )
         metrics = row["metrics"]
         print(

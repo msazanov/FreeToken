@@ -38,3 +38,6 @@ failed and inconclusive hypotheses; do not rewrite history.
 - The repository declares its RTX 2070 Mobile / i7-8750H / 32 GiB / NVMe goal.
 - `TESTLOG.md` is the measured-evidence log; `CHANGELOG.md` is the hypothesis and
   decision log. `AGENTS.md` requires both to be updated for every experiment.
+- Context-speed artifacts now carry revision and parameter identity, and append a
+  concise `slices.jsonl` point for direct curves: context on one axis, decode
+  tok/s on the other, with TTFT/prefill retained as separate series.

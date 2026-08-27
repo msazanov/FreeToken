@@ -82,3 +82,46 @@ def test_default_runner_output_directory_is_repository_benchmarks_results():
     assert output_dir.name == "results"
     assert output_dir.parent.name == "benchmarks"
     assert not output_dir.as_posix().startswith("/tmp/")
+
+
+def test_slice_index_entry_binds_speed_point_to_revision_and_parameters():
+    from benchmarks.ornith_context_bench import slice_index_entry
+
+    entry = slice_index_entry(
+        {
+            "timestamp_utc": "2026-08-27T14:11:21+00:00",
+            "artifact": "/repo/benchmarks/results/run/compression-16384.json",
+            "requested_context_tokens": 16_384,
+            "metrics": {
+                "prompt_tokens": 16_373,
+                "ttft_s": 134.259,
+                "prefill_tps_estimate": 121.95,
+                "decode_tps": 20.56,
+            },
+            "slice": {
+                "series": "ornith-rtx2070",
+                "label": "tq4-p1024",
+                "git": {"commit": "fc9027b", "dirty": False},
+                "parameters": {"kv_block": "1024"},
+                "runtime_parameters": {"kv_dtype": "tq4-nc"},
+                "sampling": {"mode": "greedy-argmax", "temperature": 0.0, "seed": None},
+            },
+        }
+    )
+
+    assert entry["git_commit"] == "fc9027b"
+    assert entry["parameters"] == {"kv_block": "1024"}
+    assert entry["context_tokens"] == 16_373
+    assert entry["decode_tps"] == 20.56
+    assert entry["sampling_mode"] == "greedy-argmax"
+
+
+def test_parse_parameters_requires_key_value_pairs():
+    from benchmarks.ornith_context_bench import parse_parameters
+
+    assert parse_parameters(["kv_block=1024", "moe_slots=1429"]) == {
+        "kv_block": "1024",
+        "moe_slots": "1429",
+    }
+    with pytest.raises(ValueError, match="KEY=VALUE"):
+        parse_parameters(["bad-parameter"])
