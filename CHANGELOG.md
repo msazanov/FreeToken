@@ -71,3 +71,16 @@ failed and inconclusive hypotheses; do not rewrite history.
   experts per layer missed the 1429-slot cache and were handled by the CPU path.
   This is evidence to evaluate a MoE-residency/cache-size experiment next, not
   proof that changing it will improve end-to-end agent latency.
+
+### Accepted live configuration changes
+
+- Increased live FreeToken MoE cache from 1429 to 1700 slots through its
+  idle-only runtime rebuild API while preserving the 122880-token KV cache.
+  The matched forced-decode measurement improved from 28.93 to 31.27 tok/s
+  (+8.1%) and reduced MoE misses from 43.37% to 35.07%. This is the active
+  serving geometry.
+- Enabled a conservative local DeepSeek Harness compaction policy for the
+  FreeToken Ornith route: 88% trigger, 49152-token verbatim tail, 4096-token
+  summarizer cap, and 32K-character tool-result pruning. It is deliberately
+  not yet called an accepted quality policy until its first real long-session
+  compaction is measured.

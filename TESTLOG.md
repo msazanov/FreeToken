@@ -124,3 +124,45 @@ there was no evidence of a PCIe fetch component in this window. This diagnostic
 uses forced post-EOS output, so it is **not** a response-quality result and its
 append cache result must not be generalized to normal turns. Raw artifact:
 `benchmarks/results/2026-08-27-ornith-harness-cache-decode-profile/cache-1024.json`.
+
+## 2026-08-27 — live MoE-cache expansion, preserving 122K KV
+
+`POST /v1/cache/rebuild` was issued idle-only with `moe_cache_size=1700`.
+FreeToken accepted the request in 3.6 s and remained serving; KV stayed at
+122,880 pages/tokens and Mamba at 8 slots. This was an MoE-only rebuild, so the
+scheduler intentionally retained the radix prefix cache. GPU allocation grew
+from 6,646 MiB to 7,084 MiB. The fixed 0.85 memory-ratio cache budget leaves
+about 135 MiB after the target geometry; no model weights or CPU expert banks
+were reloaded.
+
+| Configuration | Decode samples | Mean client decode | Mean MoE miss-rate | Missing experts / layer |
+|---|---:|---:|---:|---:|
+| 1429 slots (14.0% residency) | two 255-token warm-prefix diagnostic turns | 28.93 tok/s | 43.37% | 3.47 / 8 |
+| 1700 slots (16.6% residency) | same shape, two turns | 31.27 tok/s | 35.07% | 2.81 / 8 |
+
+The paired diagnostic therefore shows **+8.1% decode speed** and **-8.30
+percentage points** MoE miss-rate (about -19% relative). It uses
+`temperature=0`, `reasoning_effort=off`, and `ignore_eos=true`; it measures
+runtime only, not answer quality. Artifact:
+`benchmarks/results/2026-08-27-ornith-harness-cache-moe1700/cache-1024.json`.
+
+A normal end-to-end repository compression smoke test after the rebuild used a
+1,012-token cold prompt, generated 383 tokens at 28.44 tok/s, had 5.514 s TTFT,
+and retained 4/5 required source anchors. It completed normally and is a
+functional/quality guard, not a strict pre/post quality comparison:
+`benchmarks/results/2026-08-27-ornith-moe1700-smoke/compression-1024.json`.
+
+## 2026-08-27 — active DeepSeek Harness retention policy
+
+The web-profile patch now enables `tool-result-pruner` before
+`compaction-basic`, verified by `dsh --profile web --dump-config` and a clean
+restart of `deepseek-harness-local.service` (`HTTP 200` at port 3080). For the
+exact `freetoken / Ornith 1.5 35b` route: automatic compaction starts at
+`floor(122880 × 0.88) = 108134` tokens, retains the newest 49,152 tokens
+verbatim, limits a compaction summary to 4,096 tokens, and has no repeated
+normal-pressure retry. Tool results above 32,768 characters are reduced to a
+24,576-character head plus a 4,096-character tail only once compaction pressure
+qualifies. This preserves large working context while preventing a repeat of a
+hard 122,880-token overflow. The policy loads and the Harness is functional;
+its actual >108K compaction path has **not** been invoked yet and remains a
+future quality/latency measurement.
