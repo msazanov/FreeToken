@@ -93,9 +93,15 @@ def cache_metrics(result: dict) -> dict[str, float | int]:
     }
 
 
+def result_directory(output_dir: Path, date: str, run_label: str | None) -> Path:
+    """Keep diagnostic runs from colliding with canonical cache evidence."""
+    suffix = "" if not run_label else f"-{run_label}"
+    return output_dir / f"{date}-ornith-harness-cache{suffix}"
+
+
 def _run_request(
     *, origin: str, model: str, messages: list[dict[str, str]], timeout_s: float,
-    output_tokens: int, reasoning_effort: str,
+    output_tokens: int, reasoning_effort: str, ignore_eos: bool,
 ) -> tuple[dict, list[dict]]:
     sampler = RuntimeSampler(origin)
     sampler.start()
@@ -110,6 +116,7 @@ def _run_request(
                 "max_tokens": output_tokens,
                 "temperature": 0,
                 "reasoning_effort": reasoning_effort,
+                "ignore_eos": ignore_eos,
             },
             timeout_s,
         )
@@ -122,6 +129,7 @@ def _run_request(
 def run_tier(
     *, origin: str, root: Path, model: str, model_path: str, requested_tokens: int,
     timeout_s: float, output_tokens: int, reasoning_effort: str, case_tag: str,
+    ignore_eos: bool = False,
 ) -> dict:
     repository_prompt, dossier_tokens = build_compression_prompt(
         root=root, model_path=model_path, requested_tokens=requested_tokens
@@ -132,16 +140,16 @@ def run_tier(
     before = {"stats": _get_json(origin, "/v1/stats"), "cache": _get_json(origin, "/v1/cache/status")}
     cold, cold_samples = _run_request(
         origin=origin, model=model, messages=base_messages, timeout_s=timeout_s,
-        output_tokens=output_tokens, reasoning_effort=reasoning_effort,
+        output_tokens=output_tokens, reasoning_effort=reasoning_effort, ignore_eos=ignore_eos,
     )
     warm, warm_samples = _run_request(
         origin=origin, model=model, messages=base_messages, timeout_s=timeout_s,
-        output_tokens=output_tokens, reasoning_effort=reasoning_effort,
+        output_tokens=output_tokens, reasoning_effort=reasoning_effort, ignore_eos=ignore_eos,
     )
     append_messages = append_turn(base_messages, cold["response_text"], f"{case_tag}-append")
     append, append_samples = _run_request(
         origin=origin, model=model, messages=append_messages, timeout_s=timeout_s,
-        output_tokens=output_tokens, reasoning_effort=reasoning_effort,
+        output_tokens=output_tokens, reasoning_effort=reasoning_effort, ignore_eos=ignore_eos,
     )
     after = {"stats": _get_json(origin, "/v1/stats"), "cache": _get_json(origin, "/v1/cache/status")}
     return {
@@ -170,7 +178,7 @@ def run_tier(
             "git": _git_identity(root),
             "runtime_parameters": _runtime_parameters(before),
             "sampling": {"mode": "greedy-argmax", "temperature": 0.0, "seed": None,
-                         "reasoning_effort": reasoning_effort},
+                         "reasoning_effort": reasoning_effort, "ignore_eos": ignore_eos},
         },
     }
 
@@ -184,21 +192,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout-s", type=float, default=3600.0)
     parser.add_argument("--max-output-tokens", type=int, default=64)
     parser.add_argument("--reasoning-effort", choices=("off", "on"), default="off")
+    parser.add_argument("--ignore-eos", action="store_true",
+                        help="profile a fixed decode window; output is not a quality result")
     parser.add_argument("--case-prefix", default="harness-cache")
+    parser.add_argument("--run-label", default=None,
+                        help="separate artifact directory, required for nonstandard diagnostics")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     model, model_path = _server_model(args.origin)
-    results_dir = args.output_dir / datetime.now(UTC).strftime("%Y-%m-%d-ornith-harness-cache")
+    results_dir = result_directory(
+        args.output_dir, datetime.now(UTC).strftime("%Y-%m-%d"), args.run_label
+    )
     results_dir.mkdir(parents=True, exist_ok=True)
     for requested_tokens in parse_context_tiers(args.tiers):
         row = run_tier(
             origin=args.origin, root=args.repo_root.resolve(), model=model, model_path=model_path,
             requested_tokens=requested_tokens, timeout_s=args.timeout_s,
             output_tokens=args.max_output_tokens, reasoning_effort=args.reasoning_effort,
-            case_tag=f"{args.case_prefix}-{requested_tokens}",
+            case_tag=f"{args.case_prefix}-{requested_tokens}", ignore_eos=args.ignore_eos,
         )
         path = results_dir / f"cache-{requested_tokens}.json"
         row["artifact"] = str(path)

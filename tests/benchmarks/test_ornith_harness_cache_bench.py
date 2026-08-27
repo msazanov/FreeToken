@@ -37,3 +37,18 @@ def test_cache_metrics_uses_server_reported_usage_not_timing_inference():
         "new_prompt_tokens": 25,
         "cache_hit_ratio": 0.75,
     }
+
+
+def test_parse_args_can_force_a_fixed_decode_window_for_runtime_profiling():
+    from benchmarks.ornith_harness_cache_bench import parse_args
+
+    assert parse_args(["--ignore-eos"]).ignore_eos is True
+
+
+def test_result_directory_requires_a_distinct_label_for_nonstandard_run(tmp_path):
+    from benchmarks.ornith_harness_cache_bench import result_directory
+
+    assert result_directory(tmp_path, "2026-08-27", None).name == "2026-08-27-ornith-harness-cache"
+    assert result_directory(tmp_path, "2026-08-27", "decode-profile").name == (
+        "2026-08-27-ornith-harness-cache-decode-profile"
+    )

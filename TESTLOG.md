@@ -102,3 +102,25 @@ This is an end-to-end server result, not a kernel microbenchmark. It establishes
 that long agent histories are interactive **when the prefix is stable**. The
 remaining cold-miss bottleneck is still long prefill, and must be profiled
 separately; do not average warm and cold numbers into one claimed throughput.
+
+## 2026-08-27 — runtime attribution without service reconfiguration
+
+The already-running service was observed without a restart or cache-pool change.
+The 16,510-token cold Harness-shaped request spent 131 of 133 one-second samples
+in prefill, with GPU utilisation averaging 98.6% (peak 100%), a 87 C peak, and
+at least 2.28 GiB RAM / 10.28 GiB swap still available. Per-1024-token blocks
+slowed from 143.8 tok/s at 4,096 processed tokens to 96.7 tok/s at 14,336, while
+the GPU remained saturated: this attributes the growing cold TTFT to
+context-dependent GPU work, principally attention/prefill, not to host-memory
+pressure or a KV capacity failure.
+
+For a decode-only diagnostic, `ignore_eos=true` held a 1K warm-prefix request to
+255 generated tokens. The three client decode measurements were 28.98, 28.87,
+and 26.93 tok/s (the lower third row had a larger uncached append). The live
+MoE counters reported 8 active experts per MoE layer, 3.46–3.49 missing experts
+per layer (43.25–43.59% miss-rate), `fetched_per_layer=0`, and the same amount
+in `cpu_per_layer`. Thus a sizeable decode component is CPU expert execution;
+there was no evidence of a PCIe fetch component in this window. This diagnostic
+uses forced post-EOS output, so it is **not** a response-quality result and its
+append cache result must not be generalized to normal turns. Raw artifact:
+`benchmarks/results/2026-08-27-ornith-harness-cache-decode-profile/cache-1024.json`.

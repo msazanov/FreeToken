@@ -60,3 +60,14 @@ failed and inconclusive hypotheses; do not rewrite history.
 - The cache experiment is intentionally a Harness-shaped proxy, not an assertion
   that its request bytes are identical to a private active DSH session. The
   existing telemetry plug-in exports runtime metrics but not prompt bodies.
+
+### Runtime attribution
+
+- Long cold prompts are GPU/attention-bound in the observed 16K run: 98.6% mean
+  GPU utilisation, decreasing 1024-token block rate as the prefix grows, and no
+  host-memory exhaustion. Cache reuse is therefore the dominant practical
+  long-context speed lever.
+- Decode has a separately measured CPU-MoE cost: 43.25–43.59% of eight routed
+  experts per layer missed the 1429-slot cache and were handled by the CPU path.
+  This is evidence to evaluate a MoE-residency/cache-size experiment next, not
+  proof that changing it will improve end-to-end agent latency.
