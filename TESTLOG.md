@@ -75,3 +75,30 @@ leak was observed. The 112K result is an end-to-end repository-compression task:
 the model produced 255 tokens after a 48m 35.8s TTFT; it found 4/5 source anchors
 (`build_stats` was the missing literal), so the result remains a valid runtime
 measurement but not a perfect quality pass.
+
+## 2026-08-27 — DeepSeek Harness-shaped radix-cache reuse
+
+The active FreeToken server was read-only tested at `:1919` with its live
+`--enable-cache-report`, 122880-page TQ4-NC radix cache, 1429 MoE slots and
+8 Mamba slots. Each tier preserves the deployed DSH coding-agent system prompt
+and the local Ornith tool-protocol section, then runs (a) a cold unique request,
+(b) a byte-identical replay, and (c) the original turn as assistant history plus
+a tiny new user request. The telemetry plugin does **not** expose the private
+active-session request body, so this is deliberately labelled
+*Harness-shaped*, rather than an exact session replay. `temperature=0`,
+`reasoning_effort=off` and `max_tokens=64` isolate prefix reuse from extended
+reasoning quality.
+
+| Requested tier | Actual prompt | Scenario | Cached / new tokens | Cache hit | TTFT | Wall | Raw artifact |
+|---:|---:|---|---:|---:|---:|---:|---|
+| 1K | 1,148 | cold | 0 / 1,148 | 0.00% | 7.346 s | 8.50 s | `benchmarks/results/2026-08-27-ornith-harness-cache/cache-1024.json` |
+| 1K | 1,148 | exact warm | 1,088 / 60 | 94.77% | 1.630 s | 2.72 s | same artifact |
+| 1K | 1,222 | append | 1,187 / 35 | 97.14% | 1.616 s | 3.26 s | same artifact |
+| 16K | 16,510 | cold | 0 / 16,510 | 0.00% | 135.558 s | 136.45 s | `benchmarks/results/2026-08-27-ornith-harness-cache/cache-16384.json` |
+| 16K | 16,510 | exact warm | 16,448 / 62 | 99.62% | 2.013 s | 2.94 s | same artifact |
+| 16K | 16,570 | append | 16,534 / 36 | 99.78% | 1.700 s | 2.72 s | same artifact |
+
+This is an end-to-end server result, not a kernel microbenchmark. It establishes
+that long agent histories are interactive **when the prefix is stable**. The
+remaining cold-miss bottleneck is still long prefill, and must be profiled
+separately; do not average warm and cold numbers into one claimed throughput.

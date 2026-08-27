@@ -74,6 +74,17 @@ def test_parse_sse_event_tracks_first_reasoning_delta_and_usage():
     assert usage.completion_tokens == 7
 
 
+def test_parse_sse_event_tracks_reported_prefix_cache_tokens():
+    from benchmarks.ornith_context_bench import parse_sse_event
+
+    usage = parse_sse_event(
+        'data: {"choices":[],"usage":{"prompt_tokens":128,"completion_tokens":7,'
+        '"prompt_tokens_details":{"cached_tokens":96}}}'
+    )
+
+    assert usage.cached_tokens == 96
+
+
 def test_default_runner_output_directory_is_repository_benchmarks_results():
     from benchmarks.ornith_context_bench import parse_args
 

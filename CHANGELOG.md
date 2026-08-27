@@ -48,3 +48,15 @@ failed and inconclusive hypotheses; do not rewrite history.
   tool-result pruner or basic compaction provider. Do not attribute the current
   long-context behaviour to those packages until a local Ornith policy is
   explicitly mounted and benchmarked.
+
+### Accepted cache evidence
+
+- FreeToken's live radix cache delivers the intended agent behaviour with a
+  stable DeepSeek Harness-shaped prefix: a 16,510-token exact replay reports
+  16,448 cached tokens (99.62%) and reduces TTFT from 135.558 s cold to 2.013 s;
+  an assistant-history append reaches 99.78% with 1.700 s TTFT. The repeatable
+  runner and raw artifacts are `benchmarks/ornith_harness_cache_bench.py` and
+  `benchmarks/results/2026-08-27-ornith-harness-cache/`.
+- The cache experiment is intentionally a Harness-shaped proxy, not an assertion
+  that its request bytes are identical to a private active DSH session. The
+  existing telemetry plug-in exports runtime metrics but not prompt bodies.

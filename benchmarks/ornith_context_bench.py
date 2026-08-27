@@ -59,6 +59,7 @@ class SSEEvent:
     generated_text: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cached_tokens: int = 0
 
 
 def parse_context_tiers(value: str) -> tuple[int, ...]:
@@ -168,10 +169,12 @@ def parse_sse_event(line: str) -> SSEEvent:
             if isinstance(value, str):
                 generated.append(value)
     usage = payload.get("usage") or {}
+    prompt_details = usage.get("prompt_tokens_details") or {}
     return SSEEvent(
         generated_text="".join(generated),
         prompt_tokens=int(usage.get("prompt_tokens") or 0),
         completion_tokens=int(usage.get("completion_tokens") or 0),
+        cached_tokens=int(prompt_details.get("cached_tokens") or 0),
     )
 
 
@@ -371,7 +374,7 @@ def _stream_request(origin: str, payload: dict, timeout_s: float) -> dict:
     first_token_at: float | None = None
     last_token_at: float | None = None
     text: list[str] = []
-    prompt_tokens = completion_tokens = 0
+    prompt_tokens = completion_tokens = cached_tokens = 0
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
         for raw_line in response:
             event = parse_sse_event(raw_line.decode("utf-8").strip())
@@ -383,6 +386,7 @@ def _stream_request(origin: str, payload: dict, timeout_s: float) -> dict:
                 text.append(event.generated_text)
             prompt_tokens = event.prompt_tokens or prompt_tokens
             completion_tokens = event.completion_tokens or completion_tokens
+            cached_tokens = event.cached_tokens or cached_tokens
     finished = time.monotonic()
     return {
         "wall_s": finished - started,
@@ -392,6 +396,7 @@ def _stream_request(origin: str, payload: dict, timeout_s: float) -> dict:
         else last_token_at - first_token_at,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "cached_tokens": cached_tokens,
         "response_text": "".join(text),
     }
 
