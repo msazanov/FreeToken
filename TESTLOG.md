@@ -544,3 +544,29 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 The next required experiment is a clean server restart and the identical
 thinking-disabled request. Only a coherent answer permits speed/context
 benchmarking.
+
+## 2026-08-28 — First valid Qwen3.8 FP16/Q4_K_M generation
+
+After changing the Qwen4 GGUF GDN output gate from the incorrect SiLU default
+to the official sigmoid, the exact same thinking-disabled smoke prompt became
+coherent:
+
+```text
+prompt: Reply with exactly: pong
+response: pong
+usage: 17 prompt tokens, 2 completion tokens
+HTTP 200, first valid request: 56.656689 s
+HTTP 200, same-process repeat: 34.992677 s
+server prefill metric on both: 0.26 input tok/s
+```
+
+This is the first quality-valid point for this runner: Qwen3.8 Q4_K_M executes
+through FP16 GDN, QSA, MRoPE, native GGUF projections, PLE mmap and the
+file-backed expert LRU on RTX 2070 SM75. The repeated answer is also correct.
+
+The timing is **not** a decode throughput benchmark: the generation ends after
+two tokens, and every 17-token request reports zero prompt-cache reuse because
+the Qwen4 experiment currently uses the required naive cache. It does show that
+cold-JIT/initial-cache work drops from 56.66 s to 34.99 s, while the remaining
+dominant cost is still routed expert fetch/prefill. Long-context and sustained
+decode measurements may now proceed from this commit.

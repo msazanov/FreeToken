@@ -310,3 +310,12 @@ failed and inconclusive hypotheses; do not rewrite history.
   norm values are ones-centered, but this adapter already subtracts one before
   feeding `GemmaPlusOneRMSNorm`; the effective scale remains the raw checkpoint
   scale. That hypothesis is explicitly rejected for this runner.
+
+### First quality-valid Qwen3.8 FreeToken smoke
+
+- With the official sigmoid GDN gate, FP16/Q4_K_M now produces the requested
+  `pong` twice from the same server process. This validates the full adapted
+  architecture path sufficiently to begin performance work.
+- It does not validate long-context quality or performance. The short-prompt
+  repeat still takes 34.99 s and has no prompt-cache reuse under the current
+  Qwen4-required naive cache; its detailed timing is retained in `TESTLOG.md`.
