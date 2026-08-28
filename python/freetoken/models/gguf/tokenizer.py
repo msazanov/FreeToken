@@ -53,6 +53,32 @@ _STOP_TOKENS: dict[str, tuple[str, ...]] = {
     "deepseek4": ("<|EOT|>", "<｜end▁of▁sentence｜>"),
 }
 
+# These strings are real single tokens in Qwen's vocabulary but are not all marked
+# special by the generic Qwen2 GGUF converter.  Qwen3.8's official template emits
+# them verbatim.  Without registering them as *added* (not special) tokens the
+# fast tokenizer BPE-splits ``<think>`` into three ordinary tokens, changing the
+# prompt immediately before generation.
+_QWEN_TEMPLATE_ADDED_TOKENS = (
+    "<think>",
+    "</think>",
+    "<tool_call>",
+    "</tool_call>",
+    "<tool_response>",
+    "</tool_response>",
+)
+
+
+def register_gguf_template_tokens(tokenizer, tokens: list[str], arch: str) -> None:
+    """Restore non-special Qwen template controls lost by the generic converter.
+
+    `add_tokens`, rather than `add_special_tokens`, matches Qwen's official
+    tokenizer configuration: thinking and XML tool delimiters must encode as a
+    single known ID but remain visible to normal decoding/parsers.
+    """
+    if arch != "qwen4exp":
+        return
+    tokenizer.add_tokens([token for token in _QWEN_TEMPLATE_ADDED_TOKENS if token in tokens])
+
 
 def load_gguf_tokenizer(model_path: str):
     from transformers import PreTrainedTokenizerFast
@@ -90,6 +116,7 @@ def load_gguf_tokenizer(model_path: str):
         unk_token=tok_for("unknown_token_id", "<unk>"),
         pad_token=tok_for("padding_token_id", "<pad>"),
     )
+    register_gguf_template_tokens(tokenizer, tokens, arch)
     chat_template = meta.get("tokenizer.chat_template")
     if chat_template:
         tokenizer.chat_template = chat_template
@@ -117,4 +144,4 @@ def gguf_eos_token_ids(model_path: str, tokenizer) -> set[int]:
     return ids
 
 
-__all__ = ["load_gguf_tokenizer", "gguf_eos_token_ids"]
+__all__ = ["load_gguf_tokenizer", "gguf_eos_token_ids", "register_gguf_template_tokens"]

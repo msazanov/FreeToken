@@ -281,3 +281,18 @@ failed and inconclusive hypotheses; do not rewrite history.
   FP16 HTTP request now returns `200` after passing GDN, QSA and MRoPE. It is
   an important functional milestone, but not yet a usable quality/performance
   result; the observed output and speed are recorded in `TESTLOG.md`.
+
+### Accepted Qwen4 GGUF tokenizer control-token correction
+
+- The embedded GGUF chat template is byte-identical to Qwen's official
+  `chat_template.jinja`; the template itself was not the error. The generic
+  Qwen2 GGUF converter, however, did not register Qwen3.8's non-special
+  `<think>`/`</think>` and XML tool delimiters as added tokens.
+- Consequently `<think>` in the official generation prefix was BPE-split into
+  three ordinary tokens instead of its real ID `248068`. The official prompt
+  had 45 tokens while our runner used 47. The corrected loader registers these
+  controls with `add_tokens` (not `add_special_tokens`), matching the official
+  tokenizer's `special: false` semantics and preserving parser visibility.
+- Direct comparison against the downloaded official `tokenizer.json` now has
+  identical rendered text and all 45 IDs. The prior nonsense response is
+  therefore invalid as a quality measurement and must be repeated after restart.

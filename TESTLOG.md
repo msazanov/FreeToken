@@ -468,3 +468,40 @@ repeat did not improve materially. Candidate causes to investigate before any
 long-context benchmark are adapter weight mapping/tokenizer-template correctness
 and the still synchronous NVMe expert-miss path. Do not treat these figures as
 a Qwen3.8 performance claim.
+
+## 2026-08-28 — Qwen3.8 official tokenizer parity audit
+
+To rule out a malformed chat prompt, we downloaded only the official Qwen
+`config.json`, `chat_template.jinja`, `tokenizer_config.json` and 13 MiB
+`tokenizer.json` into `~/dev/qwen/reference-qwen38` (not `/tmp`). The GGUF's
+embedded template hash is exactly the official one:
+
+```text
+c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041
+```
+
+The first comparison nevertheless found an exact tokenization failure: the
+official prompt for `Reply with exactly: pong` at `reasoning_effort=low` had 45
+IDs and ended in `<think>` ID `248068`; the generic GGUF Qwen2 converter emitted
+47 IDs and split `<think>` as IDs `13314, 741, 29`. This explains the invalid
+generation prefix and makes the earlier nonsense output non-diagnostic of model
+quality.
+
+The loader now registers Qwen3.8's template-only non-special controls as added
+tokens. It deliberately uses `add_tokens`, because the official tokenizer marks
+`<think>`, `</think>`, `<tool_call>`, `</tool_call>`, `<tool_response>` and
+`</tool_response>` as `special: false`; they must be single IDs but remain
+visible to the reasoning/tool parsers.
+
+Verification:
+
+```text
+focused local suite: 20 passed in 4.48s
+official-vs-GGUF render same = True
+official-vs-GGUF IDs: 45 / 45, same = True
+tail: [..., 248045, 74455, 198, 248068, 198] on both sides
+```
+
+The currently running server initialized its tokenizer before this correction.
+It must be restarted before the next quality/speed request; no conclusion about
+Qwen's answer quality is valid until that run completes.

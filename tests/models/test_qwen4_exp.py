@@ -160,6 +160,23 @@ def test_qwen4_mrope_triton_entrypoint_is_exported():
     assert set(("positions", "query", "key", "cos_sin_cache", "mrope_section")) <= set(params)
 
 
+def test_qwen4_tokenizer_registers_think_markers_as_single_added_tokens():
+    from tokenizers import Tokenizer
+    from tokenizers.models import WordLevel
+    from tokenizers.pre_tokenizers import Whitespace
+    from transformers import PreTrainedTokenizerFast
+
+    from freetoken.models.gguf.tokenizer import register_gguf_template_tokens
+
+    raw = Tokenizer(WordLevel({"<unk>": 0, "<think>": 1, "</think>": 2}, unk_token="<unk>"))
+    raw.pre_tokenizer = Whitespace()
+    tokenizer = PreTrainedTokenizerFast(tokenizer_object=raw, unk_token="<unk>")
+    register_gguf_template_tokens(tokenizer, ["<unk>", "<think>", "</think>"], "qwen4exp")
+
+    assert tokenizer.encode("<think>", add_special_tokens=False) == [1]
+    assert tokenizer.encode("</think>", add_special_tokens=False) == [2]
+
+
 def test_qwen4_text_decoder_class_is_importable_without_vision():
     from freetoken.models.qwen4_exp import Qwen4ExpForCausalLM
 
