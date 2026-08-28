@@ -391,3 +391,19 @@ failed and inconclusive hypotheses; do not rewrite history.
   a Qwen3.6 NVFP4 acceptance harness, but explicitly says its live server loop
   remains unwired. It is not directly mergeable: Qwen3.8 needs its own MTP
   weights plus safe rollback/commit of PLE, QSA and GDN state.
+
+### Capacity-safe Qwen3.8 context measurements
+
+- The first post-fix live ladder completed at 128, 296, 512, 1024 and 2047
+  API prompt tokens, all with HTTP 200.  The corresponding prefill rates were
+  1.22, 1.17, 4.57, 9.70 and 12.19 tok/s.  `TESTLOG.md` preserves the exact
+  server configuration and profiling evidence.
+- These are deliberately labelled warm expert-LRU measurements: the test
+  sequence retains the GPU expert slots but has zero KV prompt-cache hits.
+  This is useful for a continuing coding agent, but it is not a cold-start
+  claim and must not be compared to the earlier pre-capacity-fix numbers.
+- A corrected 1K trace sampled the scheduler worker rather than its HTTP
+  parent: it used roughly 2.45 CPU cores and read about 575 MiB/s from NVMe,
+  while the GPU averaged only about 25% utilisation.  Further prefill work
+  should overlap/prefetch host expert staging; more FP16 compute or MTP cannot
+  remove that bottleneck.

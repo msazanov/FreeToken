@@ -712,3 +712,51 @@ waits between bursts.
 Next optimisation direction: retain/prefetch the selected file-backed expert
 rows in a bounded host staging cache and overlap their H2D copy with GPU work.
 MTP remains a later decode-only project; it cannot improve this prefill trace.
+
+## 2026-08-28 — Capacity-safe Qwen3.8 prefill ladder (warm expert cache)
+
+Commit `a28c68e` adds the required route-capacity boundary: every Qwen GGUF
+MoE prefill fragment contains at most `moe_cache_size / top_k = 25` tokens, so
+all possible ten-expert routes have a valid GPU-cache slot.  This replaces the
+earlier provisional ladder for quality/performance comparisons.
+
+The server was run with `--moe-backend offload --moe-cache-size 256`,
+`--dtype float16`, `--max-seq-len-override 2048`, `temperature=0`, `seed=42`,
+one completion token, and the same synthetic `x ` user payload.  The table
+uses the API/server-reported prompt length, not the requested character count.
+All calls returned HTTP 200.
+
+| prompt tokens | server prefill tok/s | note |
+| ---: | ---: | --- |
+| 128 | 1.22 | first capacity-safe probe |
+| 296 | 1.17 | tokenizer-expanded synthetic payload |
+| 512 | 4.57 | capacity-safe |
+| 1024 | 9.70 | capacity-safe |
+| 2047 | 12.19 | capacity-safe maximum for this server configuration |
+
+These are **warm-LRU, sequential-process measurements**: the 256 expert slots
+were deliberately retained between requests, while KV prompt reuse remained
+zero.  They measure the steady agent-like case, not cold-start latency.  A
+future comparison must either clear/rebuild the MoE LRU before every row or
+explicitly retain this same warm-up protocol.
+
+### 1K capacity-safe runtime profile
+
+During the 1024-token request, the actual scheduler worker (PID 679044, not
+the lightweight HTTP parent) was sampled for 20 seconds:
+
+| metric | observed value |
+| --- | ---: |
+| worker CPU time | 49.01 CPU-s / 20 wall-s = 245% (about 2.45 cores) |
+| worker `read_bytes` | 12.07 GB = ~575 MiB/s |
+| NVMe read sectors | 12.12 GB = ~578 MiB/s |
+| system major page faults | 34,068 = ~1,703/s |
+| GPU utilisation | 1–45%, ~25% arithmetic sample mean |
+| GPU memory | 7.35 GiB / 8.00 GiB |
+| GPU temperature | 76–80 C |
+
+The worker and NVMe therefore improved relative to the prior provisional 2K
+trace, but the GPU is still starved between short compute bursts.  The limiting
+pipeline remains page-faulted expert rows plus host-to-device staging, not
+FP16 arithmetic throughput.  Other active user processes (not stopped for this
+measurement) are a background-noise caveat.
