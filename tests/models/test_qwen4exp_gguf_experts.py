@@ -249,6 +249,7 @@ def test_qwen4_file_backed_prefill_routes_experts_instead_of_materializing_layer
     events = []
 
     class _Cache:
+        cache_size = 2
         prefill_overlap = False
 
         def is_file_backed_layer(self, layer_id):
@@ -291,6 +292,60 @@ def test_qwen4_file_backed_prefill_routes_experts_instead_of_materializing_layer
     assert seen["ids"].item() == 10
     assert seen["views"] == ("gate-slots", "up-slots", "down-slots")
     assert seen["n"] is None
+
+
+def test_qwen4_file_backed_prefill_chunks_to_the_lru_capacity(monkeypatch):
+    """A long routed prefill cannot hand more IDs than slots to the LRU cache."""
+    from freetoken.distributed.info import set_tp_info, try_get_tp_info
+    from freetoken.layers.moe import OffloadMoELayer
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+
+    calls = []
+
+    class _Cache:
+        cache_size = 2
+        prefill_overlap = False
+
+        def is_file_backed_layer(self, layer_id):
+            assert layer_id == 0
+            return True
+
+        def ensure_experts(self, layer_id, ids):
+            assert ids.numel() <= self.cache_size
+            calls.append(("ensure", ids.shape[0]))
+            ids.add_(1)
+
+        def copy_missing(self):
+            calls.append(("copy", None))
+
+        def bank_views(self):
+            return ("gate-slots", "up-slots", "down-slots")
+
+        def alphas_for_slots(self, layer_id):
+            return None
+
+    layer = OffloadMoELayer(
+        layer_id=0, num_experts=4, top_k=1, hidden_size=2, intermediate_size=2, activation="silu"
+    )
+    layer.offload_cache = _Cache()
+
+    def fake_gemm(_self, _cache, hidden, _weights, ids, **_kwargs):
+        # The in-place IDs prove each chunk follows the normal cache contract.
+        return hidden + ids.to(hidden.dtype)
+
+    monkeypatch.setattr(OffloadMoELayer, "_expert_gemm", fake_gemm)
+    hidden = torch.arange(10, dtype=torch.float32).reshape(5, 2)
+    ids = torch.zeros(5, 1, dtype=torch.int32)
+    result = layer._prefill_routed(hidden, torch.ones(5, 1), ids)
+
+    assert calls == [
+        ("ensure", 2), ("copy", None),
+        ("ensure", 2), ("copy", None),
+        ("ensure", 1), ("copy", None),
+    ]
+    assert torch.equal(result, hidden + 1)
 
 
 def test_file_backed_qwen_cache_allows_router_sized_lru_on_cpu():

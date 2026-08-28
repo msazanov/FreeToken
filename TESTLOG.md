@@ -663,3 +663,52 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 No end-to-end 56-token result is claimed yet. The next server run is the first
 validation that the dynamic GPU kernel compiles quickly and preserves Qwen's
 actual routed prefill behaviour.
+
+## 2026-08-28 — Dynamic-admission context ladder (provisional)
+
+With `bbdba12`, no `ptxas` process was created for the 56-token request. The
+server completed the following synthetic `x ` prompt probes (temperature 0,
+thinking disabled, one completion token):
+
+| API prompt tokens | server prefill tok/s | result |
+| ---: | ---: | --- |
+| 28 | 0.32 | HTTP 200 |
+| 56 | 0.94 first / 0.73 repeat | HTTP 200; former version timed out while compiling LRU |
+| 128 | 1.56 | HTTP 200 |
+| 256 | 2.71 | HTTP 200 |
+| 512 | 5.90 | HTTP 200 |
+| 1024 | 11.56 | HTTP 200 |
+| 1536 | 13.94 | HTTP 200 |
+| 2047 | 13.99 | HTTP 200 |
+
+These figures establish that the static-LRU JIT stall is removed and that wider
+prefill batches use the GPU better. They are **not final quality benchmarks**:
+the 256-slot MoE cache can be smaller than the distinct expert set of a long
+prefill. The subsequent capacity-safe chunking correction must be used for the
+final ladder.
+
+## 2026-08-28 — Detailed 2K file-backed prefill profile
+
+A 20-second sample during a 2047-token prefill on the RTX 2070 Mobile measured:
+
+| metric | observed value |
+| --- | ---: |
+| scheduler-worker CPU | 22.80 CPU-s / 20 wall-s = 114% of one core |
+| worker `read_bytes` | 6.49 GB = 324.5 MB/s |
+| NVMe read sectors | 6.68 GB = 334.0 MB/s |
+| system major page faults | 20,016 = ~1,001/s |
+| GPU utilisation | 1–81%, ~26% arithmetic sample mean |
+| GPU clock | mostly 1215 MHz, briefly 1590 MHz |
+| GPU temperature | 74–78 C during sample |
+
+The same NVMe read-only direct-I/O test reached about 1.50 GB/s for a 512 MiB
+GGUF shard slice (0.341 s). The live path therefore receives only ~22% of the
+drive's sequential-read ceiling. The missing throughput is explained by
+mmap-major-fault/random expert-row access and active swap/I/O wait, not a
+compute-bound GPU kernel. CPU utilisation was also far below machine-wide
+saturation; the scheduler coordinates one dominant host thread while the GPU
+waits between bursts.
+
+Next optimisation direction: retain/prefetch the selected file-backed expert
+rows in a bounded host staging cache and overlap their H2D copy with GPU work.
+MTP remains a later decode-only project; it cannot improve this prefill trace.

@@ -388,18 +388,31 @@ class OffloadMoELayer(MoELayer):
         cache = self.offload_cache
         assert cache is not None
         if cache.is_file_backed_layer(self.layer_id):
-            cache.ensure_experts(self.layer_id, topk_ids)
-            cache.copy_missing()
-            return self._expert_gemm(
-                cache,
-                hidden_states,
-                topk_weights,
-                topk_ids,
-                views=cache.bank_views(),
-                n=None,
-                alphas=cache.alphas_for_slots(self.layer_id),
-                is_prefill=True,
-            )
+            # Admission needs one cache slot for every distinct routed expert.
+            # Unlike a one-token decode, a prefill can expose more than
+            # `cache_size` IDs at once.  Bound the input to the cache by the
+            # stronger (and device-side check-free) `tokens * top_k <= slots`
+            # condition, so no route can be left at -1 by a capped admission.
+            max_tokens = max(1, cache.cache_size // topk_ids.shape[1])
+            outputs = []
+            for start in range(0, hidden_states.shape[0], max_tokens):
+                end = min(start + max_tokens, hidden_states.shape[0])
+                chunk_ids = topk_ids[start:end]
+                cache.ensure_experts(self.layer_id, chunk_ids)
+                cache.copy_missing()
+                outputs.append(
+                    self._expert_gemm(
+                        cache,
+                        hidden_states[start:end],
+                        topk_weights[start:end],
+                        chunk_ids,
+                        views=cache.bank_views(),
+                        n=None,
+                        alphas=cache.alphas_for_slots(self.layer_id),
+                        is_prefill=True,
+                    )
+                )
+            return torch.cat(outputs, dim=0)
         if cache.prefill_overlap:
             views = self._wait_prefill_overlap(cache)
             out = self._expert_gemm(

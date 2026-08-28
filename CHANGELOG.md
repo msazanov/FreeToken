@@ -364,3 +364,30 @@ failed and inconclusive hypotheses; do not rewrite history.
   shape-specialisation failure. FreeToken's own supported-model list also does
   not yet list Qwen3.8 Flash Next or general GGUF MoE; this remains a scoped
   fork adaptation rather than a claim of upstream support.
+
+### Qwen4 file-backed prefill is capacity-safe
+
+- The dynamic LRU admission used for the JIT correction is capped by its GPU
+  cache size. That is naturally safe for decode (10 routes per token), but a
+  long prefill can present more distinct routes than the 256-slot cache can
+  admit. Leaving such routes as `-1` is not safe for the native GGUF MMVQ
+  kernel, which expects only valid slot IDs.
+- The Qwen file-backed prefill path now slices each MoE layer's routed input so
+  `tokens_in_chunk × top_k <= cache_size`, then concatenates the independently
+  computed outputs. This is a conservative correctness boundary: it avoids a
+  device-to-host unique-ID sync while guaranteeing that every possible route
+  fits the cache admission contract.
+- The prior 2K performance probes remain useful I/O diagnostics but are marked
+  provisional for quality/performance comparison until repeated with this
+  capacity-safe path.
+
+### MTP research finding
+
+- Official Qwen3.8 configuration contains one hybrid MTP/NextN hidden layer,
+  but FreeToken's GGUF adapters explicitly drop NextN/MTP and documentation
+  states text-only serving with no speculative decoding. There is no `--mtp`
+  runtime flag in this tree.
+- A separate research artifact, `UnsignedChad/windows-freetoken-mtp`, validates
+  a Qwen3.6 NVFP4 acceptance harness, but explicitly says its live server loop
+  remains unwired. It is not directly mergeable: Qwen3.8 needs its own MTP
+  weights plus safe rollback/commit of PLE, QSA and GDN state.
