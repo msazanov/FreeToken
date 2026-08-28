@@ -450,3 +450,16 @@ failed and inconclusive hypotheses; do not rewrite history.
   throttling and fell to 780 MHz. These partial values validate the mechanism,
   but they are not presented as a 16K benchmark until the thermal envelope is
   held stable.
+
+### Full 16K Qwen prefill completes with normal cooling
+
+- A subsequent unmodified-cooling repeat completed the complete 16,343-token
+  API prompt with HTTP 200: TQ4-NC KV, 256 expert slots and eight stateful
+  scheduler forwards require no fixed GPU clock or power cap. The useful
+  2,048-token steady chunks were 42.95, 43.09, 43.47, 43.22 and 42.24 tok/s;
+  the final full chunk was 36.31 tok/s. The cold first chunk and the scheduler's
+  impossible final residual rate are recorded, but excluded from comparison.
+- This validates the long-context execution path. It is not yet a plot-ready
+  aggregate speed result because its manual control client did not preserve the
+  final wall-clock JSON artifact; automated 64K/112K runs must use the checked-in
+  benchmark runner so artifacts and `slices.jsonl` are written together.

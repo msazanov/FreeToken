@@ -878,3 +878,44 @@ After a 30-second idle cooldown the GPU returned to 77 C, 1215 MHz and 9 MiB
 used. Future long benchmarks must use a stable thermal/power envelope or cool
 between chunks; otherwise apparent runtime regressions are thermal throttling,
 not FreeToken performance.
+
+## 2026-08-28 — 16K TQ4-QSA full end-to-end prefill (normal cooling)
+
+This entry supersedes the operational conclusion of the preceding partial run:
+the later repeat used the laptop's normal cooling configuration with **no GPU
+power, clock, or thermal limit imposed by the benchmark**.  The model stayed at
+about 1215 MHz during the useful part of the run and completed normally.
+
+Configuration: `Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64`, FP16 compute,
+`tq4-nc` KV, 16,384-token KV budget, 256 MoE LRU slots, naive cache,
+one request, and `--max-prefill-length 2048`.  The request used a deterministic
+synthetic 16,331-word prompt with `reasoning_effort=off`, `temperature=0`,
+`seed=42`, and `max_tokens=1`.  The server returned HTTP 200 with 16,343 prompt
+tokens and one completion token.
+
+| scheduler chunk | tokens | server-reported prefill tok/s |
+| ---: | ---: | ---: |
+| 1 | 2048 | 2.15 |
+| 2 | 2048 | 42.95 |
+| 3 | 2048 | 43.09 |
+| 4 | 2048 | 43.47 |
+| 5 | 2048 | 43.22 |
+| 6 | 2048 | 42.24 |
+| 7 | 2048 | 36.31 |
+
+The last 2,007-token residual log line reported `64149.15 tok/s`.  That is an
+accounting artefact at scheduler completion (the request is already removed
+from the timed prefill batch), not a performance measurement, and is excluded.
+The first 2,048-token value includes cold per-request setup/JIT and is likewise
+kept separate from the steady chunks.  The usable steady-state interval is
+about 42--43 tok/s, with a late-chunk decline to 36.31 tok/s.  The request's
+semantic smoke test remains separately verified by the exact `pong` response;
+the synthetic one-token completion is only a speed workload.
+
+Observed during this full run: approximately 83--85 C, 95--103 W and 1215 MHz;
+after completion the card cooled to 68 C and idled.  No fixed clock or power
+limit was applied.  A plot point is deliberately not appended to
+`slices.jsonl` yet: the external wall-clock JSON emitted by this manually
+interrupted/re-attached control command was not retained, so an aggregate tok/s
+would be invented.  The next automated context point must use the benchmark
+runner, which writes both its raw JSON and the slice row atomically.
