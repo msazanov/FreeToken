@@ -50,7 +50,7 @@ def test_qwen4_text_model_registry_entry():
 
 - [ ] **Step 2: Verify RED.**
 
-Run: `pytest tests/models/test_qwen4_exp.py::test_qwen4_text_model_registry_entry -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4_exp.py::test_qwen4_text_model_registry_entry -q`
 
 Expected: FAIL because the Qwen4 package and registry entry do not exist.
 
@@ -62,7 +62,7 @@ imports and MTP loading. Register the model with `Qwen4ExpForCausalLM`.
 
 - [ ] **Step 4: Verify GREEN.**
 
-Run: `pytest tests/models/test_qwen4_exp.py -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4_exp.py -q`
 
 Expected: PASS for registry, QSA geometry, MRoPE, router and PLE-token-history
 unit tests that do not need a checkpoint.
@@ -103,7 +103,7 @@ def test_qwen4exp_gguf_dispatches_and_preserves_qsa_and_ple_geometry(monkeypatch
 
 - [ ] **Step 2: Verify RED.**
 
-Run: `pytest tests/models/test_qwen4exp_gguf.py::test_qwen4exp_gguf_dispatches_and_preserves_qsa_and_ple_geometry -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4exp_gguf.py::test_qwen4exp_gguf_dispatches_and_preserves_qsa_and_ple_geometry -q`
 
 Expected: FAIL because `qwen4exp` is absent from `GGUF_ARCH_TO_REGISTRY`.
 
@@ -117,7 +117,7 @@ cache/graph capability flags.
 
 - [ ] **Step 4: Verify GREEN.**
 
-Run: `pytest tests/models/test_qwen4exp_gguf.py tests/models/test_gguf_dispatch.py -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4exp_gguf.py tests/models/test_gguf_dispatch.py -q`
 
 Expected: PASS; missing required metadata raises a message containing its
 `qwen4exp.*` key.
@@ -154,7 +154,7 @@ def test_qwen4_gguf_weight_loader_keeps_ple_tensor_mapped():
 
 - [ ] **Step 2: Verify RED.**
 
-Run: `pytest tests/models/test_qwen4exp_gguf.py::test_qwen4_gguf_weight_loader_keeps_ple_tensor_mapped -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4exp_gguf.py::test_qwen4_gguf_weight_loader_keeps_ple_tensor_mapped -q`
 
 Expected: FAIL because no Qwen4 GGUF weight loader exists.
 
@@ -167,7 +167,7 @@ views, gathering only rows required for the active n-grams.
 
 - [ ] **Step 4: Verify GREEN.**
 
-Run: `pytest tests/models/test_qwen4exp_gguf.py tests/models/test_gguf_type_tables.py -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4exp_gguf.py tests/models/test_gguf_type_tables.py -q`
 
 Expected: PASS; unsupported tensor quant types identify both tensor and GGML
 type; PLE test proves no whole-table tensor allocation.
@@ -204,7 +204,7 @@ def test_qwen4exp_disallows_radix_resume_without_ple_and_qsa_state():
 
 - [ ] **Step 2: Verify RED.**
 
-Run: `pytest tests/kvcache/test_qwen4exp_state_contract.py -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/kvcache/test_qwen4exp_state_contract.py -q`
 
 Expected: FAIL until the model exposes an explicit cache-state contract.
 
@@ -218,7 +218,7 @@ runtime metrics.
 
 - [ ] **Step 4: Verify GREEN and run opt-in integration.**
 
-Run: `pytest tests/kvcache/test_qwen4exp_state_contract.py -q`
+Run: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/kvcache/test_qwen4exp_state_contract.py -q`
 
 Then run: `scripts/download-qwen4exp-q4km.sh --verify-only` and
 `benchmarks/run_qwen4exp_gguf_smoke.py --model-path ... --context 1024`.
