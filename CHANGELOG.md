@@ -146,3 +146,19 @@ failed and inconclusive hypotheses; do not rewrite history.
   summarizer cap, and 32K-character tool-result pruning. It is deliberately
   not yet called an accepted quality policy until its first real long-session
   compaction is measured.
+
+## 2026-08-28 — Qwen3.8 GGUF NVMe-source investigation
+
+- Confirmed against FreeToken issues #55 and #122 that the existing generic
+  GGUF MoE provider uses anonymous host banks and creates a combined `gate_up`
+  copy. This is not file-backed lazy loading; for Qwen3.8 Q4_K_M it would
+  require about 50 GiB of additional host memory and is rejected for the
+  32-GiB target.
+- Added the first Qwen4-specific primitive: `gguf_experts` retains `gate`,
+  `up`, and `down` as separate, zero-copy `GGUFReader` views. The storage
+  addresses are covered by a regression test, preventing accidental `cat()` or
+  host-bank materialization in a later refactor.
+- Reviewed FreeToken PR #211 before adapting it. The branch already contains
+  an earlier stride-preserving z-grid chunker and regression test. Directly
+  replacing it with #211 would lose padded-bank stride support, so the existing
+  implementation will be runtime-verified rather than blindly cherry-picked.

@@ -56,6 +56,16 @@ This proves table opening, row selection and dequantization only. It is neither
 a complete prefill/decode benchmark nor an end-to-end PLE quality validation;
 the routed-expert bank remains absent.
 
+## 2026-08-28 — Qwen3.8 separate GGUF expert source (unit)
+
+- **Hypothesis:** Qwen4's gate, up, and down expert stacks can remain direct
+  GGUF views rather than being concatenated into a 50-GiB anonymous host bank.
+- **Test:** `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4exp_gguf_experts.py -q`
+- **Result:** `1 passed`. The test builds one synthetic expert layer and proves
+  each returned `[expert, row, packed-bytes]` tensor has the same storage
+  address as its source. This is a loader-layout check, not inference or
+  throughput evidence.
+
 ## 2026-08-27 — DeepSeek Harness composition inspection
 
 Read-only inspection of the live `dsh web --no-open` installation and
