@@ -760,3 +760,36 @@ trace, but the GPU is still starved between short compute bursts.  The limiting
 pipeline remains page-faulted expert rows plus host-to-device staging, not
 FP16 arithmetic throughput.  Other active user processes (not stopped for this
 measurement) are a background-noise caveat.
+
+## 2026-08-28 — 16K BF16-KV allocation boundary
+
+The same capacity-safe Qwen4 GGUF server was restarted with
+`--max-seq-len-override 16384 --num-tokens 16384`, FP16 compute, BF16 KV,
+256 MoE slots and `cache_type=naive`. Startup itself succeeded:
+
+```text
+Allocating 16384 tokens for KV cache, K + V = 0.42 GiB
+Free memory after initialization: 0.71 GiB
+```
+
+A deterministic 16,383-token synthetic prompt then failed at the first GDN
+prefill convolution, before an HTTP response, with:
+
+```text
+torch.OutOfMemoryError: Tried to allocate 160.00 MiB
+100.62 MiB free; 7.35 GiB allocated by PyTorch
+```
+
+Thus 16K is a **KV-allocation success but end-to-end prefill failure** at
+`moe_cache_size=256`: the remaining 0.71 GiB reported after setup is not all
+available to the forward pass once allocator/accounting and GDN activation
+workspace are considered. The scheduler worker exited; its waiting frontend
+and the outstanding local curl were terminated cleanly, and GPU usage returned
+to 9 MiB.
+
+This establishes the next test direction. Do not reduce the cache to ten slots
+merely because Qwen routes ten experts per token: that would serialise prefill
+into one-token chunks and destroy expert reuse. First reserve bounded
+activation headroom by moderately reducing the MoE LRU, and expose the
+already-implemented QSA `tq4-nc` KV storage through the CLI so 64K/112K can be
+tested without BF16 KV consuming the remaining VRAM.

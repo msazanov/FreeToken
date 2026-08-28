@@ -407,3 +407,16 @@ failed and inconclusive hypotheses; do not rewrite history.
   while the GPU averaged only about 25% utilisation.  Further prefill work
   should overlap/prefetch host expert staging; more FP16 compute or MTP cannot
   remove that bottleneck.
+
+### 16K BF16-KV forward headroom boundary
+
+- Qwen4 with 16,384 BF16-KV tokens and the 256-slot MoE LRU initializes on the
+  RTX 2070 (0.42 GiB KV, 0.71 GiB reported free) but cannot execute a 16,383
+  token prefill: GDN's causal convolution needs another 160 MiB while only
+  about 101 MiB is free. The full error and clean process recovery are recorded
+  in `TESTLOG.md`.
+- This is a forward-workspace headroom constraint, not proof that 16K KV is
+  intrinsically too large. It rules out claiming a 16K Qwen benchmark on the
+  current BF16/256-slot configuration. The next configuration work is to
+  preserve useful MoE reuse while making QSA's existing packed `tq4-nc` KV
+  format accessible through the server CLI.
