@@ -793,3 +793,52 @@ into one-token chunks and destroy expert reuse. First reserve bounded
 activation headroom by moderately reducing the MoE LRU, and expose the
 already-implemented QSA `tq4-nc` KV storage through the CLI so 64K/112K can be
 tested without BF16 KV consuming the remaining VRAM.
+
+## 2026-08-28 — TQ4-NC QSA KV: live validation and 16K workspace limit
+
+The QSA pool already implemented packed `tq4-nc` storage, but the server CLI
+did not expose it. Commit `f5341ac` adds the explicit CLI choice; commit
+`54bfaa8` adds a CUDA regression and fixes a Triton 3.6 compilation defect
+where the TQ4 store kernel read a Python global epsilon.
+
+The exact Qwen4 Q4_K_M server configuration, with 256 MoE slots and 16,384 KV
+tokens, now starts with:
+
+| KV format | reported 16K K+V allocation | free VRAM after initialisation |
+| --- | ---: | ---: |
+| BF16 | 0.42 GiB | 0.71 GiB |
+| TQ4-NC | 0.14 GiB | 1.00 GiB |
+
+Thus TQ4-NC reduces this model's QSA KV allocation by about threefold. The
+first live QSA request previously crashed at Triton compile time; the new CUDA
+test reproduces that exact JIT invocation on SM75 and the focused suite passes
+after the fix. A thinking-disabled OpenAI request returned the exact expected
+answer:
+
+```text
+prompt: Reply with exactly: pong
+reasoning_effort: off
+response: pong
+HTTP 200; 17 prompt tokens, 2 completion tokens
+```
+
+The default-thinking repeat is not a quality failure but demonstrates the
+runtime cost: its 32-token cap contained the coherent reasoning that it must
+answer `pong`, then stopped before the final answer; the decode log settled
+around 0.3 tok/s after first-JIT. This configuration is therefore currently a
+long-context feasibility path, not a recommended agent decode configuration.
+
+Two end-to-end 16,383-token TQ4 attempts did **not** complete:
+
+| MoE slots | failure point | allocation requested | free at failure |
+| ---: | --- | ---: | ---: |
+| 256 | Qwen hyper-connection mix | 160 MiB | 166.62 MiB |
+| 192 | GDN chunk-gated-delta FLA state | 192 MiB | 58.62 MiB |
+
+The 192-slot server did increase post-init free VRAM to 1.13 GiB, but the
+later FLA temporary allocation still exceeded its peak headroom. These are not
+KV-allocation failures and do not justify reducing the LRU to ten slots: that
+would cap routed prefill fragments at a single token. The next experiment must
+determine whether FreeToken's existing `max_extend_tokens` scheduler chunking
+preserves Qwen PLE/GDN/QSA state; if so it can bound activation workspace
+without discarding a useful expert cache.

@@ -420,3 +420,20 @@ failed and inconclusive hypotheses; do not rewrite history.
   current BF16/256-slot configuration. The next configuration work is to
   preserve useful MoE reuse while making QSA's existing packed `tq4-nc` KV
   format accessible through the server CLI.
+
+### TQ4-NC QSA KV is now a tested CLI option
+
+- `--kv-cache-dtype tq4-nc` now reaches FreeToken's existing packed QSA KV
+  implementation. A parser regression proves the public option stays accepted;
+  the QSA/TQ4 focused suite passed before live serving.
+- A real Qwen QSA request exposed a Triton 3.6 incompatibility hidden by the
+  former CPU-only storage tests: a JIT kernel read Python global `_SCALE_EPS`.
+  The kernel now uses the same literal epsilon style as the adjacent INT8/FP8
+  kernel, and a CUDA regression compiles and executes the exact store path on
+  SM75. The focused suite passed with the new GPU coverage.
+- Live TQ4-QSA Qwen returns the deterministic thinking-disabled `pong` and
+  reduces a 16K QSA KV allocation from 0.42 GiB to 0.14 GiB. It does not yet
+  make 16K end-to-end viable with a useful expert LRU: 256 and 192 MoE slots
+  still OOM in separate GDN/FLA temporary buffers. `TESTLOG.md` retains both
+  failure points and decode-speed caveat rather than treating the memory win as
+  a completed long-context benchmark.
