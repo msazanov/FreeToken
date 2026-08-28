@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+import torch
+
 from freetoken.models.register import get_model_spec
 
 
@@ -83,6 +85,7 @@ def test_qwen4_text_config_builds_qsa_and_linear_groups(monkeypatch):
         set_tp_info(rank=0, size=1)
     model = Qwen4ExpForCausalLM(config)
     assert model.model.layers.op_list[1].ple is not None
+    assert "model.layers.1.ple.ple_embedding.layer_multipliers" in model.state_dict()
     assert not hasattr(model, "visual")
 
     from dataclasses import replace
@@ -132,3 +135,41 @@ def test_qwen4_text_decoder_class_is_importable_without_vision():
     from freetoken.models.qwen4_exp import Qwen4ExpForCausalLM
 
     assert Qwen4ExpForCausalLM.__name__ == "Qwen4ExpForCausalLM"
+
+
+def test_qwen4_ple_hash_uses_uint64_overflow_and_excludes_current_eos_from_reset():
+    from freetoken.models.qwen4_exp.model import build_ngram_ids
+
+    eos = 99
+    tokens = torch.tensor([5, eos, 7, 8])
+    multipliers = torch.tensor([(1 << 45) - 5, (1 << 45) + 7, (1 << 45) + 21])
+    vocab_sizes = torch.tensor([97, 89])
+    offsets = torch.tensor([0, 97])
+
+    actual = build_ngram_ids(
+        tokens,
+        ngram_size=3,
+        heads_per_ngram=1,
+        eos_token_id=eos,
+        multipliers=multipliers,
+        vocab_sizes=vocab_sizes,
+        offsets=offsets,
+    )
+
+    mask = (1 << 64) - 1
+    expected = []
+    for index, token in enumerate(tokens.tolist()):
+        ctx = [token]
+        for shift in (1, 2):
+            source = index - shift
+            reset = source < 0 or any(tokens[j].item() == eos for j in range(source, index))
+            ctx.append(eos if reset else tokens[source].item())
+        rows = []
+        for ngram, (size, offset) in enumerate(zip(vocab_sizes.tolist(), offsets.tolist()), start=2):
+            mixed = (ctx[0] * multipliers[0].item()) & mask
+            for position in range(1, ngram):
+                mixed ^= (ctx[position] * multipliers[position].item()) & mask
+            rows.append((mixed % size) + offset)
+        expected.append(rows)
+
+    assert actual.tolist() == expected

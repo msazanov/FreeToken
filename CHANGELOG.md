@@ -53,6 +53,18 @@ failed and inconclusive hypotheses; do not rewrite history.
   output is `2560 x 6144` BF16; QSA QKV is packed; and the BF16 indexer uses
   its native packed row width. This proves the loader mapping, not generation.
 
+### Accepted — PLE mmap provider
+
+- The Q5_1 `per_layer_token_embd.weight` is now opened as an NVMe-backed GGUF
+  view rather than allocated as a model tensor. The exact PLE uint64 hash and
+  EOS rule are retained before only selected rows are copied to GPU and
+  dequantized. A real-table probe mapped `320,001,536 x 120` packed bytes,
+  gathered/dequantized rows to BF16 correctly and increased process RSS by only
+  about 2 MiB.
+- Added the engine lifecycle hook immediately after `load_state_dict`, so PLE
+  metadata buffers are populated before the host table opens. This closes the
+  former dead-code path where `load_host_weights` existed but was never called.
+
 ## 2026-08-27
 
 ### Accepted

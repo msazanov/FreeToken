@@ -320,6 +320,20 @@ def iter_gguf_weights(
             for index, key in enumerate(order):
                 yield f"{base}.{target}.qweight_{index}", slots[key]
 
+    # PLE constants live in GGUF metadata, not the tensor table.  They are model
+    # buffers nevertheless, so load them before the mmap provider is initialized.
+    for layer_id in config.qwen4_args.ple_layer_ids:
+        base = f"model.layers.{layer_id}.ple.ple_embedding"
+        yield f"{base}.layer_multipliers", torch.tensor(
+            config.qwen4_args.ple_layer_multipliers, dtype=torch.long
+        )
+        yield f"{base}.ngram_heads_vocab_sizes", torch.tensor(
+            config.qwen4_args.ple_head_vocab_sizes, dtype=torch.long
+        )
+        yield f"{base}.ngram_heads_offsets", torch.tensor(
+            config.qwen4_args.ple_head_offsets, dtype=torch.long
+        )
+
     for tensor in iter_gguf_tensors(model_path):
         name = tensor.name
         if name == "token_embd.weight":

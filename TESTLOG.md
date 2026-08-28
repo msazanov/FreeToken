@@ -38,6 +38,24 @@ This is a loader-level integration test, **not** a TTFT, tok/s or quality result
 It deliberately skipped both the 38 GiB PLE Q5_1 table and every routed-expert
 bank; model construction/service startup remains blocked on their providers.
 
+## 2026-08-28 — Qwen4Exp PLE Q5_1 mmap and row-dequant probe
+
+Worktree: `feat/qwen4exp-gguf-turing`, dirty PLE-provider implementation.
+Model/table: the same local 33-shard AtomicChat Q4_K_M GGUF. The probe parsed
+real metadata, instantiated only `_HostNGramEmbedding`, loaded its three PLE
+metadata buffers, opened `per_layer_token_embd.weight`, then selected rows
+`[0, 1, 2, 100, 1000]` and called the existing CUDA `ggml_dequantize` path.
+
+Result: table view `(320001536, 120)` Q5_1; gathered packed rows `(5, 120)`;
+dequantized output `(5, 160)` BF16 with all finite values. RSS delta while
+opening and sampling was `1.95 MiB`; therefore the table is mmap-backed rather
+than resident in system RAM. The first call reported `ninja: no work to do`, so
+the prior GGUF kernel compilation was not charged to this probe.
+
+This proves table opening, row selection and dequantization only. It is neither
+a complete prefill/decode benchmark nor an end-to-end PLE quality validation;
+the routed-expert bank remains absent.
+
 ## 2026-08-27 — DeepSeek Harness composition inspection
 
 Read-only inspection of the live `dsh web --no-open` installation and

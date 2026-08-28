@@ -6,6 +6,7 @@ import os
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+import numpy as np
 import safetensors
 import torch
 import torch.nn.functional as F
@@ -261,21 +262,30 @@ def build_ngram_ids(
     vocab_sizes: torch.Tensor,
     offsets: torch.Tensor,
 ) -> torch.Tensor:
+    """Build PLE row ids with the exact uint64 hash used by upstream Qwen.
+
+    Multipliers are intentionally not cast through float: their products and XOR
+    are defined modulo 2**64.  The final rows are small signed integers, but the
+    intermediate hash must retain unsigned overflow semantics.
+    """
     tokens = tokens.to(dtype=torch.long, device="cpu")
     shifted = [
         _shift_right_ignore_eos(tokens, shift, eos_token_id) for shift in range(ngram_size)
     ]
-    blocks = []
+    token_arrays = [item.numpy().astype(np.uint64, copy=False) for item in shifted]
+    multiplier_array = multipliers.cpu().numpy().astype(np.uint64, copy=False)
+    size_array = vocab_sizes.cpu().numpy().astype(np.uint64, copy=False)
+    offset_array = offsets.cpu().numpy().astype(np.uint64, copy=False)
+    blocks: list[np.ndarray] = []
     for ngram in range(2, ngram_size + 1):
         start = (ngram - 2) * heads_per_ngram
         stop = start + heads_per_ngram
-        mixed = shifted[0] * multipliers[0]
+        mixed = token_arrays[0] * multiplier_array[0]
         for position in range(1, ngram):
-            mixed = torch.bitwise_xor(mixed, shifted[position] * multipliers[position])
-        sizes = vocab_sizes[start:stop]
-        heads = torch.remainder(mixed.unsqueeze(-1), sizes)
-        blocks.append(heads + offsets[start:stop])
-    return torch.cat(blocks, dim=-1)
+            mixed = np.bitwise_xor(mixed, token_arrays[position] * multiplier_array[position])
+        heads = (mixed[:, None] % size_array[start:stop]) + offset_array[start:stop]
+        blocks.append(heads.astype(np.int64, copy=False))
+    return torch.from_numpy(np.concatenate(blocks, axis=-1))
 
 
 def _ple_request_tokens(req, forwarded_ids: torch.Tensor | None = None) -> torch.Tensor:
@@ -320,6 +330,8 @@ class _HostNGramEmbedding(BaseOP):
         self._handles = []
         self._shards: list[torch.Tensor] = []
         self._shard_ends = torch.empty(0, dtype=torch.long)
+        self._gguf_table: torch.Tensor | None = None
+        self._gguf_type: int | None = None
         self._scale = torch.tensor(1.0, dtype=torch.bfloat16)
         self._host_constants: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None
         self._dummy = False
@@ -327,6 +339,42 @@ class _HostNGramEmbedding(BaseOP):
     def load_host_weights(self, model_path: str, *, dummy: bool = False) -> None:
         if dummy:
             self._dummy = True
+            return
+        from freetoken.models.gguf.reader import is_gguf_path
+
+        if is_gguf_path(model_path):
+            from freetoken.models.gguf.dequant import GGML_Q5_1, row_bytes
+            from freetoken.models.gguf.reader import iter_gguf_tensors
+
+            table = next(
+                (tensor for tensor in iter_gguf_tensors(model_path)
+                 if tensor.name == "per_layer_token_embd.weight"),
+                None,
+            )
+            if table is None:
+                raise RuntimeError(f"Qwen4-Exp GGUF {model_path}: missing PLE table")
+            if table.ggml_type != GGML_Q5_1:
+                raise RuntimeError(
+                    f"Qwen4-Exp GGUF PLE must be Q5_1, got type {table.ggml_type}"
+                )
+            if table.shape[1] != self.head_dim or table.row_bytes != row_bytes(
+                self.head_dim, table.ggml_type
+            ):
+                raise RuntimeError(
+                    f"Unexpected Qwen4-Exp GGUF PLE shape {table.shape}, row_bytes={table.row_bytes}"
+                )
+            self._gguf_table = table.packed()
+            self._gguf_type = table.ggml_type
+            self._host_constants = (
+                self.layer_multipliers.cpu(),
+                self.ngram_heads_vocab_sizes.cpu(),
+                self.ngram_heads_offsets.cpu(),
+            )
+            expected_rows = int(self._host_constants[1][-1] + self._host_constants[2][-1])
+            if self._gguf_table.shape[0] < expected_rows:
+                raise RuntimeError(
+                    f"PLE table has {self._gguf_table.shape[0]} rows, needs {expected_rows}"
+                )
             return
         folder = download_hf_weight(model_path)
         index_path = os.path.join(folder, "model.safetensors.index.json")
@@ -424,6 +472,19 @@ class _HostNGramEmbedding(BaseOP):
             token_count = get_global_ctx().batch.input_ids.numel()
             return torch.zeros(token_count, self.embedding_dim, device=device, dtype=dtype)
         ngram_ids = self._current_ngram_ids().reshape(-1)
+        if self._gguf_table is not None:
+            from freetoken.kernel.gguf import ggml_dequantize
+
+            rows = self._gguf_table.index_select(0, ngram_ids)
+            rows = rows.to(device=device, non_blocking=True)
+            embedded = ggml_dequantize(
+                rows,
+                self._gguf_type,
+                rows.shape[0],
+                self.head_dim,
+                dtype,
+            )
+            return embedded.view(-1, self.embedding_dim)
         shard_ids = torch.bucketize(ngram_ids, self._shard_ends, right=True)
         output = torch.empty(
             ngram_ids.numel(),

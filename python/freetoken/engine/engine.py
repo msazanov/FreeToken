@@ -328,6 +328,12 @@ class Engine:
         with torch.device("meta"), torch_dtype(config.dtype):
             self.model = create_model(config.model_config)
         self.model.load_state_dict(self._load_weight_state_dict(config))
+        load_host_weights = getattr(self.model, "load_host_weights", None)
+        if load_host_weights is not None:
+            # Qwen4Exp PLE has a giant mmap-backed table outside state_dict.  Its
+            # metadata buffers above are loaded first; only then may the model open
+            # the host provider.  Other model classes simply have no such hook.
+            load_host_weights(config.model_path, dummy=config.use_dummy_weight)
         post_weights_free = self._sync_get_memory()[0]
         self._weights_bytes = self._baseline_free - post_weights_free
         # Pool-budget baseline for the desktop cache sliders: free VRAM after the weights are
