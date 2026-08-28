@@ -515,3 +515,19 @@ failed and inconclusive hypotheses; do not rewrite history.
 - The current 16K configuration is relabelled execution-valid rather than a
   completed long-context quality baseline; the approximately 9.4 tok/s 64K
   value remains an incomplete boundary observation.
+
+### Fixed — native padded Triton router for Qwen3.8 top-10 MoE
+
+- Qwen3.8 routes every MoE layer to 10 experts.  The optional
+  `triton_kernels.topk` path constructs `tl.arange(0, 10)`, which Triton rejects
+  because the range is not a power of two; FreeToken then used the much slower
+  Torch softmax/top-k fallback on every routed layer and every generated token.
+- The fork now uses the already-present upstream Qwen3.8 padded/masked Triton
+  router for non-power-of-two CUDA top-k.  It preserves full-row softmax,
+  optional renormalisation, deterministic lowest-ID tie handling and the
+  scheduler's padded-row mask. CPU invocations deliberately keep the Torch
+  implementation even if `triton_kernels` is installed.
+- On the matched 1K / 255-decode-token control, this improved measured decode
+  throughput from 0.910 to 1.834 tok/s (+101.6%) and increased mean sampled GPU
+  utilisation from 17.1% to 28.3%. The raw artifacts and all failed attempts
+  are retained in `TESTLOG.md` and `benchmarks/results/`.

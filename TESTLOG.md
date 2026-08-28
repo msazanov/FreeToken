@@ -1016,3 +1016,48 @@ head-reduced QSA scorer on the existing page-size-4/TQ4 path. Workspace trials
 are ordered 8, 16 and 32 MiB; 48 MiB is deferred because it has the same two
 64K score passes as 32 MiB while consuming about 20 MiB more lower-bound
 temporary space. No new GPU run was performed during this review.
+
+## 2026-08-29 — Qwen3.8 1K top-10 router control (complete)
+
+Configuration: AtomicChat `Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64`, one
+request, `tq4-nc` KV, page size 4, 256 global MoE slots, offload backend,
+naive cache, QSA workspace 16 MiB, 1,036 prompt tokens, 255 generated tokens,
+temperature 0 and seed `20260828`.
+
+The first control at commit `670e854` exposed that optional
+`triton_kernels.topk` cannot compile Qwen's top-10 route geometry and silently
+fell back to Torch.  Its automated artifact is
+`benchmarks/results/qwen38-e1e4-1k-ws16-v2/context-1024.json`:
+
+| metric | Torch-router control | padded Triton top-10 | change |
+| --- | ---: | ---: | ---: |
+| end-to-end time | 373.62 s | 224.11 s | -40.0% |
+| prompt throughput | 10.97 tok/s | 12.10 tok/s | +10.3% |
+| decode throughput | 0.910 tok/s | 1.834 tok/s | +101.6% |
+| mean sampled GPU util. | 17.1% | 28.3% | +11.2 pp |
+| maximum sampled GPU util. | 49% | 61% | +12 pp |
+
+The corrected route uses the in-tree padded/masked Triton kernel from the
+already-fetched FreeToken Qwen3.8 upstream branch.  It was tested on RTX 2070
+SM75 for unique scores, deterministic ties, no-renormalisation and row masking;
+CPU inputs explicitly retain the Torch path.  The complete new artifact is
+`benchmarks/results/qwen38-e1e4-1k-ws16-top10-router-v3/context-1024.json`.
+
+The same trace is the key negative result for cache policy: both matched runs
+have 122,400 decode active-expert misses, 0 L1 hits and 122,400 evictions
+across 48 layers.  The routed stationary oracle is nevertheless about 34.5% at
+5.33 slots/layer, while the realized global LRU is 0%.  This is genuine global
+cross-layer thrashing, not an NVMe measurement artefact: one decode token
+routes 48 × 10 = 480 layer-expert pairs but VRAM retains only 256 globally.
+The next cache experiment must therefore be a layer-aware allocation/admission
+policy, measured against this control; merely increasing a global LRU cannot
+retain even one whole token's active set.
+
+Two incomplete attempts are retained rather than overwritten:
+
+- `benchmarks/results/qwen38-e1e4-1k-ws16-top10-router/` was interrupted by
+  the interactive launcher before it reached a request;
+- `benchmarks/results/qwen38-e1e4-1k-ws16-top10-router-v2/` failed at startup
+  because an orphan from the first attempt owned 7.09 GiB VRAM.  The exact
+  orphaned Qwen PIDs were then terminated and the v3 control began with 7.49
+  GiB free VRAM.  Neither directory is used as a performance datapoint.
