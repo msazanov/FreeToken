@@ -12,6 +12,8 @@ from freetoken.message import (
     DetokenizeMsg,
     BaseFrontendMsg,
     BaseTokenizerMsg,
+    BatchFrontendMsg,
+    BatchTokenizerMsg,
     CacheRebuildBackendMsg,
     CacheRebuildMsg,
     CacheRebuildReply,
@@ -141,6 +143,56 @@ def test_absent_moe_stats_is_omitted_from_new_wire_messages():
 
     assert "moe_stats" not in BaseFrontendMsg.encoder(user_reply)
     assert "moe_stats" not in BaseTokenizerMsg.encoder(detokenize)
+
+
+def test_frontend_batch_omits_absent_nested_moe_stats_and_reads_old_payload():
+    encoded = BaseFrontendMsg.encoder(
+        BatchFrontendMsg(data=[UserReply(uid=7, incremental_output="", finished=True)])
+    )
+
+    assert "moe_stats" not in encoded["data"][0]
+
+    decoded = BaseFrontendMsg.decoder(
+        {
+            "__type__": "BatchFrontendMsg",
+            "data": [
+                {
+                    "__type__": "UserReply",
+                    "uid": 7,
+                    "incremental_output": "done",
+                    "finished": True,
+                }
+            ],
+        }
+    )
+
+    assert isinstance(decoded, BatchFrontendMsg)
+    assert decoded.data[0].moe_stats is None
+
+
+def test_tokenizer_batch_omits_absent_nested_moe_stats_and_reads_old_payload():
+    encoded = BaseTokenizerMsg.encoder(
+        BatchTokenizerMsg(data=[DetokenizeMsg(uid=7, next_token=42, finished=True)])
+    )
+
+    assert "moe_stats" not in encoded["data"][0]
+
+    decoded = BaseTokenizerMsg.decoder(
+        {
+            "__type__": "BatchTokenizerMsg",
+            "data": [
+                {
+                    "__type__": "DetokenizeMsg",
+                    "uid": 7,
+                    "next_token": 42,
+                    "finished": True,
+                }
+            ],
+        }
+    )
+
+    assert isinstance(decoded, BatchTokenizerMsg)
+    assert decoded.data[0].moe_stats is None
 
 
 def test_client_dicts_with_the_wire_tag_key_survive_intact():

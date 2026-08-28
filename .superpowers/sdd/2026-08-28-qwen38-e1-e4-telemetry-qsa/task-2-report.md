@@ -89,3 +89,29 @@ PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/
 
 The pre-existing untracked plan remains preserved. No model server, GPU,
 OpenCode, or OmniRoute was used.
+
+## Fix Round 2
+
+Addressed the remaining batch-wrapper compatibility finding:
+
+- The message encoder now recursively removes `moe_stats` only when it is
+  `None` on serialized `UserReply` or `DetokenizeMsg` objects, including those
+  nested inside `BatchFrontendMsg` and `BatchTokenizerMsg`. Arbitrary client
+  dictionaries are not filtered by this compatibility pass.
+- Added regression tests for both batch wrapper types. Each test verifies that
+  absent nested telemetry produces no nested `moe_stats` key and that an old
+  peer-style payload without the optional field remains decodable by the new
+  peer.
+
+Fix-round TDD evidence:
+
+- Red: the new batch tests failed because nested message dictionaries still
+  contained `moe_stats: None`.
+- Green: the final focused command below passed 16 tests.
+
+Final Fix Round 2 verification:
+
+```text
+PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/server/test_message_wire.py tests/server/test_stats.py -q
+16 passed
+```

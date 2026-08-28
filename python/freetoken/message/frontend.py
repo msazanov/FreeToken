@@ -1,19 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from .utils import deserialize_type, serialize_type
+
+
+def _omit_none_moe_stats(value: Any) -> Any:
+    if isinstance(value, dict):
+        message_type = value.get("__type__")
+        return {
+            key: nested
+            for key, nested in (
+                (key, _omit_none_moe_stats(nested)) for key, nested in value.items()
+            )
+            if not (message_type == "UserReply" and key == "moe_stats" and nested is None)
+        }
+    if isinstance(value, list):
+        return [_omit_none_moe_stats(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_omit_none_moe_stats(item) for item in value)
+    return value
 
 
 @dataclass
 class BaseFrontendMsg:
     @staticmethod
     def encoder(msg: BaseFrontendMsg) -> Dict:
-        encoded = serialize_type(msg)
-        if getattr(msg, "moe_stats", None) is None:
-            encoded.pop("moe_stats", None)
-        return encoded
+        return _omit_none_moe_stats(serialize_type(msg))
 
     @staticmethod
     def decoder(json: Dict) -> BaseFrontendMsg:
