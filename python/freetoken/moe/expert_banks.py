@@ -307,6 +307,18 @@ def _gguf_banks(model_path, model_config, device, dtype, dummy, parallel=False, 
     sink = None if dummy else layer_sink
     types = types_fn(model_path, model_config.num_layers)
     sources = loader(model_path, model_config, layer_sink=sink)
+    if set(sources) == {"gate", "up", "down"}:
+        # Qwen4 keeps the source tensors as file mappings.  Do not turn their
+        # separate gate/up projections into the generic anonymous ``gate_up``
+        # bank: the cache knows how to copy selected expert rows on demand.
+        return ExpertBanks(
+            "qwen4_gguf",
+            {name: sources[name] for name in _BANK_SCHEMAS["qwen4_gguf"]},
+            layer_residency=["file_backed"] * model_config.num_layers,
+            gguf_expert_types=(
+                tuple(types["gate"]), tuple(types["up"]), tuple(types["down"])
+            ),
+        )
     return ExpertBanks(
         "gguf",
         {name: sources[name] for name in _BANK_SCHEMAS["gguf"]},

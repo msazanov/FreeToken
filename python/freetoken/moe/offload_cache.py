@@ -62,6 +62,10 @@ _BANK_SCHEMAS: dict[str, tuple[str, ...]] = {
     # property of the checkpoint, not of the format. Same two banks and the same
     # dequant-in-kernel grouped GEMV as q4_0 -- only the row stride is type-dependent.
     "gguf": ("gate_up", "down"),
+    # Qwen3.8 Q4_K_M uses three original file-backed GGUF ranges.  Combining
+    # gate/up would allocate about 50 GiB of anonymous host RAM, so this layout
+    # leaves them separate and the layer dispatch runs two input GEMVs.
+    "qwen4_gguf": ("gate", "up", "down"),
     # native ModelOpt rows for the Triton inline-dequant kernels: packed e2m1 codes +
     # fp8-e4m3 per-16 block scales + per-output-row fp16 globals (w1/w3 carry distinct
     # globals, and folding them into the e4m3 block scales would underflow)
@@ -223,6 +227,10 @@ class OffloadMoeCache:
         # _unpinned_layers is the derived id set the hot paths test against
         self.layer_residency: list[str] = []
         self._unpinned_layers: frozenset = frozenset()
+        # A subset of ``_unpinned_layers`` that remains GPU-decoded: it has no
+        # GPU-visible host pointer, so cache misses synchronize and copy only
+        # the routed expert ranges from the file mapping.
+        self._file_backed_layers: frozenset = frozenset()
         # marlin/b12x per-expert global scales ([L*E], GPU resident, see set_alphas).
         self.gate_up_alpha: torch.Tensor | None = None
         self.down_alpha: torch.Tensor | None = None
@@ -329,10 +337,14 @@ class OffloadMoeCache:
         unpinned = frozenset(
             i for i, r in enumerate(residency) if r != HostResidency.PINNED.value
         )
+        file_backed = frozenset(
+            i for i, r in enumerate(residency) if r == HostResidency.FILE_BACKED.value
+        )
         if unpinned:
-            if not unpinned <= self.cpu_layer_ids:
+            unsupported = unpinned - file_backed - self.cpu_layer_ids
+            if unsupported:
                 raise ValueError(
-                    f"non-pinned layers {sorted(unpinned - self.cpu_layer_ids)} are not in "
+                    f"non-pinned layers {sorted(unsupported)} are not in "
                     f"cpu_layer_ids: a layer without a device address can only decode on "
                     f"the CPU executor (set cache.cpu_layer_ids before set_bank_sources)"
                 )
@@ -342,6 +354,7 @@ class OffloadMoeCache:
                     "when any layer is LOCKED/PAGEABLE (the engine does this)"
                 )
         self._unpinned_layers = unpinned
+        self._file_backed_layers = file_backed
         self.layer_residency = list(residency)
         for name in self.bank_schema:
             per_layer = sources[name]
@@ -578,6 +591,10 @@ class OffloadMoeCache:
         """Whether ``layer_id``'s host banks have no device address (LOCKED/PAGEABLE): the GPU slot-gather paths cannot serve it.
         ``copy_missing`` takes the whole-layer pageable branch, which presumes materialize's position == expert id (never ``ensure_experts``'s LRU slot remap)."""
         return layer_id in self._unpinned_layers
+
+    def is_file_backed_layer(self, layer_id: int) -> bool:
+        """Whether misses for this layer copy selected GGUF ranges synchronously."""
+        return layer_id in self._file_backed_layers
 
     def alphas_for_slots(self, layer_id: int) -> tuple[torch.Tensor, torch.Tensor] | None:
         """Per-slot global scales for a decode call, or ``None`` when the format
@@ -1048,6 +1065,26 @@ class OffloadMoeCache:
         layer_id = self._pending_src_layer
         assert layer_id is not None, "no staged misses (ensure_experts/materialize_layer first)"
         if layer_id in self._unpinned_layers:
+            if layer_id in self._file_backed_layers:
+                # File-backed ranges cannot be made GPU-addressable without
+                # pinning the entire model.  Routing already selected at most a
+                # small number of experts, so copy only those rows.  The host
+                # reads synchronize intentionally: page faults must complete
+                # before CUDA consumes the destination slot.
+                if self._pending_whole_layer:
+                    pairs = [(slot, slot) for slot in range(self.num_experts)]
+                else:
+                    count = int(self.num_indices.item())
+                    slots = self.evict_slots[:count].cpu().tolist()
+                    source_ids = self.src_indices[:count].cpu().tolist()
+                    pairs = list(zip(slots, source_ids))
+                for per_layer, cache in self.banks:
+                    source = per_layer[layer_id]
+                    for slot, source_id in pairs:
+                        _copy_compact_row_prefix(
+                            cache[slot : slot + 1], source[source_id : source_id + 1]
+                        )
+                return
             if not self._pending_whole_layer:
                 raise RuntimeError(
                     f"layer {layer_id} is unpinned: its only copy is the whole-layer "

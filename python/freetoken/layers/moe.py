@@ -553,6 +553,32 @@ class OffloadMoELayer(MoELayer):
                 hidden_states, gate_up, down, topk_weights, topk_ids, self.activation,
                 quant_type=t_gate_up, down_quant_type=t_down,
             )
+        if fmt == "qwen4_gguf":
+            # Qwen3.8's gate/up GGUF stacks remain separate file-backed ranges;
+            # joining them would allocate an infeasible second host copy.
+            from freetoken.moe.fused_q4_0 import fused_experts_gguf_separate
+
+            gate, up, down = views
+            types = cache.gguf_expert_types
+            assert types is not None and len(types) == 3, (
+                "quant_format 'qwen4_gguf' requires per-layer gate/up/down GGML types"
+            )
+            gate_type, up_type, down_type = (
+                value[self.layer_id] if isinstance(value, (tuple, list)) else value
+                for value in types
+            )
+            return fused_experts_gguf_separate(
+                hidden_states,
+                gate,
+                up,
+                down,
+                topk_weights,
+                topk_ids,
+                self.activation,
+                gate_quant_type=gate_type,
+                up_quant_type=up_type,
+                down_quant_type=down_type,
+            )
         if fmt == "mxfp4_triton":
             # gpt-oss MXFP4 experts (biased, clamped swiglu): transposed split-K GEMV
             # decode + grouped `_t` prefill. The swiglu scalars live on the layer

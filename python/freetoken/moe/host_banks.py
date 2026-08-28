@@ -46,6 +46,11 @@ class HostResidency(str, Enum):
     PINNED = "pinned"
     LOCKED = "locked"
     PAGEABLE = "pageable"
+    # Immutable GGUF file mappings: pages are supplied by the OS cache and are
+    # copied synchronously into the GPU slot cache only after routing chooses an
+    # expert.  They are deliberately not cudaHostRegister'd (that would retain
+    # the entire model in RAM).
+    FILE_BACKED = "file_backed"
 
 
 _DEFAULT_CHUNK = 8 << 20

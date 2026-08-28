@@ -593,6 +593,16 @@ class Engine:
                 decode_target=("cpu" if decode_target in ("cpu", "hybrid") else "gpu"),
                 layer_residency=requested_residency,
             )
+            if (
+                banks.layer_residency
+                and "file_backed" in banks.layer_residency
+                and config.moe_prefill_overlap
+            ):
+                logger.info_rank0(
+                    "Qwen4 file-backed GGUF experts: disabling prefill overlap; "
+                    "their source pages are selected synchronously after routing"
+                )
+                object.__setattr__(config, "moe_prefill_overlap", False)
             if config.moe_cache_auto:
                 size, pages, overlap = self._resolve_auto_moe_cache_size(config, banks)
                 object.__setattr__(config, "moe_cache_size", size)

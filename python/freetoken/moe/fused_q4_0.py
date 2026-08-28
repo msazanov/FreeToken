@@ -18,6 +18,7 @@ moe/expert_banks.py level.
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 
 from freetoken.layers.activation import gelu_and_mul, gelu_tanh_and_mul, silu_and_mul
 from freetoken.models.gguf.dequant import GGML_Q4_0, MOE_VEC_TYPES
@@ -98,4 +99,67 @@ def fused_experts_gguf_q4_0(
     return fused_experts_gguf(hidden_states, gate_up_q, down_q, topk_weights, topk_ids, activation, int(GGML_Q4_0))
 
 
-__all__ = ["fused_experts_gguf", "fused_experts_gguf_q4_0"]
+def fused_experts_gguf_separate(
+    hidden_states: torch.Tensor,
+    gate_q: torch.Tensor,
+    up_q: torch.Tensor,
+    down_q: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    activation: str,
+    *,
+    gate_quant_type: int,
+    up_quant_type: int,
+    down_quant_type: int,
+) -> torch.Tensor:
+    """GGUF MoE over independent gate/up file-backed banks.
+
+    Qwen3.8's original GGUF tensors cannot be joined into the conventional
+    ``[E, 2I, ...]`` bank without a host-RAM copy larger than this machine.  Two
+    MMVQ input GEMVs preserve the packed direct ranges and calculate the same
+    SwiGLU intermediate as the combined path.
+    """
+    from freetoken.kernel.gguf import ggml_moe_a8_vec
+
+    if activation != "silu":
+        raise NotImplementedError(
+            f"separate GGUF gate/up only implements Qwen's silu activation, got {activation!r}"
+        )
+    for label, quant_type in (
+        ("gate", gate_quant_type),
+        ("up", up_quant_type),
+        ("down", down_quant_type),
+    ):
+        if quant_type not in MOE_VEC_TYPES:
+            from freetoken.models.gguf.dequant import GGML_NAME
+
+            raise NotImplementedError(
+                f"fused GGUF MoE kernel does not support quant type "
+                f"{GGML_NAME.get(quant_type, quant_type)} for the {label} bank"
+            )
+
+    tokens = hidden_states.shape[0]
+    top_k = topk_ids.shape[1]
+    intermediate = gate_q.shape[1]
+    if up_q.shape[1] != intermediate:
+        raise ValueError(
+            f"separate GGUF gate/up intermediate mismatch: {intermediate} != {up_q.shape[1]}"
+        )
+    hidden = down_q.shape[1]
+    gate = ggml_moe_a8_vec(
+        hidden_states, gate_q, topk_ids, top_k, int(gate_quant_type), intermediate, tokens
+    )
+    up = ggml_moe_a8_vec(
+        hidden_states, up_q, topk_ids, top_k, int(up_quant_type), intermediate, tokens
+    )
+    inter = F.silu(gate) * up
+    out = ggml_moe_a8_vec(
+        inter, down_q, topk_ids, 1, int(down_quant_type), hidden, tokens * top_k
+    )
+    out = out.reshape(tokens, top_k, hidden) * topk_weights.reshape(tokens, top_k, 1).to(
+        out.dtype
+    )
+    return out.sum(dim=1)
+
+
+__all__ = ["fused_experts_gguf", "fused_experts_gguf_q4_0", "fused_experts_gguf_separate"]

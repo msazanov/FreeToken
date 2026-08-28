@@ -213,3 +213,27 @@ qualifies. This preserves large working context while preventing a repeat of a
 hard 122,880-token overflow. The policy loads and the Harness is functional;
 its actual >108K compaction path has **not** been invoked yet and remains a
 future quality/latency measurement.
+
+## 2026-08-28 — Qwen3.8 real file-backed expert probes
+
+Worktree: `feat/qwen4exp-gguf-turing`, post-`f4b4825` then dirty three-bank
+cache implementation. Model: local 33-shard AtomicChat Q4_K_M, RTX 2070 SM75,
+no inference service active.
+
+- Opening all 48 layers produced direct expert views with shapes gate/up
+  `[512, 640, 1100]` and down `[512, 2560, 360]`; gate/up types are IQ3_S or
+  IQ2_S by layer and down is IQ4_NL. The virtual mapped ranges are 13.037 GiB,
+  13.037 GiB and 21.094 GiB respectively. The process RSS delta was 889.79 MiB,
+  not a 47–50 GiB anonymous-bank allocation; all views were contiguous.
+- A fresh 512-slot GPU cache copied ten routed layer-0 experts from the
+  file-backed source in 1.0142 s while allocating 1138.5 MiB GPU cache. After
+  source pages were warm, three disjoint ten-expert selections took 56.361,
+  23.925 and 22.393 ms. This is a selected-row transfer microprobe, not a
+  decoder tok/s result.
+- A real layer-0 IQ3_S/IQ3_S/IQ4_NL separate-projection MoE GEMV returned a
+  finite `[1, 2560]` output. The first 88.9278-s measurement included fresh CUDA
+  extension compilation; after that, three GPU-only calls measured 0.470, 0.399
+  and 0.395 ms. Therefore transfer/cache misses, rather than the expert GEMV,
+  are the current bottleneck.
+- Unit coverage after the implementation:
+  `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4exp_gguf_experts.py -q` → `4 passed`.

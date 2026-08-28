@@ -162,3 +162,14 @@ failed and inconclusive hypotheses; do not rewrite history.
   an earlier stride-preserving z-grid chunker and regression test. Directly
   replacing it with #211 would lose padded-bank stride support, so the existing
   implementation will be runtime-verified rather than blindly cherry-picked.
+
+### Accepted implementation boundary
+
+- Added `qwen4_gguf`: a three-bank MoE cache (`gate`, `up`, `down`) and a
+  separate-projection GGUF SwiGLU path. File-backed layers deliberately disable
+  async full-layer prefill overlap and copy only LRU-selected rows into GPU
+  slots; they do not register every mapped page with CUDA.
+- Real SM75 probes proved the source mapping, selected-row copy and IQ2/IQ3/IQ4
+  GPU GEMV work. The cold first expert selection is still far too expensive for
+  a useful agent runtime, so the next accepted work is a bounded pinned staging
+  buffer plus routed (rather than full-layer) file-backed prefill.
