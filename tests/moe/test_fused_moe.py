@@ -1,5 +1,7 @@
 import pytest
 import torch
+import types
+import sys
 
 
 def _activation_and_mul(gate_up: torch.Tensor, activation: str) -> torch.Tensor:
@@ -56,6 +58,23 @@ def test_fused_topk_accepts_triton_kernel_tuple_output():
     ref_weights = torch.softmax(ref_logits, dim=-1)
     torch.testing.assert_close(ids, ref_ids.to(torch.int32))
     torch.testing.assert_close(weights, ref_weights, rtol=2e-4, atol=2e-4)
+
+
+def test_fused_topk_falls_back_when_optional_triton_kernel_rejects_geometry(monkeypatch):
+    """An optional router compilation failure must not kill the serving worker."""
+    from freetoken.moe.fused import fused_topk
+    import freetoken.kernel.backend as backend
+
+    broken = types.ModuleType("triton_kernels.topk")
+    broken.topk = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("unsupported geometry"))
+    monkeypatch.setattr(backend, "is_triton_kernels_installed", lambda: True)
+    monkeypatch.setitem(sys.modules, "triton_kernels.topk", broken)
+
+    logits = torch.tensor([[4.0, 1.0, -1.0]], dtype=torch.float32)
+    weights, ids = fused_topk(torch.zeros(1, 2), logits, topk=2, renormalize=True)
+
+    assert ids.tolist() == [[0, 1]]
+    torch.testing.assert_close(weights.sum(dim=-1), torch.ones(1))
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")

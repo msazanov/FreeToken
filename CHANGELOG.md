@@ -244,3 +244,7 @@ failed and inconclusive hypotheses; do not rewrite history.
 - The source install briefly upgraded NumPy to 2.5.2; it was restored to 2.4.6,
   within FreeToken's declared `<2.5` constraint. This enables the fused router
   without silently changing the core Triton runtime.
+- On the real Qwen path the optional router still rejects its model-specific
+  geometry during JIT. `fused_topk` now treats optional-kernel runtime failures
+  like a missing package: it logs once and uses the numerically equivalent
+  PyTorch implementation rather than terminating the scheduler.

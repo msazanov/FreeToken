@@ -11,6 +11,7 @@ from freetoken.utils import div_ceil, init_logger
 logger = init_logger(__name__)
 
 _warned_torch_topk = False
+_warned_triton_topk_failure = False
 
 
 def _torch_fused_topk(
@@ -68,11 +69,25 @@ def fused_topk(
     softmax_first = not renormalize
     if softmax_first:
         logits = torch.softmax(logits, dim=-1)
-    sparse_topk = triton_kernels_topk(
-        logits,
-        topk,
-        apply_softmax=not softmax_first,
-    )
+    try:
+        sparse_topk = triton_kernels_topk(
+            logits,
+            topk,
+            apply_softmax=not softmax_first,
+        )
+    except Exception as exc:
+        # `triton_kernels` is optional. In particular, a release can import
+        # against our pinned Triton yet reject a model-specific router geometry
+        # at JIT time. Preserve availability and use the numerically equivalent
+        # implementation rather than taking down the scheduler process.
+        global _warned_triton_topk_failure
+        if not _warned_triton_topk_failure:
+            _warned_triton_topk_failure = True
+            logger.warning_rank0(
+                "fused_topk: triton_kernels failed; using pure-torch router fallback "
+                f"({type(exc).__name__}: {exc})"
+            )
+        return _torch_fused_topk(gating_output, topk, renormalize, num_token_non_padded)
     if hasattr(sparse_topk, "vals"):
         topk_weights = sparse_topk.vals
         topk_ids = sparse_topk.indx

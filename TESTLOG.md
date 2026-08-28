@@ -394,3 +394,13 @@ from triton_kernels.topk import topk  # OK
 
 This verifies package compatibility, not speed. The next Qwen request must
 verify that the fused kernel itself compiles and runs on SM75.
+
+The real request showed that it does not: `triton_kernels.topk` raised a Triton
+`arange` geometry compilation error. The package remains installed for future
+compatible shapes, but Qwen must safely use the existing PyTorch fallback. A
+red/green regression now verifies that any optional router exception yields the
+same normalized top-k result rather than crashing the scheduler:
+
+```text
+13 passed in 6.76s
+```
