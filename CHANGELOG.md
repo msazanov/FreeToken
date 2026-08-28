@@ -319,3 +319,12 @@ failed and inconclusive hypotheses; do not rewrite history.
 - It does not validate long-context quality or performance. The short-prompt
   repeat still takes 34.99 s and has no prompt-cache reuse under the current
   Qwen4-required naive cache; its detailed timing is retained in `TESTLOG.md`.
+
+### Context-scaling guardrail
+
+- The first 28-token synthetic prompt completed at 0.23 prefill tok/s, but the
+  next 56-token probe stalled CPU-side for over five minutes with the GPU idle.
+  The request also outlived client cancellation. This is recorded as a runtime
+  limitation, not a benchmark value.
+- Do not launch 1K+ context tests on this revision until the synchronous
+  file-backed path has cancellation/timeout observability and host-side profiling.

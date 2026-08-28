@@ -570,3 +570,28 @@ the Qwen4 experiment currently uses the required naive cache. It does show that
 cold-JIT/initial-cache work drops from 56.66 s to 34.99 s, while the remaining
 dominant cost is still routed expert fetch/prefill. Long-context and sustained
 decode measurements may now proceed from this commit.
+
+## 2026-08-28 — Initial context-scaling probe and host-side stall
+
+All requests below used the same valid FP16/Q4_K_M server configuration,
+thinking disabled, `max_tokens=1`, temperature 0 and an `x ` repeated user
+payload. Prompt-token count is the API's reported count, not an estimate.
+
+| prompt tokens | completion | result | wall time / runtime observation |
+| ---: | ---: | --- | --- |
+| 28 | 1 | completed, coherent first token `The` | 30.185 s; prefill 0.23 tok/s |
+| target 56 | — | cancelled after >5 min | no prefill completion; GPU 0%, scheduler CPU ~50%, API still reported active=1 |
+
+The second request is not treated as a throughput datapoint. It is a
+pathological host-side stall: the active request survived client cancellation,
+the GPU remained idle with 7.07 GiB allocated, and the scheduler had to be
+stopped to release it. At the time, RAM had 17 GiB available but pre-existing
+system swap usage was 22 GiB; this does not prove swap was the sole cause.
+
+The evidence does prove that the present synchronous file-backed expert/PLE
+preparation path is not safe to extrapolate to 1K/16K/64K contexts. The server
+was shut down and its remaining frontend process explicitly terminated after a
+graceful shutdown left it waiting on a dead worker; VRAM returned to 9 MiB.
+Future context benchmarking must first add request cancellation/timeout handling
+and profile the CPU/mmap/Pinned-DMA stages instead of treating this as a GPU
+throughput limit.
