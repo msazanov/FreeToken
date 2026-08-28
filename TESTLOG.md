@@ -1134,3 +1134,27 @@ control without additional swap pressure.
 Raw reproducible evidence:
 `benchmarks/results/qwen38-e1e4-64k-ws16-top10-router/context-65536.json`
 and its sibling stdout/stderr logs.
+
+## 2026-08-29 — Qwen3.8 112K TQ4-NC capacity boundary (failed, retained)
+
+The matched 112K point intentionally kept the 122,880-token allocation, 256
+global MoE slots and 16 MiB QSA workspace.  The server loaded successfully,
+allocated a 1.07 GiB K+V cache, and reported only 0.29 GiB free VRAM.  The
+first 1,024-token prefill block then failed in the GDN Triton
+`chunk_fwd_kernel_o` with `RuntimeError: Triton Error [CUDA]: out of memory`.
+
+This is a GDN activation-headroom boundary, not a QSA-score regression, expert
+router failure, or a fresh-NVMe-read bottleneck.  The worker released VRAM
+after the error; the benchmark wrapper was stopped only after its scheduler had
+already exited because the accepted streaming connection could otherwise wait
+for its two-hour request timeout.
+
+The 112K point is therefore *not* a speed datapoint and has no terminal JSON
+telemetry.  The unmodified raw stdout/stderr are retained at:
+`benchmarks/results/qwen38-e1e4-112k-ws16-top10-router/`.
+
+The next capacity-only probe may reduce the 256-slot global MoE cache because
+the complete 64K control measured zero decode hits from it.  It must keep the
+same model, KV allocation, QSA workspace, prompt and seed, and it must be
+recorded as a distinct cache-size configuration rather than compared as an
+identical speed control.

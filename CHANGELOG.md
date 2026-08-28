@@ -557,3 +557,14 @@ failed and inconclusive hypotheses; do not rewrite history.
   the expert path copied 252.24 GB host-to-device.  Linux page cache already
   served as the effective RAM tier here; a pinned-RAM L2 stays deferred until a
   matched cache-policy result proves a residual disk bottleneck.
+
+### Recorded — 112K capacity boundary is GDN VRAM headroom
+
+- The unmodified 122,880-token allocation loads with TQ4-NC KV (1.07 GiB) but
+  leaves only 0.29 GiB free VRAM on RTX 2070 Mobile.  Its first 1,024-token
+  prefill fails in the GDN Triton output kernel with CUDA OOM.
+- This establishes 112K/122,880 as a capacity boundary for the current
+  256-slot configuration, not a completed benchmark.  Because that global
+  cache produced zero decode hits at 64K, the next capacity probe may trade
+  part of it for GDN activation headroom; it will be labelled separately from
+  the fixed-configuration speed matrix.
