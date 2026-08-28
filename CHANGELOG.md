@@ -264,3 +264,20 @@ failed and inconclusive hypotheses; do not rewrite history.
 - The regression invokes the embedding's actual dequantization call through a
   small mocked kernel and verifies an FP16 tensor is returned. This protects
   behaviour rather than merely testing configuration plumbing.
+
+### First end-to-end Qwen4 MRoPE path
+
+- The first FP16 request progressed beyond GDN and failed only because the
+  Qwen4 adapter imported a missing `apply_mrope_with_cos_sin_cache_inplace`
+  symbol. Repository/issue search found no FreeToken implementation. We ported
+  the relevant SGLang MRoPE structure into FreeToken's existing RoPE module,
+  including the fresh Qwen3.8 partial-rotary bounds correction documented by
+  `tonyd2wild/Qwen3.8-Flash-Next-NVFP4-DGX-Spark`.
+- This is a native CUDA/Triton path, not a CPU fallback: it selects the three
+  temporal/height/width cosine-sine rows per token and rotates Q/K in place.
+  Its padded lanes are masked to the true 32-lane rotary half-width, preventing
+  the Qwen3.8 partial-RoPE out-of-bounds condition.
+- A local import-contract regression guards the exact missing symbol. A live
+  FP16 HTTP request now returns `200` after passing GDN, QSA and MRoPE. It is
+  an important functional milestone, but not yet a usable quality/performance
+  result; the observed output and speed are recorded in `TESTLOG.md`.

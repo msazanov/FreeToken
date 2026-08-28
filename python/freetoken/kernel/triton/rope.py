@@ -140,4 +140,135 @@ def apply_rope_with_cos_sin_cache_inplace(
     )
 
 
-__all__ = ["apply_rope_with_cos_sin_cache_inplace"]
+@triton.jit
+def _mrope_tiled(
+    Q, K, POSITIONS, CACHE,
+    stride_qt, stride_qh, stride_qd,
+    stride_kt, stride_kh, stride_kd,
+    stride_pa, stride_pt,
+    HEAD_Q: tl.constexpr, HEAD_K: tl.constexpr,
+    rotary_dim: tl.constexpr, half: tl.constexpr,
+    SECTION_T: tl.constexpr, SECTION_H: tl.constexpr, SECTION_W: tl.constexpr,
+    IS_NEOX: tl.constexpr,
+    BLOCK_HEAD: tl.constexpr, BLOCK_DHALF: tl.constexpr,
+):
+    """One program rotates all Q/K heads for one MRoPE token.
+
+    This follows SGLang's fused MRoPE layout, with the partial-rotary bounds
+    fix required by Qwen4-Exp (its rotary width is 64 inside 256-wide heads).
+    """
+    token = tl.program_id(0)
+    d = tl.arange(0, BLOCK_DHALF)
+    heads = tl.arange(0, BLOCK_HEAD)
+    dmask = d < half
+
+    time = tl.load(POSITIONS + token * stride_pt)
+    height = tl.load(POSITIONS + stride_pa + token * stride_pt)
+    width = tl.load(POSITIONS + 2 * stride_pa + token * stride_pt)
+
+    # Qwen4 uses interleaved MRoPE axes: t,h,w,t,h,w,... with each axis
+    # limited by its configured section.  The explicit dmask on t is crucial:
+    # Triton pads the lane count to a power of two, while Qwen4 has partial RoPE.
+    hmask = ((d % 3) == 1) & (d <= 3 * SECTION_H) & dmask
+    wmask = ((d % 3) == 2) & (d <= 3 * SECTION_W) & dmask
+    tmask = ~(hmask | wmask) & dmask
+
+    time_base = CACHE + time * rotary_dim
+    height_base = CACHE + height * rotary_dim
+    width_base = CACHE + width * rotary_dim
+    cos = (
+        tl.load(time_base + d, mask=tmask, other=0.0)
+        + tl.load(height_base + d, mask=hmask, other=0.0)
+        + tl.load(width_base + d, mask=wmask, other=0.0)
+    )
+    sin = (
+        tl.load(time_base + half + d, mask=tmask, other=0.0)
+        + tl.load(height_base + half + d, mask=hmask, other=0.0)
+        + tl.load(width_base + half + d, mask=wmask, other=0.0)
+    )
+
+    if IS_NEOX:
+        d0 = d[None, :]
+        d1 = (half + d)[None, :]
+    else:
+        d0 = (2 * d)[None, :]
+        d1 = (2 * d + 1)[None, :]
+    cos = cos[None, :]
+    sin = sin[None, :]
+
+    qmask = (heads[:, None] < HEAD_Q) & dmask[None, :]
+    qbase = token * stride_qt + heads[:, None] * stride_qh
+    q0 = tl.load(Q + qbase + d0 * stride_qd, mask=qmask, other=0.0).to(tl.float32)
+    q1 = tl.load(Q + qbase + d1 * stride_qd, mask=qmask, other=0.0).to(tl.float32)
+    tl.store(Q + qbase + d0 * stride_qd, q0 * cos - q1 * sin, mask=qmask)
+    tl.store(Q + qbase + d1 * stride_qd, q1 * cos + q0 * sin, mask=qmask)
+
+    kmask = (heads[:, None] < HEAD_K) & dmask[None, :]
+    kbase = token * stride_kt + heads[:, None] * stride_kh
+    k0 = tl.load(K + kbase + d0 * stride_kd, mask=kmask, other=0.0).to(tl.float32)
+    k1 = tl.load(K + kbase + d1 * stride_kd, mask=kmask, other=0.0).to(tl.float32)
+    tl.store(K + kbase + d0 * stride_kd, k0 * cos - k1 * sin, mask=kmask)
+    tl.store(K + kbase + d1 * stride_kd, k1 * cos + k0 * sin, mask=kmask)
+
+
+def apply_mrope_with_cos_sin_cache_inplace(
+    positions: torch.Tensor,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    head_size: int,
+    cos_sin_cache: torch.Tensor,
+    mrope_section: tuple[int, int, int],
+    is_neox: bool = True,
+) -> None:
+    """Apply Qwen4's three-axis, partial MRoPE to Q/K in place.
+
+    `positions` is `[3, tokens]`: temporal, height and width axes. Text-only
+    requests conventionally provide identical axes; multimodal callers may use
+    different coordinates without a separate code path.
+    """
+    if positions.ndim != 2 or positions.shape[0] != 3:
+        raise ValueError(f"MRoPE positions must be [3, tokens], got {tuple(positions.shape)}")
+    if str(cos_sin_cache.dtype) != "torch.float32":
+        raise ValueError("cos_sin_cache should be float32")
+    if not (query.is_cuda and key.is_cuda and positions.is_cuda):
+        raise ValueError("MRoPE Triton path requires CUDA query, key and positions")
+    if not cos_sin_cache.is_contiguous():
+        raise ValueError("cos_sin_cache must be contiguous")
+
+    tokens = query.shape[0]
+    if tokens == 0:
+        return
+    rotary_dim = cos_sin_cache.shape[1]
+    half = rotary_dim // 2
+    if sum(mrope_section) != half:
+        raise ValueError(
+            f"MRoPE sections {mrope_section} do not cover rotary half-width {half}"
+        )
+    head_q = query.shape[1] // head_size
+    head_k = key.shape[1] // head_size
+    qv = query.view(tokens, head_q, head_size)
+    kv = key.view(tokens, head_k, head_size)
+    _mrope_tiled[(tokens,)](
+        qv, kv, positions, cos_sin_cache,
+        qv.stride(0), qv.stride(1), qv.stride(2),
+        kv.stride(0), kv.stride(1), kv.stride(2),
+        positions.stride(0), positions.stride(1),
+        HEAD_Q=head_q,
+        HEAD_K=head_k,
+        rotary_dim=rotary_dim,
+        half=half,
+        SECTION_T=mrope_section[0],
+        SECTION_H=mrope_section[1],
+        SECTION_W=mrope_section[2],
+        IS_NEOX=is_neox,
+        BLOCK_HEAD=triton.next_power_of_2(max(head_q, head_k)),
+        BLOCK_DHALF=triton.next_power_of_2(half),
+        num_warps=4,
+        num_stages=1,
+    )
+
+
+__all__ = [
+    "apply_rope_with_cos_sin_cache_inplace",
+    "apply_mrope_with_cos_sin_cache_inplace",
+]

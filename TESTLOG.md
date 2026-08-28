@@ -429,3 +429,42 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 No performance figure is claimed by this unit-level repair. The next required
 measurement is a real FP16 server request, followed by warm decode and context
 tests.
+
+## 2026-08-28 — Qwen3.8 first complete FP16 QSA/MRoPE request
+
+After the FP16 embedding repair, the first scheduler request reached QSA and
+then failed on a missing FreeToken MRoPE Triton entry point. GitHub search found
+no existing FreeToken patch. We compared the SGLang Qwen MRoPE kernel with the
+fresh `tonyd2wild/Qwen3.8-Flash-Next-NVFP4-DGX-Spark` operational patch. The
+latter identifies Qwen3.8's partial rotary width (32 half-lanes in a padded
+128-lane head) and adds the required bounds check. The local kernel now follows
+that implementation rather than replacing MRoPE with host-side PyTorch.
+
+Focused regression after the port:
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4_exp.py tests/models/test_qwen4exp_gguf.py \
+  tests/models/test_qwen4exp_gguf_experts.py \
+  tests/moe/test_fused_moe.py::test_fused_topk_falls_back_when_optional_triton_kernel_rejects_geometry -q
+19 passed in 6.35s
+```
+
+Live server configuration: RTX 2070 8 GiB, `--dtype float16`, Q4_K_M GGUF,
+256 file-backed LRU expert slots, `--num-tokens 2048`, QSA page size 4, naive
+cache, one request. It initialized with 1.06 GiB free VRAM.
+
+| request | prompt / completion | result | measured time / server metric |
+| --- | --- | --- | --- |
+| cold smoke | 43 / 1 | HTTP 200 | 78.74 s total; server reported 0.41 input tok/s |
+| repeat | 47 / 7 | HTTP 200 | 112.22 s total; server reported 0.40 input tok/s |
+| second repeat | 47 / 7 | HTTP 200 | 100.60 s total; server reported 0.35 input tok/s, decode line 0.02 tok/s |
+
+The API completion proves that FP16 GDN, QSA, MRoPE, packed Q4_K_M GGUF reads
+and the offloaded three-bank expert path can execute together on SM75. It does
+**not** establish a usable runner: both seven-token responses were nonsensical
+`reasoning_content` fragments rather than the requested `pong`, and the warm
+repeat did not improve materially. Candidate causes to investigate before any
+long-context benchmark are adapter weight mapping/tokenizer-template correctness
+and the still synchronous NVMe expert-miss path. Do not treat these figures as
+a Qwen3.8 performance claim.
