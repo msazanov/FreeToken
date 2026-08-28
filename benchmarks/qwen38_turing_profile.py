@@ -138,10 +138,15 @@ def _wait_for_server(origin: str, process: subprocess.Popen[bytes], timeout_s: f
         if process.poll() is not None:
             raise RuntimeError(f"Qwen process exited during startup with {process.returncode}")
         try:
-            _get_json(origin, "/v1/models", timeout_s=2)
-            return
+            health = _get_json(origin, "/health", timeout_s=2)
         except (OSError, ValueError):
             time.sleep(0.25)
+            continue
+        if health.get("status") == "ok":
+            return
+        if health.get("status") == "error":
+            raise RuntimeError(f"Qwen health reported startup error at {origin}: {health!r}")
+        time.sleep(0.25)
     raise TimeoutError(f"Qwen did not become ready at {origin}")
 
 
