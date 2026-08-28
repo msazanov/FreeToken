@@ -30,6 +30,26 @@ def test_seeded_top_p_retains_first_crossover_token(monkeypatch):
     assert torch.allclose(observed[0], torch.tensor([0.6, 0.4]))
 
 
+def test_seeded_top_p_retains_all_tokens_tied_at_cutoff(monkeypatch):
+    """The kernel keeps every token at the first crossover probability."""
+    observed: list[torch.Tensor] = []
+
+    def capture_multinomial(probs, num_samples, *, generator):
+        observed.append(probs.clone())
+        return torch.zeros(num_samples, dtype=torch.long)
+
+    monkeypatch.setattr(torch, "multinomial", capture_multinomial)
+    _sample_with_generators(
+        torch.log(torch.tensor([[0.4, 0.3, 0.3]])),
+        torch.tensor([1.0]),
+        top_k=None,
+        top_p=torch.tensor([0.5]),
+        generators=[torch.Generator().manual_seed(7)],
+    )
+
+    assert torch.allclose(observed[0], torch.tensor([0.4, 0.3, 0.3]))
+
+
 def test_sampler_entry_point_is_deterministic_for_seeded_cpu_request(monkeypatch):
     """Sampler.prepare + Sampler.sample preserve one seeded request RNG stream."""
     monkeypatch.setattr(

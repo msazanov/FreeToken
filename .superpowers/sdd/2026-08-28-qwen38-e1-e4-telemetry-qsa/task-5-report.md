@@ -44,3 +44,15 @@ Status: implemented and committed in the Task 5 source/test scope.
 - `PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/engine/test_sample.py tests/moe/test_telemetry.py tests/server/test_openai_api.py::test_openai_request_seed_reaches_sampling_parameters tests/benchmarks/test_qwen38_turing_profile.py -q` — `11 passed` (one existing FastAPI/httpx deprecation warning).
 - `py_compile` for the edited sampler and added CPU tests, plus `git diff --check` — passed.
 - No live server, model load, or GPU benchmark was run.
+
+## Fix round 3 — seeded nucleus cutoff ties
+
+- Seeded `top_p` fallback now derives a probability threshold from the first sorted cumulative-mass crossover, then retains every original token whose probability is at least that threshold. This matches the Triton sampler's threshold (`x >= thr`) behavior and preserves ties at the cutoff.
+- Added a direct regression for probabilities `[0.4, 0.3, 0.3]` at `top_p=0.5`; all three probabilities remain eligible after normalization. Existing CPU sampler determinism and standard-prefill trace tests are retained.
+
+### Fix-round verification
+
+- Red phase: `PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/engine/test_sample.py::test_seeded_top_p_retains_all_tokens_tied_at_cutoff -q` — failed as expected before the threshold fix: observed `[0.5714, 0.4286, 0]`.
+- `PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/engine/test_sample.py -q` — `3 passed`.
+- Focused Task 5 regression suite (sampler, prefill trace, runner sanitization, seed adapter, terminal stats/wire) — `28 passed` (one existing FastAPI/httpx deprecation warning); `py_compile` and `git diff --check` also passed.
+- No live server, model load, or GPU benchmark was run.

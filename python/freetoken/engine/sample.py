@@ -75,13 +75,17 @@ def _sample_with_generators(
                 scores = scores.masked_fill(scores < cutoff, float("-inf"))
         probs = torch.softmax(scores, dim=-1)
         if top_p is not None and float(top_p[row].item()) < 1.0:
-            sorted_probs, sorted_ids = probs.sort(descending=True)
-            # Keep every token whose *preceding* cumulative mass is within the
-            # nucleus. This includes the first token that crosses ``top_p`` --
-            # the same inclusive boundary used by the kernel sampler.
-            keep = (sorted_probs.cumsum(dim=-1) - sorted_probs) <= top_p[row]
+            sorted_probs, _ = probs.sort(descending=True)
+            # The kernel samples every probability >= the first cumulative
+            # crossover's probability. Applying the resulting threshold to the
+            # unsorted row keeps ties at that cutoff together.
+            crossover = torch.searchsorted(
+                sorted_probs.cumsum(dim=-1), top_p[row], right=False
+            )
+            threshold = sorted_probs[crossover]
+            keep = probs >= threshold
             filtered = torch.zeros_like(probs)
-            filtered.scatter_(0, sorted_ids, sorted_probs * keep)
+            filtered[keep] = probs[keep]
             probs = filtered / filtered.sum()
         samples.append(torch.multinomial(probs, 1, generator=generator))
     return torch.cat(samples)
