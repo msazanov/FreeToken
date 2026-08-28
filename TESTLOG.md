@@ -321,3 +321,39 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 
 The service again stopped cleanly after the failed child scheduler. No Qwen
 server remains running, and no tok/s result is claimed at this point.
+
+## 2026-08-28 — Qwen3.8 runtime geometry findings
+
+With the full 512-slot file-backed expert cache and a 2,048-token KV cache, the
+server completed initialization but retained only 0.49 GiB VRAM. A first
+one-line request then reached the GDN forward and failed with CUDA OOM in the
+Triton `chunk_fwd_o` kernel. This is a runtime scratch-budget failure; it does
+not prove a model or weight failure.
+
+The first FP16 attempt had failed even earlier because GGUF embeddings and small
+GGUF tensors currently compute in BF16 while the GDN state pool followed the
+requested FP16 dtype. Triton rejected that mixed `bf16`/`fp16` conv state. A
+consistent BF16 diagnostic launch passed that type boundary and reached the OOM,
+which isolates the two problems. Native FP16 remains a required later adapter
+task for SM75; BF16 is used only to expose the remaining functional path.
+
+Trying 256 slots exposed a second generic assumption: engine/cache validation
+required `cache_size >= num_experts` even though the Qwen4 file-backed prefill
+no longer materializes the full layer. No matching FreeToken issue/PR was found
+in the GitHub search. The guard is now parameterized: generic formats still need
+512 slots, while file-backed Qwen4 accepts its router working set (`top_k=10`).
+
+Focused verification after that change:
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/engine/test_cache_budget.py::test_guard_passes_when_size_covers_one_expert_per_layer \
+  tests/engine/test_cache_budget.py::test_guard_raises_actionable_error_when_too_small \
+  tests/engine/test_cache_budget.py::test_file_backed_expert_cache_only_needs_one_routed_token_working_set \
+  tests/models/test_qwen4exp_gguf_experts.py -q
+9 passed in 4.02s
+```
+
+The broader cache-budget file had two pre-existing environment failures because
+its `fi` backend needs FlashInfer, which is not installed. Those are not counted
+as evidence for or against this patch.

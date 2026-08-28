@@ -31,13 +31,22 @@ from freetoken.kvcache.linear_state_pool import (
 logger = init_logger(__name__)
 
 
-def _require_offload_cache_size(cache_size: int, num_experts: int) -> None:
-    """The offload MoE cache needs at least one slot per expert per layer. A too-small size
-    (e.g. a bare offload run with moe_cache_size unset and auto disabled) must fail loudly."""
-    if cache_size < num_experts:
+def _require_offload_cache_size(
+    cache_size: int, num_experts: int, *, minimum_size: int | None = None
+) -> None:
+    """Validate the GPU MoE-slot working set.
+
+    Ordinary host banks prefill a complete layer and therefore need one slot per
+    expert. File-backed Qwen4 GGUF banks route before copying, so their minimum is
+    the router's per-token working set instead; a larger LRU is an optimisation,
+    not a correctness requirement.
+    """
+    required = num_experts if minimum_size is None else minimum_size
+    if cache_size < required:
         raise ValueError(
-            f"moe_cache_size={cache_size} is too small: need at least num_experts={num_experts} "
-            f"slots. Pass --moe-cache-size/--moe-cache-rate, or use --moe-cache-auto "
+            f"moe_cache_size={cache_size} is too small: need at least {required} "
+            f"slots (model has num_experts={num_experts}). "
+            f"Pass --moe-cache-size/--moe-cache-rate, or use --moe-cache-auto "
             f"(the default for offload/hybrid backends when no cache-sizing flag is given; "
             f"--moe-backend cpu always sizes its own fixed two-layer buffer and ignores "
             f"cache-sizing flags)."
@@ -620,7 +629,15 @@ class Engine:
                     f"--moe-cache-auto resolved moe_cache_size={size} "
                     f"num_pages={pages} (prefill_overlap={overlap})"
                 )
-            _require_offload_cache_size(config.moe_cache_size, config.model_config.num_experts)
+            file_backed = bool(
+                banks.layer_residency and "file_backed" in banks.layer_residency
+            )
+            minimum_slots = config.model_config.num_experts_per_tok if file_backed else None
+            _require_offload_cache_size(
+                config.moe_cache_size,
+                config.model_config.num_experts,
+                minimum_size=minimum_slots,
+            )
             cache = OffloadMoeCache(
                 # Models with leading dense layers (GLM-4) only have experts on the MoE
                 # layers; num_moe_layers == num_layers when first_k_dense_replace == 0.
@@ -635,6 +652,7 @@ class Engine:
                 gguf_expert_types=banks.gguf_expert_types,
                 decode_target=decode_target,
                 hybrid_max_fetch=config.moe_hybrid_max_fetch,
+                minimum_cache_size=minimum_slots,
             )
             # before set_bank_sources: the residency validation and the copy plan's skip of non-pinned layers key on the CPU-layer set
             cache.cpu_layer_ids = cpu_layer_ids

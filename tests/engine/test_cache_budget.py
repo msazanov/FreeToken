@@ -397,6 +397,15 @@ def test_guard_raises_actionable_error_when_too_small():
     assert "128" in msg and "moe-cache" in msg
 
 
+def test_file_backed_expert_cache_only_needs_one_routed_token_working_set():
+    """Qwen4 GGUF routes before copying, so it need not reserve a full layer."""
+    from freetoken.engine.engine import _require_offload_cache_size
+
+    _require_offload_cache_size(cache_size=256, num_experts=512, minimum_size=10)
+    with pytest.raises(ValueError, match="10"):
+        _require_offload_cache_size(cache_size=9, num_experts=512, minimum_size=10)
+
+
 def test_adjust_config_defaults_moe_cache_auto_for_auto_resolved_offload_backend():
     """Bare `ft serve <FTW MoE checkpoint>`: no --moe-backend, no --moe-cache-* flags at all.
 

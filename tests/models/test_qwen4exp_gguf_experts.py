@@ -224,3 +224,19 @@ def test_qwen4_file_backed_prefill_routes_experts_instead_of_materializing_layer
     assert seen["ids"].item() == 10
     assert seen["views"] == ("gate-slots", "up-slots", "down-slots")
     assert seen["n"] is None
+
+
+def test_file_backed_qwen_cache_allows_router_sized_lru_on_cpu():
+    """Unlike generic full-layer prefill, Qwen4 GGUF need not reserve 512 slots."""
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=48,
+        num_experts=512,
+        cache_size=10,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+        minimum_cache_size=10,
+    )
+
+    assert cache.cache_size == 10

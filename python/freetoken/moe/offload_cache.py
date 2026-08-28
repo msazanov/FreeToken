@@ -120,6 +120,9 @@ class OffloadMoeCache:
     num_experts: int
     cache_size: int
     device: torch.device
+    # Generic host-bank prefill needs a full layer. File-backed Qwen4 GGUF routes
+    # first and can operate with only the per-token router working set.
+    minimum_cache_size: int | None = None
     cache_policy: str = "lru"
     prefill_overlap: bool = False
     # Prefill hit/miss split: experts already resident in the slot cache (slots
@@ -174,7 +177,8 @@ class OffloadMoeCache:
         # offload/PCIe path. Set by the engine after construction (empty = all-GPU,
         # all layers = the plain --moe-backend cpu case).
         self.cpu_layer_ids: frozenset = frozenset()
-        # num_experts floor + nvfp4_marlin slot cap, shared with the runtime-rebuild path.
+        # Generic full-layer floor (or Qwen4's routed working-set floor) + marlin
+        # cap, shared with the runtime-rebuild path.
         self.validate_rebuild(self.cache_size)
         assert not self.prefill_overlap or self.cache_size >= 2 * self.num_experts, (
             "Prefill overlap borrows two full expert-layer buffers from the unified MoE "
@@ -465,13 +469,14 @@ class OffloadMoeCache:
     def validate_rebuild(self, cache_size: int) -> None:
         """Pure geometry validation of a rebuild target (no GPU side effects).
 
-        Raises ``ValueError`` if ``cache_size`` is below the ``num_experts`` floor or
-        above the marlin slot cap. Called by :meth:`rebuild` and by the engine's
+        Raises ``ValueError`` if ``cache_size`` is below the required working-set
+        floor or above the marlin slot cap. Called by :meth:`rebuild` and by the engine's
         pre-teardown check, so an invalid target rejects with the old cache intact
         (no destructive free first).
         """
-        if cache_size < self.num_experts:
-            raise ValueError(f"cache_size {cache_size} < num_experts {self.num_experts}")
+        required = self.num_experts if self.minimum_cache_size is None else self.minimum_cache_size
+        if cache_size < required:
+            raise ValueError(f"cache_size {cache_size} < required slots {required}")
         if self.quant_format == "nvfp4_marlin" and cache_size > MARLIN_MAX_CACHE_SIZE:
             raise ValueError(
                 f"moe_cache_size={cache_size} exceeds the marlin backend's slot limit of "

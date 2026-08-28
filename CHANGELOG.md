@@ -216,3 +216,13 @@ failed and inconclusive hypotheses; do not rewrite history.
 - Selected file-backed copy is intentionally synchronous today. It is correct
   but a likely dominant cache-miss cost; bounded pinned staging/overlap remains
   a performance experiment after basic end-to-end functionality is proven.
+
+### Accepted file-backed cache floor
+
+- Generic FreeToken requires `moe_cache_size >= num_experts` because generic
+  prefill must materialize a full layer. That consumed 1.14 GiB for 512 Qwen4
+  slots and left too little CUDA scratch space for the first GDN forward.
+- `qwen4_gguf` now uses the router working-set minimum (`top_k=10`) instead.
+  This is safe because the file-backed prefill path routes before copying; it is
+  intentionally an LRU capacity trade-off, not an assertion that ten slots give
+  good cache hits. Generic formats retain the full-layer guard.
