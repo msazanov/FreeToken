@@ -45,6 +45,12 @@ def fused_topk(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
 
+    # The optional and in-tree Triton routers are CUDA kernels.  Keep the
+    # reference implementation available for CPU test/offload paths even when
+    # triton_kernels happens to be installed in the environment.
+    if not gating_output.is_cuda:
+        return _torch_fused_topk(gating_output, topk, renormalize, num_token_non_padded)
+
     from freetoken.kernel.backend import is_triton_kernels_installed
 
     # triton_kernels ships no Windows wheel, and unlike flashinfer/sgl_kernel it is not one
