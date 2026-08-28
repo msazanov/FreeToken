@@ -92,3 +92,12 @@ def test_factory_selects_qsa_pool_for_hybrid_linear_qwen4_config():
     assert isinstance(pool, QSAKVCache)
     assert pool.k_cache(1).dtype is torch.int8
     assert pool.compressed_k_cache(3).dtype is torch.bfloat16
+
+
+def test_qsa_pool_allows_tq4_full_kv_without_quantizing_index_keys():
+    pool = _pool(kv_cache_dtype="tq4-nc")
+
+    assert pool.k_cache(1).dtype is torch.uint8
+    assert pool.k_cache(1).shape[-1] == 4  # packed storage for logical head_dim=8
+    assert pool.logical_head_dim == 8
+    assert pool.compressed_k_cache(1).dtype is torch.bfloat16

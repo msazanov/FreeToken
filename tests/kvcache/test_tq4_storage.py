@@ -37,3 +37,23 @@ def test_tq4_pool_keeps_logical_head_dim_but_allocates_half_width_bytes():
     assert pool.k_cache(0).shape == (5, 4, 2, 4)
     assert pool.k_cache(0).dtype is torch.uint8
     assert pool.k_scale(0).shape == (5, 4, 2)
+
+
+def test_tq4_pool_scatter_matches_reference_packing():
+    from freetoken.kvcache.mha_pool import MHAKVCache
+    from freetoken.kvcache.tq4 import encode_tq4, randomized_hadamard
+
+    pool = MHAKVCache(
+        num_kv_heads=2, num_layers=2, head_dim=8, num_pages=2, page_size=4,
+        dtype=torch.bfloat16, device=torch.device("cpu"), kv_cache_dtype="tq4-nc",
+    )
+    k = torch.tensor([[1.0] * 16, [2.0] * 16], dtype=torch.bfloat16)
+    v = torch.tensor([[3.0] * 16, [4.0] * 16], dtype=torch.bfloat16)
+    rows = torch.tensor([6, 1], dtype=torch.int32)
+    pool.store_kv(k, v, rows, layer_id=1)
+
+    expected, scales = encode_tq4(
+        randomized_hadamard(k.view(2, 2, 8), layer_id=1, num_kv_heads=2)
+    )
+    assert torch.equal(pool.k_cache(1).view(-1, 2, 4)[rows.long()], expected)
+    assert torch.equal(pool.k_scale(1).view(-1, 2)[rows.long()], scales)
