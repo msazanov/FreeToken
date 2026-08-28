@@ -347,3 +347,20 @@ failed and inconclusive hypotheses; do not rewrite history.
   helper, and verifies non-sequential source IDs land in the correct LRU slots
   for all three banks. This makes the optimisation behavioural rather than a
   timing-only change.
+
+### Qwen4 routed prefill avoids flashlib's shape-unrolled LRU JIT
+
+- During the first 56-token probe, the RTX 2070 was idle while one CPU core
+  spent more than five minutes in `ptxas` compiling a 9.7 MiB (188,166-line)
+  PTX file. Inspection identified `_lru_ensure_kernel` from flashlib's slot
+  cache, not Qwen's compute kernels or NVMe I/O. Its sequential victim loop is
+  unrolled to the routed prefill query geometry.
+- File-backed Qwen4 GGUF now uses FreeToken's existing dynamic hybrid-admission
+  kernel with its fetch cap set to the entire cache. Under the same invariant as
+  ordinary LRU (the distinct routed expert count fits the cache), that admits
+  every miss and rewrites the same slot IDs, but does not compile a loop sized
+  to `tokens × top_k`. Other model formats continue to use flashlib unchanged.
+- Upstream/issue search found no existing FlashML fix for this SM75
+  shape-specialisation failure. FreeToken's own supported-model list also does
+  not yet list Qwen3.8 Flash Next or general GGUF MoE; this remains a scoped
+  fork adaptation rather than a claim of upstream support.

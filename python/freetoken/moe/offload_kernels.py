@@ -25,6 +25,20 @@ def ensure_experts(cache, layer_id: int, expert_ids: torch.Tensor) -> None:
     tensor. ``out_indices`` aliases the input, preserving the in-place rewrite every
     downstream GEMM depends on.
     """
+    if cache.is_file_backed_layer(layer_id):
+        # Qwen4 GGUF routes a prefill-sized [tokens, top_k] tensor before it
+        # streams selected expert rows from its mmap.  flashlib's sequential
+        # LRU kernel emits a loop unrolled to that query geometry; on SM75 a
+        # modest 56-token prefill generated a 9.7 MiB PTX and spent minutes in
+        # ptxas.  The in-tree hybrid admission kernel has dynamic `num_active`
+        # and is semantically equivalent when its cap is the whole cache: every
+        # distinct routed expert is admitted, exactly as ordinary offload does.
+        # It also provides the CPU reference path used by unit tests.
+        if expert_ids.is_cuda:
+            _ensure_experts_hybrid_gpu(cache, layer_id, expert_ids, cache.cache_size, 0)
+        else:
+            _ensure_experts_hybrid_cpu(cache, layer_id, expert_ids, cache.cache_size, 0)
+        return
     lru_ensure(
         expert_ids,
         cache.slot_for_id.view(-1),

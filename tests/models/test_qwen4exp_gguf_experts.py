@@ -152,6 +152,36 @@ def test_qwen4_file_backed_copy_batches_selected_rows_without_per_row_dma(monkey
         assert torch.equal(actual[0], source[0][1])
 
 
+def test_qwen4_file_backed_lru_admission_avoids_shape_unrolled_flashlib_kernel(monkeypatch):
+    """Qwen routed prefill must use the dynamic in-tree admission implementation."""
+    from freetoken.moe import offload_kernels
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=1,
+        num_experts=4,
+        cache_size=4,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+    )
+    source = torch.arange(4 * 2 * 3, dtype=torch.uint8).reshape(4, 2, 3)
+    cache.set_bank_sources(
+        {"gate": [source], "up": [source], "down": [source]},
+        layer_residency=["file_backed"],
+    )
+    ids = torch.tensor([[3, 1, 3]], dtype=torch.int32)
+
+    def unexpected_flashlib(*_args, **_kwargs):
+        raise AssertionError("file-backed Qwen must not compile flashlib's static LRU kernel")
+
+    monkeypatch.setattr(offload_kernels, "lru_ensure", unexpected_flashlib)
+    cache.ensure_experts(0, ids)
+
+    assert sorted(cache.src_indices[: int(cache.num_indices.item())].tolist()) == [1, 3]
+    assert (ids >= 0).all()
+    assert ids[0, 0].item() == ids[0, 2].item()
+
+
 def test_qwen4_gguf_dispatch_passes_three_quant_types(monkeypatch):
     """The separate banks must reach a separate-projection GGUF GEMV path."""
     from freetoken.layers.moe import OffloadMoELayer

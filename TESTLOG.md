@@ -626,3 +626,40 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 Next measurement: restart the server from this commit, repeat the known 28- and
 56-token probes, and only then extend the context ladder. The entry deliberately
 does not claim a context-speed win until that end-to-end evidence exists.
+
+## 2026-08-28 — 56-token JIT root cause and dynamic LRU admission
+
+The 56-token request did not reach GPU execution before its 180-second client
+timeout. Process inspection showed the scheduler worker waiting for one
+single-core `ptxas` child, not blocked on NVMe or memory pressure:
+
+```text
+ptxas --gpu-name sm_75 /tmp/tmp1xqcu6bo.ptx
+PTX size: 9.7 MiB, 188166 lines
+entry point: _lru_ensure_kernel
+```
+
+That entry is flashlib's sequential LRU-admission strategy. Qwen's routed
+prefill passes a `[tokens, top_k]` expert-ID tensor, so at 56 tokens it can
+present 560 IDs; the static victim loop makes compilation proportional to that
+shape. The cancelled old server was stopped after the client timed out, with
+VRAM returning to 9 MiB.
+
+The replacement applies only to `qwen4_gguf` file-backed layers: it calls
+FreeToken's dynamic hybrid LRU kernel with `max_fetch = cache_size`, which is
+equivalent to ordinary all-miss admission whenever the normal LRU capacity
+precondition holds. Its CPU reference and GPU implementation are already
+cross-tested in `tests/moe/test_hybrid_fetch.py`.
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/moe/test_hybrid_fetch.py tests/models/test_qwen4_exp.py \
+  tests/models/test_qwen4exp_gguf.py tests/models/test_qwen4exp_gguf_experts.py \
+  tests/moe/test_fused_copy.py \
+  tests/moe/test_fused_moe.py::test_fused_topk_falls_back_when_optional_triton_kernel_rejects_geometry -q
+33 passed in 13.20s
+```
+
+No end-to-end 56-token result is claimed yet. The next server run is the first
+validation that the dynamic GPU kernel compiles quickly and preserves Qwen's
+actual routed prefill behaviour.
