@@ -542,3 +542,18 @@ failed and inconclusive hypotheses; do not rewrite history.
   disk-backed Q4_K_M runtime. Decode still has zero global-LRU hits despite a
   38.58% stationary per-layer oracle, making layer-aware cache partitioning the
   next evidence-backed optimisation rather than a larger undifferentiated LRU.
+
+### Verified — complete 64K Qwen3.8 profile and cache-policy gate
+
+- The bounded 16 MiB QSA score workspace completed a fixed-seed 65,548-token
+  prompt plus 255 generated tokens on RTX 2070 Mobile.  End-to-end prefill was
+  38.16 tok/s and decode was 1.614 tok/s; peak sampled VRAM was 7,774 MiB.
+- The 64K trace proves global LRU cross-layer thrashing: all 122,400 decode
+  layer-expert references missed and were evicted, while the measured
+  stationary per-layer oracle is 39.01% at the same 256-slot capacity.  The
+  next controlled implementation is a protected per-layer VRAM allocation,
+  not a larger global cache.
+- Only 12.02 MiB of process physical reads occurred in the warm run, whereas
+  the expert path copied 252.24 GB host-to-device.  Linux page cache already
+  served as the effective RAM tier here; a pinned-RAM L2 stays deferred until a
+  matched cache-policy result proves a residual disk bottleneck.

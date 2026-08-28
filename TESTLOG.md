@@ -1091,3 +1091,46 @@ route locality, is the next decode optimisation target.
 Raw reproducible evidence:
 `benchmarks/results/qwen38-e1e4-16k-ws16-top10-router/context-16384.json`
 and its sibling stdout/stderr logs.
+
+## 2026-08-29 — Qwen3.8 64K TQ4-NC profile (complete)
+
+The identical fixed-seed configuration completed a real 65,548-token prompt
+and 255 generated tokens at a 73,728-token allocation ceiling.  This is the
+first complete 64K result on the page-size-4/TQ4-NC Q4_K_M path after replacing
+the unbounded QSA score temporary with its bounded 16 MiB workspace.
+
+| metric | result |
+| --- | ---: |
+| complete request wall time | 1,874.98 s |
+| end-to-end prompt throughput | 38.16 tok/s |
+| steady 1,024-token prefill chunks | 38.03–41.49 tok/s |
+| end-to-end decode throughput | 1.614 tok/s |
+| mean / peak sampled GPU util. | 84.75% / 98% |
+| peak sampled VRAM | 7,774 MiB |
+| process physical reads | 12.02 MiB |
+| major / minor faults | 2,604 / 54,386 |
+
+The initially reported 0.02 tok/s decode step is one-time transition work; the
+subsequent 40-token decode reports were 1.66, 1.67, 1.72, 1.72 and 1.74 tok/s.
+The runner's 1.614 tok/s is the correct end-to-end figure because it includes
+that transition and all 255 output tokens.
+
+The expert telemetry decisively rejects the current global cache policy for
+decode.  Each of the 255 tokens activated ten distinct experts in each of 48
+MoE layers: 122,400 references, 122,400 unique layer-expert requests, 0 L1
+hits, 122,400 misses and 122,400 evictions.  The three-bank H2D path copied
+252.24 GB in total.  In contrast, the per-layer stationary frequency oracle is
+39.01% at the same 5.33 slots/layer, with mean/max observed working-set sizes
+128.25/208 experts.  Therefore the next cache A/B is justified: retain the
+same 256 slots, reserve a bounded per-layer protected pool, and compare it
+against this global-LRU control before adding a RAM L2 or speculative prefetch.
+
+The low 12.02 MiB process read delta means this warm run was served principally
+from Linux's file-backed page cache, not fresh NVMe reads.  Its immediate
+bottleneck is repeated RAM-to-VRAM expert movement and global-LRU eviction;
+an explicit pinned-RAM L2 is deferred until it can beat this page-cache-only
+control without additional swap pressure.
+
+Raw reproducible evidence:
+`benchmarks/results/qwen38-e1e4-64k-ws16-top10-router/context-65536.json`
+and its sibling stdout/stderr logs.
