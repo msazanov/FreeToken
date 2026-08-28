@@ -261,3 +261,41 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 This establishes that file-backed prefill will not **unconditionally** copy all
 512 experts. It does not yet establish prompt throughput: the next result must
 come from a real Qwen request.
+
+## 2026-08-28 — Qwen3.8 first real service-load attempts
+
+Test geometry: current Qwen branch, RTX 2070 8 GiB, `float16`, 512 file-backed
+expert slots, 2,048-token KV, one request, port 1920 loopback. This small KV
+budget was intentional: it isolates compatibility/loading before any long-context
+claim. Ornith was not restarted or altered.
+
+1. The first command used the venv's older editable checkout and failed before
+   engine load: `AutoConfig` looked for a nonexistent `config.json` and the
+   tokenizer worker could not construct a HF tokenizer. This was a launch-path
+   error, not a Qwen weight error. The corrected command runs the current branch
+   with `PYTHONPATH=.../freetoken/python python -m freetoken.cli`.
+2. The corrected engine resolved `qwen4exp`, selected the QSA backend, disabled
+   CUDA graphs (expected for host-side PLE work), and intentionally selected a
+   naive cache because Qwen-owned runtime state cannot safely resume a generic
+   radix prefix. It then failed in the tokenizer worker with
+   `KeyError: 'qwen4exp'` from Transformers' GGUF converter. A red regression
+   test captured that missing mapping; `qwen4exp -> qwen2` made the relevant
+   tokenizer/adapter suite pass.
+3. The same launch had progressed into weight loading and stopped at
+   `KeyError: model.layers.1.ple.key_proj.qweight`. Direct inspection of the
+   actual first shard found `blk.1.ple_key.weight` and
+   `blk.1.ple_value.weight`, proving that the checkpoint is not missing them.
+   The iterator lacked their output mapping. A red synthetic-GGUF test captured
+   it; both now yield the expected packed projection names.
+
+Post-fix verification:
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4exp_gguf.py tests/models/test_qwen4_exp.py \
+  tests/models/test_qwen4exp_gguf_experts.py tests/models/test_gguf_dispatch.py -q
+32 passed in 9.85s
+```
+
+No answer-generation or tok/s result exists yet. The next live launch is the
+required evidence for that stage.

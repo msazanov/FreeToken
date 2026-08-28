@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import torch
+
 from freetoken.models.gguf.config import GgufConfigShim
 
 
@@ -80,3 +82,45 @@ def test_qwen4exp_gguf_is_registered_with_the_native_weight_iterator():
     assert registry_key == "Qwen4ExpGGUFForCausalLM"
     assert spec.module == "freetoken.models.qwen4_exp"
     assert spec.iter_weights == "iter_gguf_weights"
+
+
+def test_qwen4exp_gguf_uses_qwen2_bpe_tokenizer_converter():
+    """Transformers has no ``qwen4exp`` GGUF converter key yet.
+
+    Qwen3.8's GGUF tokenizer is GPT2-style BPE, like Qwen3.x; routing it to the
+    qwen2 converter keeps the embedded tokenizer self-contained.
+    """
+    from freetoken.models.gguf.tokenizer import _STOP_TOKENS, _TOKENIZER_ARCH
+
+    assert _TOKENIZER_ARCH["qwen4exp"] == "qwen2"
+    assert "<|im_end|>" in _STOP_TOKENS["qwen4exp"]
+
+
+def test_qwen4exp_gguf_yields_packed_ple_key_and_value_projections(monkeypatch):
+    """PLE's two projections are resident GGUF operators, not part of its mmap table."""
+    from freetoken.distributed.info import set_tp_info, try_get_tp_info
+    from freetoken.models.qwen4_exp import gguf
+    import freetoken.models.gguf.reader as reader
+    import freetoken.utils as hf_utils
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+
+    class _Tensor:
+        def __init__(self, name):
+            self.name = name
+
+        def packed(self):
+            return torch.ones(2, 3, dtype=torch.uint8)
+
+    monkeypatch.setattr(hf_utils, "cached_load_hf_config", lambda _path: _real_qwen4exp_shim())
+    monkeypatch.setattr(reader, "iter_gguf_tensors", lambda _path: iter((
+        _Tensor("blk.1.ple_key.weight"),
+        _Tensor("blk.1.ple_value.weight"),
+    )))
+    monkeypatch.setattr(gguf, "_scan_quant_types", lambda _path: {})
+
+    weights = dict(gguf.iter_gguf_weights("/fixture.gguf", "cpu", include_moe_experts=False, include_non_moe=True))
+
+    assert "model.layers.1.ple.key_proj.qweight" in weights
+    assert "model.layers.1.ple.value_proj.qweight" in weights

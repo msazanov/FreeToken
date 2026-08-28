@@ -418,6 +418,10 @@ def iter_gguf_weights(
                 config.qwen4_args.ple_conv_kernel_size,
             )
             continue
+        if suffix in ("ple_key.weight", "ple_value.weight"):
+            target = "key_proj" if suffix == "ple_key.weight" else "value_proj"
+            yield f"{base}.ple.{target}.qweight", tensor.packed()
+            continue
         if suffix in ("attn_q_norm.weight", "attn_k_norm.weight"):
             target = "q_norm" if suffix.startswith("attn_q") else "k_norm"
             yield f"{base}.self_attn.{target}.weight", _to_bf16(tensor) - 1

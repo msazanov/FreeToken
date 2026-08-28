@@ -184,3 +184,19 @@ failed and inconclusive hypotheses; do not rewrite history.
 - This is a correctness and capacity change, not a claimed long-prompt speedup:
   a large prompt can still route many distinct experts. The upcoming live server
   test must measure how many are actually selected and its prefill/TTFT cost.
+
+### Qwen3.8 first live-load blockers, fixed locally
+
+- The pure GGUF directory deliberately has no HF `config.json` or tokenizer files.
+  This is supported by the current branch: its first shard carries the model
+  configuration and tokenizer. An initial launch accidentally used an older
+  editable checkout, which bypassed that code; all subsequent launches use the
+  current branch explicitly through `PYTHONPATH` and `python -m freetoken.cli`.
+- Current `transformers` has no GGUF converter named `qwen4exp`. Qwen3.8 retains
+  Qwen's GPT2-style BPE, so the adapter now maps it to the existing `qwen2`
+  converter and its ordinary Qwen turn-end tokens.
+- The first true load then exposed two missing mappings in the Qwen4 GGUF weight
+  iterator. `blk.1.ple_key.weight` and `blk.1.ple_value.weight` were present in
+  the AtomicChat Q4_K_M tensor table but were never yielded, causing a
+  `KeyError` in `load_state_dict`. They now map to the two packed PLE projection
+  operators. Both fixes have focused regression tests.
