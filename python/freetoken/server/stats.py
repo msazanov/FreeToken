@@ -37,6 +37,7 @@ class StatsTracker:
         self.swa_used_tokens = 0
         self.swa_total_tokens = 0
         self.vram_bytes = 0
+        self.moe_stats: dict[str, object] | None = None
 
     @property
     def active(self) -> int:
@@ -75,6 +76,9 @@ class StatsTracker:
         if getattr(reply, "gpu_mem_bytes", 0) > 0:
             self.vram_bytes = reply.gpu_mem_bytes
         if getattr(reply, "finished", False):
+            moe_stats = getattr(reply, "moe_stats", None)
+            if moe_stats is not None:
+                self.moe_stats = moe_stats
             uid = getattr(reply, "uid", None)
             if uid in self._inflight:
                 self._inflight.discard(uid)
@@ -159,6 +163,7 @@ def build_stats(state: Any, p95_ms: int, ttft_mean_ms: int) -> dict:
         "kv": kv,
         "mamba": mamba,
         "swa": swa,
+        "moe": tr.moe_stats,
         "vram_bytes": tr.vram_bytes,
         "gpus": list(getattr(state, "gpus", None) or []),
         "throughput": {

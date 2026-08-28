@@ -56,6 +56,8 @@ class UserReply(BaseFrontendMsg):
     finish_reason: str | None = None
     # The stop string that ended generation (Anthropic reports it as stop_reason='stop_sequence').
     matched_stop: str | None = None
+    # Bounded terminal MoE telemetry, present only when telemetry collection is enabled.
+    moe_stats: dict[str, object] | None = None
 
 
 @dataclass

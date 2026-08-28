@@ -388,6 +388,13 @@ class Scheduler(SchedulerIOMixin):
                     self.cache_manager.cache_req(req, finished=False)
 
         self.finished_reqs = new_finished_reqs
+        if getattr(self.config, "moe_collect_stats", False) and any(m.finished for m in reply):
+            cache = self.engine.moe_offload_cache
+            moe_stats = cache.telemetry_snapshot() if cache is not None else None
+            if moe_stats is not None:
+                for m in reply:
+                    if m.finished:
+                        m.moe_stats = moe_stats
         # Stamp each reply with the post-batch KV page occupancy so the frontend (shell
         # status bar) can show live KV usage without a separate query.
         used, total = self._kv_usage_pages()
@@ -520,6 +527,10 @@ class Scheduler(SchedulerIOMixin):
                 logger.warning_rank0(
                     f"Adjust max_tokens to {max_output_len} for request {msg.uid}."
                 )
+            if getattr(self.config, "moe_collect_stats", False):
+                cache = self.engine.moe_offload_cache
+                if cache is not None:
+                    cache.reset_stats()
             self.prefill_manager.add_one_req(msg)
         elif isinstance(msg, AbortBackendMsg):
             logger.debug_rank0("Aborting request %d", msg.uid)
