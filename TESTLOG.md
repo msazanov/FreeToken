@@ -237,3 +237,27 @@ no inference service active.
   are the current bottleneck.
 - Unit coverage after the implementation:
   `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/models/test_qwen4exp_gguf_experts.py -q` → `4 passed`.
+
+## 2026-08-28 — Qwen3.8 file-backed routed-prefill regression
+
+The first implementation of `qwen4_gguf` still inherited the generic prefill
+contract, which calls `materialize_layer(layer_id)` before the MoE router has
+selected experts. The new focused regression test intentionally made that method
+raise. It failed at `python/freetoken/layers/moe.py:400`, proving the full-layer
+path was still active. The corrected path calls `ensure_experts` and
+`copy_missing`, then runs the compact GPU slots; the test also verifies rewritten
+LRU slot ids, the three-bank views, `n=None`, and `is_prefill=True`.
+
+Verification after the change:
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4exp_gguf_experts.py tests/models/test_qwen4exp_gguf.py \
+  tests/models/test_qwen4_exp.py tests/models/test_gguf_type_tables.py \
+  tests/moe/test_fused_copy.py -q
+22 passed in 6.81s
+```
+
+This establishes that file-backed prefill will not **unconditionally** copy all
+512 experts. It does not yet establish prompt throughput: the next result must
+come from a real Qwen request.

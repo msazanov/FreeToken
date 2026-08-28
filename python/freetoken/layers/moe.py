@@ -377,12 +377,29 @@ class OffloadMoELayer(MoELayer):
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
     ) -> torch.Tensor:
-        """Prefill movement: stream whole layers -- double-buffered behind the
-        previous layer's GEMMs when ``prefill_overlap`` is on, else a synchronous
-        ``materialize_layer``. In both, position == expert id, so the routing ids
-        pass through unmapped."""
+        """Prefill movement for the routed experts.
+
+        Regular host banks stream the complete expert layer: their position is
+        the original expert id.  GGUF file-backed banks cannot do that without
+        faulting the entire layer from NVMe, so they use the normal decode cache
+        path instead: route first, copy only selected experts into LRU slots,
+        then run GEMV against those slots.
+        """
         cache = self.offload_cache
         assert cache is not None
+        if cache.is_file_backed_layer(self.layer_id):
+            cache.ensure_experts(self.layer_id, topk_ids)
+            cache.copy_missing()
+            return self._expert_gemm(
+                cache,
+                hidden_states,
+                topk_weights,
+                topk_ids,
+                views=cache.bank_views(),
+                n=None,
+                alphas=cache.alphas_for_slots(self.layer_id),
+                is_prefill=True,
+            )
         if cache.prefill_overlap:
             views = self._wait_prefill_overlap(cache)
             out = self._expert_gemm(

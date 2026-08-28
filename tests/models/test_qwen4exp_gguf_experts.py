@@ -169,3 +169,58 @@ def test_qwen4_gguf_dispatch_passes_three_quant_types(monkeypatch):
     assert calls[0][1]["gate_quant_type"] == GGML_IQ2_S
     assert calls[0][1]["up_quant_type"] == GGML_IQ2_S
     assert calls[0][1]["down_quant_type"] == GGML_IQ4_NL
+
+
+def test_qwen4_file_backed_prefill_routes_experts_instead_of_materializing_layer(monkeypatch):
+    """NVMe-backed prefill must not copy all 512 experts before routing."""
+    from freetoken.distributed.info import set_tp_info, try_get_tp_info
+    from freetoken.layers.moe import OffloadMoELayer
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+
+    events = []
+
+    class _Cache:
+        prefill_overlap = False
+
+        def is_file_backed_layer(self, layer_id):
+            assert layer_id == 0
+            return True
+
+        def ensure_experts(self, layer_id, ids):
+            events.append("ensure")
+            ids.add_(10)  # model the normal LRU rewrite to GPU slots
+
+        def copy_missing(self):
+            events.append("copy")
+
+        def bank_views(self):
+            return ("gate-slots", "up-slots", "down-slots")
+
+        def alphas_for_slots(self, layer_id):
+            return None
+
+        def materialize_layer(self, layer_id):
+            raise AssertionError("file-backed prefill must not materialize a whole expert layer")
+
+    layer = OffloadMoELayer(
+        layer_id=0, num_experts=2, top_k=1, hidden_size=8, intermediate_size=4, activation="silu"
+    )
+    layer.offload_cache = _Cache()
+    seen = {}
+
+    def fake_gemm(_self, _cache, _hidden, _weights, ids, **kwargs):
+        seen["ids"] = ids.clone()
+        seen.update(kwargs)
+        return torch.full((1, 8), 3.0)
+
+    monkeypatch.setattr(OffloadMoELayer, "_expert_gemm", fake_gemm)
+    ids = torch.zeros(1, 1, dtype=torch.int32)
+    result = layer._prefill_routed(torch.zeros(1, 8), torch.ones(1, 1), ids)
+
+    assert torch.equal(result, torch.full((1, 8), 3.0))
+    assert events == ["ensure", "copy"]
+    assert seen["ids"].item() == 10
+    assert seen["views"] == ("gate-slots", "up-slots", "down-slots")
+    assert seen["n"] is None

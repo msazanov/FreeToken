@@ -173,3 +173,14 @@ failed and inconclusive hypotheses; do not rewrite history.
   GPU GEMV work. The cold first expert selection is still far too expensive for
   a useful agent runtime, so the next accepted work is a bounded pinned staging
   buffer plus routed (rather than full-layer) file-backed prefill.
+
+### Accepted routed prefill for file-backed experts
+
+- `OffloadMoELayer._prefill_routed` now distinguishes ordinary RAM banks from
+  `qwen4_gguf` file-backed banks. The former retain the existing full-layer DMA
+  choreography. The latter route tokens first, promote only selected experts to
+  LRU GPU slots, and invoke the compact-slot GEMV path. This removes an otherwise
+  unavoidable NVMe sweep of all 512 experts for every Qwen MoE layer.
+- This is a correctness and capacity change, not a claimed long-prompt speedup:
+  a large prompt can still route many distinct experts. The upcoming live server
+  test must measure how many are actually selected and its prefill/TTFT cost.
