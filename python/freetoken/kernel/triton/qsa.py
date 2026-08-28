@@ -181,7 +181,9 @@ def _qsa_sparse_gqa_tq4_kernel(
         )
         k_codes = tl.where(use_low_nibble[:, None], k_bytes & 0x0F, k_bytes >> 4)
         k_scale = tl.load(k_scale_ptr + physical * stride_ksr + kv_head * stride_ksh, mask=valid, other=0.0)
-        k = tl.load(centroids_ptr + k_codes).to(tl.float32) * k_scale[None, :]
+        # Turing has FP16, not BF16, Tensor Cores.  Accumulate the scale in fp32,
+        # then match Q's compute dtype for the Tensor-Core dot.
+        k = (tl.load(centroids_ptr + k_codes).to(tl.float32) * k_scale[None, :]).to(q.dtype)
         scores = tl.dot(q, k) * scale
         scores = tl.where(valid[None, :], scores, -float("inf"))
         new_max = tl.maximum(running_max, tl.max(scores, axis=1))
@@ -195,7 +197,7 @@ def _qsa_sparse_gqa_tq4_kernel(
         )
         v_codes = tl.where(use_low_nibble[None, :], v_bytes & 0x0F, v_bytes >> 4)
         v_scale = tl.load(v_scale_ptr + physical * stride_vsr + kv_head * stride_vsh, mask=valid, other=0.0)
-        v = tl.load(centroids_ptr + v_codes).to(tl.float32) * v_scale[:, None]
+        v = (tl.load(centroids_ptr + v_codes).to(tl.float32) * v_scale[:, None]).to(q.dtype)
         acc += tl.dot(probs.to(v.dtype), v)
         running_max = new_max
     output = tl.where(running_sum[:, None] > 0, acc / running_sum[:, None], 0.0)
