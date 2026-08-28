@@ -463,3 +463,55 @@ failed and inconclusive hypotheses; do not rewrite history.
   aggregate speed result because its manual control client did not preserve the
   final wall-clock JSON artifact; automated 64K/112K runs must use the checked-in
   benchmark runner so artifacts and `slices.jsonl` are written together.
+
+### Rejected — current 64K token-major runtime is not yet viable
+
+- A 2,048-token scheduler chunk exhausts GDN/FLA workspace early. Reducing the
+  chunk to 1,024 avoids that immediate failure and sustains approximately
+  8.8–10.0 prefill tok/s, but the request still OOMs around 45K when QSA creates
+  a 78 MiB dense score output. The incomplete run is retained in `TESTLOG.md`;
+  it is neither a decode result nor a quality result.
+- The same run combines roughly 575–590 MiB/s NVMe reads and about 25% sampled
+  GPU utilisation, while the drive's direct sequential ceiling is about
+  1.50 GB/s. The accepted next architecture is therefore phase-aware: bounded
+  QSA workspace first, then layer-major expert-deduplicated prefill and a
+  separately measured decode cache.
+
+### Proposed — evidence-gated Qwen3.8 runtime optimisation cycle
+
+- Prior-art review found direct implementations of layer-major expert dedup,
+  offset-sorted reads and asynchronous staging in Flash-MoE/S-MoE, Qwen state
+  snapshots and bounded QSA in FreeToken PR #257, and reusable oracle telemetry
+  in FreeToken PR #231. The design adopts those mechanisms instead of inventing
+  a second model runtime.
+- A public Qwen hardware-fit FreeToken draft already implements fixed-record
+  file experts but concludes that its synchronous SSD path requires implausible
+  2.30–4.59 GB/s at realistic miss rates. A sidecar is therefore deferred until
+  dedup and asynchronous reads have measured the residual layout cost.
+- The former proposal for an immediate 8–12 GiB pinned RAM L2 is narrowed. The
+  default first experiment keeps Linux page cache as L2 and allocates only a
+  bounded pinned staging pool; an explicit RAM cache must beat page-cache-only
+  under the same 32 GiB memory wall without increasing destructive swap.
+- The complete proposed architecture, acceptance thresholds and rollback flags
+  are recorded in
+  `docs/superpowers/specs/2026-08-28-qwen38-turing-runtime-optimization-design.md`.
+
+### Revised — independent Sol Ultra review closes design gaps
+
+- An independent read-only `gpt-5.6-sol` Ultra review compared the proposed
+  runtime design with the current mixed-IQ GGUF/TQ4 implementation, all retained
+  measurements and upstream Qwen PR #257. Its blocking claims were rechecked
+  locally before the specification was changed.
+- The first implementation scope is narrowed to existing-telemetry wiring and a
+  page-size-4/TQ4-compatible fused QSA scorer. Page size 64, recurrent-state
+  snapshots, hybrid radix and CUDA graph now have separate parity gates.
+- Layer-major scheduling is separated from a future grouped IQ2_S/IQ3_S/IQ4_NL
+  kernel. At reuse slab 1,024, perfect within-slab expert dedup has a 53.32
+  MiB/token floor versus 61.17--62.77 MiB/token observed, so the former 50%
+  physical-byte and mandatory 2x gates were removed as unsupported.
+- The design now uses a single-variable E0--E17 experiment sequence, explicit
+  rollback conditions, matched Ornith controls, full numerical/quality gates,
+  linked staging-buffer geometry and conservative Linux page-cache handling.
+- The current 16K configuration is relabelled execution-valid rather than a
+  completed long-context quality baseline; the approximately 9.4 tok/s 64K
+  value remains an incomplete boundary observation.

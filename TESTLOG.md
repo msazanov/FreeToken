@@ -919,3 +919,100 @@ limit was applied.  A plot point is deliberately not appended to
 interrupted/re-attached control command was not retained, so an aggregate tok/s
 would be invented.  The next automated context point must use the benchmark
 runner, which writes both its raw JSON and the slice row atomically.
+
+## 2026-08-28 — Qwen3.8 64K TQ4-NC boundary (incomplete, retained)
+
+Model and compute path were unchanged from the complete 16K run: AtomicChat
+Qwen3.8 Flash Next Q4_K_M, FP16 activations, TQ4-NC QSA KV, 256 routed-expert
+slots, offload backend, naive cache, one request and normal cooling. The server
+reserved 65,536 tokens, reported 0.57 GiB for K+V and 0.66 GiB free after
+initialisation. CUDA graphs remained disabled because the GGUF Qwen path still
+performs host-side work.
+
+Two scheduler-chunk configurations were tested:
+
+| maximum prefill chunk | result | observed evidence |
+| ---: | --- | --- |
+| 2,048 | failed near the beginning | GDN/FLA launch returned CUDA OOM; this configuration did not establish a speed row |
+| 1,024 | progressed to about 45K tokens, then failed | steady chunks were mostly 8.81–10.03 tok/s; QSA `torch.mm` requested 78 MiB with 84.81 MiB free |
+
+The 1,024-token run reached scheduler `token usage: 0.69` before failure. It did
+not produce an HTTP completion, decode measurement or quality result and must
+not be plotted as a complete 64K point. The request output budget was reduced to
+15 tokens by the scheduler because the configured reserve margin was small.
+
+Contemporaneous worker profiling measured about 2.45 CPU cores, roughly
+575–590 MiB/s physical reads, about 1,700 major faults/s and approximately 25%
+mean sampled GPU utilisation. A direct 512 MiB sequential NVMe read reached
+about 1.50 GB/s. The result therefore exposes two independent limits: repeated
+page-faulted expert traffic starves the GPU during the long prefill, and QSA's
+nominal row budget does not bound its total simultaneous score/top-k workspace,
+eventually exhausting the remaining VRAM. The raw
+one-second sampler stream was not retained, so these profile aggregates are
+supporting observations rather than independently replayable benchmark rows.
+
+Raw server logs are retained at:
+
+- `benchmarks/results/2026-08-28-qwen38-64k-boundary/qwen38-64k-chunk2048.log`;
+- `benchmarks/results/2026-08-28-qwen38-64k-boundary/qwen38-64k-chunk1024.log`.
+
+Their SHA-256 digests are respectively
+`5f10f7e4d8727a9cff423c265e731d8838b4d38a08a5bc8b08843d435cc1698e` and
+`83b6ec784ebd36135292f1492498d1ab67e54c2ce22bc4ca93f14cfbf45a01df`.
+
+No fixed GPU power, clock or thermal limit was applied. The Qwen service exited
+after each scheduler failure and the GPU returned to its idle allocation.
+
+## 2026-08-28 — Sol Ultra adversarial review of the Qwen runtime design
+
+This was a read-only architecture review of the proposed optimisation cycle,
+not an inference benchmark. A native Codex `gpt-5.6-sol` critic at `ultra`
+reasoning inspected the design, this test log, the current branch and fetched
+`upstream/feat/qwen4-exp-squashed`. The main agent then verified the blocking
+claims directly against the local source before accepting them.
+
+Verified corrections:
+
+- the local QSA scorer is already row-chunked with a nominal 128 MiB score
+  budget; the 64K failure occurs inside that chunked `torch.mm`, so another
+  Python row loop is not a capacity fix;
+- upstream PR #257 uses page-size-64 semantics and an unpacked equal-dtype Q/K/V
+  attention kernel, while the local path is page size 4 with scale-aware
+  TQ4-NC attention; only scorer/top-k semantics may be ported first;
+- the existing GGUF expert source is already expert-major, but the current
+  mixed-IQ MMVQ kernel executes by `(token, route)` and invokes gate/up/down
+  separately; layer-major scheduling and a grouped mixed-IQ kernel are distinct
+  experiments;
+- much of PR #231's MoE telemetry already exists in `EngineConfig` and
+  `OffloadMoECache`; the missing work is CLI/report wiring plus a bounded
+  prefill route/copy trace;
+- the 256-slot cache uses global flat tags, so `5 * 48 + 16` is only a guarded
+  batch-size-one candidate and needs new admission/eviction invariants;
+- current QSA pending state, PLE host state and the forced naive/no-CUDA-graph
+  config prevent treating page-size migration, hybrid radix and CUDA graph as
+  one feature.
+
+The decisive I/O calculation is retained explicitly. With a 1,024-token reuse
+slab and full 512-expert coverage, reading every layer-expert record once costs
+`48 * 512 * 2,329,600 / 1,024 = 53.32 MiB/token`. The observed physical read
+rate was 61.17--62.77 MiB/token. Therefore within-slab dedup alone has only
+about 13--15% physical-I/O headroom. Cutting physical bytes in half requires a
+mean of at most about 293 unique experts/layer or equivalent stable RAM/VRAM
+residency. Neither has been measured yet.
+
+Rejected as unsupported by existing evidence:
+
+- a fixed 50% physical-byte reduction from slab-1,024 layer-major execution;
+- a mandatory 2x 64K gain from dedup/sorted reads/pinned overlap;
+- treating the incomplete approximately 9.4 tok/s run as a completed 64K
+  benchmark;
+- calling the one-token synthetic 16K run a long-context quality baseline;
+- using `mincore` as hit attribution or `MADV_DONTNEED` in the default path;
+- treating pinned host staging as memory that can become VRAM expert slots;
+- merging PR #257 wholesale into the local GGUF/TQ4/SM75 branch.
+
+The corrected initial GO scope is telemetry wiring followed by a fused,
+head-reduced QSA scorer on the existing page-size-4/TQ4 path. Workspace trials
+are ordered 8, 16 and 32 MiB; 48 MiB is deferred because it has the same two
+64K score passes as 32 MiB while consuming about 20 MiB more lower-bound
+temporary space. No new GPU run was performed during this review.

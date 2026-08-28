@@ -1,0 +1,149 @@
+[1m[2026-08-28|18:42:37][0m [32mINFO    [0m Parsed arguments:
+ServerArgs(model_path='/home/random/dev/qwen/models/atomicchat-qwen38-q4km/Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64', tp_info=DistributedInfo(rank=0, size=1), dtype=torch.float16, kv_cache_dtype='tq4-nc', max_running_req=1, attention_backend='auto', moe_backend='offload', nvfp4_backend='triton', expert_load='auto', moe_cache_size=256, moe_cache_rate=None, moe_cache_auto=False, kv_reserve_tokens=8192, moe_cache_policy='lru', moe_prefill_overlap=False, moe_prefill_hit_d2d=False, moe_collect_stats=False, moe_cpu_threads=0, moe_cpu_layers=None, moe_hybrid_max_fetch=-1, cuda_graph_bs=None, cuda_graph_max_bs=0, page_size=4, memory_ratio=0.85, linear_state_cache_ratio=2.0, swa_full_tokens_ratio=0.2, swa_num_pages_override=None, distributed_timeout=60.0, use_dummy_weight=False, use_pynccl=True, max_seq_len_override=65536, num_page_override=None, num_token_override=65536, max_extend_tokens=1024, cache_type='naive', offline_mode=False, decode_log_interval=8, special_token_ckpt=False, _unique_suffix='.pid=227193', server_host='127.0.0.1', server_port=1920, num_tokenizer=0, silent_output=False, shell_mode=False, served_model_name='Qwen 3.8 Flash Next Q4_K_M', tool_call_parser='qwen', reasoning_parser='qwen3', sampling_defaults='model', max_output_tokens=384, enable_cache_report=True, cors_origins='tauri://localhost,http://tauri.localhost,http://localhost:1420', gpu=(), gpu_assigned=None)
+[1m[2026-08-28|18:43:00|FrontendAPI][0m [32mINFO    [0m Default sampling config (source=model): temperature=1.0, top_k=20, top_p=0.949999988079071
+INFO:     Started server process [227193]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:1920 (Press CTRL+C to quit)
+/home/random/dev/qwen/freetoken/python/freetoken/engine/engine.py:1067: FutureWarning: torch.cuda._set_allocator_settings is deprecated. Use torch._C._accelerator_setAllocatorSettings instead.
+  torch.cuda.memory._set_allocator_settings("expandable_segments:True")
+[1m[2026-08-28|18:43:04|core|rank=0][0m [32mINFO    [0m Enabled expandable_segments (override via PYTORCH_ALLOC_CONF)
+[1m[2026-08-28|18:43:29|core|rank=0][0m [32mINFO    [0m CUDA graphs disabled for qwen4exp: the model requires host-side work during forward
+[1m[2026-08-28|18:43:29|core|rank=0][0m [32mINFO    [0m Auto-selected attention backend: qsa
+[1m[2026-08-28|18:43:29|core|rank=0][0m [32mINFO    [0m Resolved config: moe_backend='offload', attention_backend='qsa', cache_type='naive', page_size=4
+[1m[2026-08-28|18:43:29|core|rank=0][0m [32mINFO    [0m Free memory before loading model: 7.49 GiB
+/home/random/dev/qwen/freetoken/python/freetoken/models/gguf/reader.py:264: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  return torch.from_numpy(self._raw)
+ninja: no work to do.
+[1m[2026-08-28|18:43:35|core|rank=0][0m [32mINFO    [0m expert banks: slow path (serial build)
+[1m[2026-08-28|18:43:35|core|rank=0][0m [32mINFO    [0m Allocating 65536 tokens for KV cache, K + V = 0.57 GiB
+[1m[2026-08-28|18:43:35|core|rank=0][0m [32mINFO    [0m Free memory after initialization: 0.66 GiB
+[1m[2026-08-28|18:43:35|core|rank=0][0m [32mINFO    [0m CUDA graph is disabled.
+[1m[2026-08-28|18:43:36|core|rank=0][0m [32mINFO    [0m Scheduler is idle, waiting for new reqs...
+[1m[2026-08-28|18:43:36|FrontendAPI][0m [32mINFO    [0m API server is ready to serve on 127.0.0.1:1920
+[1m[2026-08-28|18:43:52|core|rank=0][0m [33mWARNING [0m fused_topk: triton_kernels failed; using pure-torch router fallback (CompilationError: at 25:15:
+
+    if pid * BLOCK_M >= n_rows:
+        # early exit:
+        return
+
+    tl.static_assert(BLOCK_N % 32 == 0)
+    tl.static_assert(N_EXPTS_PAD % BLOCK_N == 0)
+    x_dtype: tl.constexpr = X.dtype.element_ty
+
+    # load logits
+    offs_m = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_y_n = tl.arange(0, N_EXPTS_ACT)
+               ^
+arange's range must be a power of 2)
+[1m[2026-08-28|18:45:26|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.03, #running-req: 0, #queue-req: 0, input throughput (token/s): 9.28
+[1m[2026-08-28|18:45:26|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 983, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, input throughput (token/s): 33426.87
+[1m[2026-08-28|18:45:26|core|rank=0][0m [32mINFO    [0m Scheduler is idle, waiting for new reqs...
+INFO:     127.0.0.1:54852 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[1m[2026-08-28|18:45:52][0m [32mINFO    [0m reasoning-effort profile: supported=['low', 'medium', 'xhigh'] default=xhigh
+INFO:     127.0.0.1:33366 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52564 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[1m[2026-08-28|18:46:24|core|rank=0][0m [33mWARNING [0m Adjust max_tokens to 15 for request 1.
+[1m[2026-08-28|18:49:51|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.03, #running-req: 0, #queue-req: 1, input throughput (token/s): 3.87
+[1m[2026-08-28|18:51:40|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.05, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.36
+[1m[2026-08-28|18:53:31|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.06, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.20
+[1m[2026-08-28|18:55:25|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.08, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.05
+[1m[2026-08-28|18:57:09|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.09, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.81
+[1m[2026-08-28|18:58:57|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.11, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.52
+[1m[2026-08-28|19:00:42|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.12, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.69
+[1m[2026-08-28|19:02:29|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.14, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.62
+[1m[2026-08-28|19:04:19|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.16, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.32
+[1m[2026-08-28|19:06:08|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.17, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.34
+[1m[2026-08-28|19:07:56|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.19, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.47
+[1m[2026-08-28|19:09:41|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.20, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.74
+[1m[2026-08-28|19:11:26|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.22, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.83
+[1m[2026-08-28|19:13:13|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.23, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.57
+[1m[2026-08-28|19:14:57|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.25, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.83
+[1m[2026-08-28|19:16:41|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.27, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.83
+[1m[2026-08-28|19:18:23|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.28, #running-req: 0, #queue-req: 1, input throughput (token/s): 10.03
+[1m[2026-08-28|19:20:11|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.30, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.49
+[1m[2026-08-28|19:22:00|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.31, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.39
+[1m[2026-08-28|19:23:52|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.33, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.19
+[1m[2026-08-28|19:25:42|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.34, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.23
+[1m[2026-08-28|19:27:31|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.36, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.39
+[1m[2026-08-28|19:29:14|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.38, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.99
+[1m[2026-08-28|19:30:58|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.39, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.89
+[1m[2026-08-28|19:32:41|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.41, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.91
+[1m[2026-08-28|19:34:31|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.42, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.34
+[1m[2026-08-28|19:36:18|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.44, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.57
+[1m[2026-08-28|19:38:12|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.45, #running-req: 0, #queue-req: 1, input throughput (token/s): 8.94
+[1m[2026-08-28|19:40:03|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.47, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.27
+[1m[2026-08-28|19:41:53|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.48, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.31
+[1m[2026-08-28|19:43:49|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.50, #running-req: 0, #queue-req: 1, input throughput (token/s): 8.81
+[1m[2026-08-28|19:45:34|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.52, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.75
+[1m[2026-08-28|19:47:23|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.53, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.37
+[1m[2026-08-28|19:49:09|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.55, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.64
+[1m[2026-08-28|19:50:56|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.56, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.57
+[1m[2026-08-28|19:52:45|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.58, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.43
+[1m[2026-08-28|19:54:33|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.59, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.46
+[1m[2026-08-28|19:56:18|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.61, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.80
+[1m[2026-08-28|19:58:08|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.62, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.30
+[1m[2026-08-28|19:59:50|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.64, #running-req: 0, #queue-req: 1, input throughput (token/s): 10.03
+[1m[2026-08-28|20:01:35|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.66, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.73
+[1m[2026-08-28|20:03:25|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.67, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.31
+[1m[2026-08-28|20:05:15|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 1024, #cached-token: 0, token usage: 0.69, #running-req: 0, #queue-req: 1, input throughput (token/s): 9.33
+Process freetoken-TP0-scheduler:
+Traceback (most recent call last):
+  File "/home/random/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/random/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/random/dev/qwen/freetoken/python/freetoken/server/launch.py", line 116, in _run_scheduler
+    scheduler.run_forever()
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/scheduler/scheduler.py", line 295, in run_forever
+    data = self.overlap_loop(data)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/scheduler/scheduler.py", line 241, in overlap_loop
+    ongoing_data = (forward_input, self._forward(forward_input))
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/scheduler/scheduler.py", line 871, in _forward
+    forward_output = self.engine.forward_batch(batch, sample_args)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/engine/engine.py", line 961, in forward_batch
+    logits = self.model.forward()
+             ^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen4_exp/model.py", line 777, in forward
+    hidden = self.model.forward(get_global_ctx().batch.input_ids)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen4_exp/model.py", line 741, in forward
+    hidden = layer.forward(hidden)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/utils/torch_utils.py", line 33, in wrapper
+    return fn(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen4_exp/model.py", line 704, in forward
+    else self.self_attn.forward(mixed)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/utils/torch_utils.py", line 33, in wrapper
+    return fn(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen4_exp/model.py", line 647, in forward
+    output = ctx.attn_backend.qsa_forward(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/attention/qsa.py", line 294, in qsa_forward
+    selected, counts = self._select_physical_rows(index_q, layer_id, batch)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/attention/qsa.py", line 265, in _select_physical_rows
+    logical, live = select_qsa_logical_rows(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/attention/qsa.py", line 99, in select_qsa_logical_rows
+    dots = torch.mm(queries, keys, out_dtype=torch.float32)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 78.00 MiB. GPU 0 has a total capacity of 7.61 GiB of which 84.81 MiB is free. Process 53599 has 6.46 MiB memory in use. Including non-PyTorch memory, this process has 7.52 GiB memory in use. Of the allocated memory 7.00 GiB is allocated by PyTorch, and 68.04 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+[1m[2026-08-28|20:05:50|FrontendAPI][0m [31mERROR   [0m Backend supervisor: backend worker freetoken-TP0-scheduler exited
+[1m[2026-08-28|20:06:00|FrontendAPI][0m [31mERROR   [0m Backend worker is gone and cannot be restarted; stopping the API server
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [227193]
+/home/random/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 3 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

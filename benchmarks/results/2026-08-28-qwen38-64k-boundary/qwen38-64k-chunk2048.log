@@ -1,0 +1,124 @@
+[1m[2026-08-28|18:36:34][0m [32mINFO    [0m Parsed arguments:
+ServerArgs(model_path='/home/random/dev/qwen/models/atomicchat-qwen38-q4km/Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64', tp_info=DistributedInfo(rank=0, size=1), dtype=torch.float16, kv_cache_dtype='tq4-nc', max_running_req=1, attention_backend='auto', moe_backend='offload', nvfp4_backend='triton', expert_load='auto', moe_cache_size=256, moe_cache_rate=None, moe_cache_auto=False, kv_reserve_tokens=8192, moe_cache_policy='lru', moe_prefill_overlap=False, moe_prefill_hit_d2d=False, moe_collect_stats=False, moe_cpu_threads=0, moe_cpu_layers=None, moe_hybrid_max_fetch=-1, cuda_graph_bs=None, cuda_graph_max_bs=0, page_size=4, memory_ratio=0.85, linear_state_cache_ratio=2.0, swa_full_tokens_ratio=0.2, swa_num_pages_override=None, distributed_timeout=60.0, use_dummy_weight=False, use_pynccl=True, max_seq_len_override=65536, num_page_override=None, num_token_override=65536, max_extend_tokens=2048, cache_type='naive', offline_mode=False, decode_log_interval=8, special_token_ckpt=False, _unique_suffix='.pid=217718', server_host='127.0.0.1', server_port=1920, num_tokenizer=0, silent_output=False, shell_mode=False, served_model_name='Qwen 3.8 Flash Next Q4_K_M', tool_call_parser='qwen', reasoning_parser='qwen3', sampling_defaults='model', max_output_tokens=384, enable_cache_report=True, cors_origins='tauri://localhost,http://tauri.localhost,http://localhost:1420', gpu=(), gpu_assigned=None)
+[1m[2026-08-28|18:36:57|FrontendAPI][0m [32mINFO    [0m Default sampling config (source=model): temperature=1.0, top_k=20, top_p=0.949999988079071
+INFO:     Started server process [217718]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:1920 (Press CTRL+C to quit)
+/home/random/dev/qwen/freetoken/python/freetoken/engine/engine.py:1067: FutureWarning: torch.cuda._set_allocator_settings is deprecated. Use torch._C._accelerator_setAllocatorSettings instead.
+  torch.cuda.memory._set_allocator_settings("expandable_segments:True")
+[1m[2026-08-28|18:37:01|core|rank=0][0m [32mINFO    [0m Enabled expandable_segments (override via PYTORCH_ALLOC_CONF)
+[1m[2026-08-28|18:37:26|core|rank=0][0m [32mINFO    [0m CUDA graphs disabled for qwen4exp: the model requires host-side work during forward
+[1m[2026-08-28|18:37:26|core|rank=0][0m [32mINFO    [0m Auto-selected attention backend: qsa
+[1m[2026-08-28|18:37:26|core|rank=0][0m [32mINFO    [0m Resolved config: moe_backend='offload', attention_backend='qsa', cache_type='naive', page_size=4
+[1m[2026-08-28|18:37:26|core|rank=0][0m [32mINFO    [0m Free memory before loading model: 7.49 GiB
+/home/random/dev/qwen/freetoken/python/freetoken/models/gguf/reader.py:264: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  return torch.from_numpy(self._raw)
+ninja: no work to do.
+[1m[2026-08-28|18:37:33|core|rank=0][0m [32mINFO    [0m expert banks: slow path (serial build)
+[1m[2026-08-28|18:37:33|core|rank=0][0m [32mINFO    [0m Allocating 65536 tokens for KV cache, K + V = 0.57 GiB
+[1m[2026-08-28|18:37:33|core|rank=0][0m [32mINFO    [0m Free memory after initialization: 0.66 GiB
+[1m[2026-08-28|18:37:33|core|rank=0][0m [32mINFO    [0m CUDA graph is disabled.
+[1m[2026-08-28|18:37:35|core|rank=0][0m [32mINFO    [0m Scheduler is idle, waiting for new reqs...
+[1m[2026-08-28|18:37:35|FrontendAPI][0m [32mINFO    [0m API server is ready to serve on 127.0.0.1:1920
+[1m[2026-08-28|18:38:22|core|rank=0][0m [33mWARNING [0m fused_topk: triton_kernels failed; using pure-torch router fallback (CompilationError: at 25:15:
+
+    if pid * BLOCK_M >= n_rows:
+        # early exit:
+        return
+
+    tl.static_assert(BLOCK_N % 32 == 0)
+    tl.static_assert(N_EXPTS_PAD % BLOCK_N == 0)
+    x_dtype: tl.constexpr = X.dtype.element_ty
+
+    # load logits
+    offs_m = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_y_n = tl.arange(0, N_EXPTS_ACT)
+               ^
+arange's range must be a power of 2)
+[1m[2026-08-28|18:38:50|core|rank=0][0m [32mINFO    [0m Prefill batch, #new-seq: 1, #new-token: 17, #cached-token: 0, token usage: 0.00, #running-req: 1, #queue-req: 0, input throughput (token/s): 0.23
+[1m[2026-08-28|18:38:51|core|rank=0][0m [32mINFO    [0m Scheduler is idle, waiting for new reqs...
+INFO:     127.0.0.1:60606 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[1m[2026-08-28|18:39:05][0m [32mINFO    [0m reasoning-effort profile: supported=['low', 'medium', 'xhigh'] default=xhigh
+INFO:     127.0.0.1:42570 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59604 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+Process freetoken-TP0-scheduler:
+Traceback (most recent call last):
+  File "/home/random/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/random/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/random/dev/qwen/freetoken/python/freetoken/server/launch.py", line 116, in _run_scheduler
+    scheduler.run_forever()
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/scheduler/scheduler.py", line 295, in run_forever
+    data = self.overlap_loop(data)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/scheduler/scheduler.py", line 241, in overlap_loop
+    ongoing_data = (forward_input, self._forward(forward_input))
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/scheduler/scheduler.py", line 871, in _forward
+    forward_output = self.engine.forward_batch(batch, sample_args)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/engine/engine.py", line 961, in forward_batch
+    logits = self.model.forward()
+             ^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen4_exp/model.py", line 777, in forward
+    hidden = self.model.forward(get_global_ctx().batch.input_ids)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen4_exp/model.py", line 741, in forward
+    hidden = layer.forward(hidden)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/utils/torch_utils.py", line 33, in wrapper
+    return fn(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen4_exp/model.py", line 702, in forward
+    self.linear_attn.forward(mixed)
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen3_5_moe/gdn.py", line 206, in forward
+    result = gdn_prefill_chunk_fla(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/models/qwen3_5_moe/gdn_kernels.py", line 33, in gdn_prefill_chunk_fla
+    o, _, h = chunk_gated_delta_rule(
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 1263, in _fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/kernel/fla/chunk.py", line 243, in chunk_gated_delta_rule
+    o, h = ChunkGatedDeltaRuleFunction.apply(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/torch/autograd/function.py", line 596, in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/kernel/fla/utils.py", line 178, in wrapper
+    return fn(*contiguous_args, **contiguous_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/torch/amp/autocast_mode.py", line 481, in decorate_fwd
+    return fwd(*args, **kwargs)  # pyrefly: ignore [not-callable]
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/kernel/fla/chunk.py", line 112, in forward
+    g, o, A, w, h, v_new = chunk_gated_delta_rule_fwd(
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/kernel/fla/chunk.py", line 67, in chunk_gated_delta_rule_fwd
+    o = chunk_fwd_o(
+        ^^^^^^^^^^^^
+  File "/home/random/dev/qwen/freetoken/python/freetoken/kernel/fla/chunk_o.py", line 151, in chunk_fwd_o
+    chunk_fwd_kernel_o[grid](
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 370, in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 744, in run
+    kernel.run(grid_0, grid_1, grid_2, stream, kernel.function, kernel.packed_metadata, launch_metadata,
+  File "/home/random/freetoken-turing/.venv/lib/python3.12/site-packages/triton/backends/nvidia/driver.py", line 713, in __call__
+    self.launch(gridX, gridY, gridZ, stream, function, self.launch_cooperative_grid, self.launch_pdl,
+RuntimeError: Triton Error [CUDA]: out of memory
+[1m[2026-08-28|18:39:43|FrontendAPI][0m [31mERROR   [0m Backend supervisor: backend worker freetoken-TP0-scheduler exited
+[1m[2026-08-28|18:39:53|FrontendAPI][0m [31mERROR   [0m Backend worker is gone and cannot be restarted; stopping the API server
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [217718]
+/home/random/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 3 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
