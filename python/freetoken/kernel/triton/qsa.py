@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import functools
+
 import torch
 import triton
 import triton.language as tl
 
+from freetoken.kvcache.tq4 import TQ4_CENTROIDS, decode_tq4
+
 BLOCK_H = 16
 BLOCK_T = 32
+
+
+@functools.lru_cache(maxsize=None)
+def _tq4_centroids(device_index: int) -> torch.Tensor:
+    return torch.tensor(
+        TQ4_CENTROIDS, dtype=torch.float32, device=torch.device("cuda", device_index)
+    )
 
 
 @triton.jit
@@ -131,6 +142,95 @@ def _qsa_sparse_gqa_kernel(
     )
 
 
+@triton.jit
+def _qsa_sparse_gqa_tq4_kernel(
+    q_ptr, k_ptr, v_ptr, k_scale_ptr, v_scale_ptr, rows_ptr, counts_ptr, out_ptr,
+    centroids_ptr, scale, H, KVH, D, GQA,
+    stride_qn, stride_qh, stride_qd, stride_kr, stride_kh, stride_kd,
+    stride_vr, stride_vh, stride_vd, stride_ksr, stride_ksh, stride_vsr, stride_vsh,
+    stride_rn, stride_rt, stride_on, stride_oh, stride_od,
+    BLOCK_D: tl.constexpr, BLOCK_H: tl.constexpr, BLOCK_T: tl.constexpr,
+):
+    """Packed TQ4 gathered GQA: decode nibbles directly inside the sparse loop."""
+    row, kv_head = tl.program_id(0), tl.program_id(1)
+    head_offsets = tl.arange(0, BLOCK_H)
+    heads = kv_head * GQA + head_offsets
+    head_mask = (head_offsets < GQA) & (heads < H)
+    dims = tl.arange(0, BLOCK_D)
+    dim_mask = dims < D
+    q = tl.load(
+        q_ptr + row * stride_qn + heads[:, None] * stride_qh + dims[None, :] * stride_qd,
+        mask=head_mask[:, None] & dim_mask[None, :], other=0.0,
+    )
+    running_max = tl.full((BLOCK_H,), -float("inf"), tl.float32)
+    running_sum = tl.zeros((BLOCK_H,), tl.float32)
+    acc = tl.zeros((BLOCK_H, BLOCK_D), tl.float32)
+    active = tl.load(counts_ptr + row)
+    row_base = rows_ptr + row * stride_rn
+    packed_dim = dims // 2
+    use_low_nibble = (dims % 2) == 0
+    for tile in range(0, tl.cdiv(active, BLOCK_T)):
+        token_offsets = tile * BLOCK_T + tl.arange(0, BLOCK_T)
+        token_mask = token_offsets < active
+        physical = tl.load(row_base + token_offsets * stride_rt, mask=token_mask, other=-1)
+        valid = token_mask & (physical >= 0)
+        physical = tl.maximum(physical, 0)
+        k_bytes = tl.load(
+            k_ptr + physical[None, :] * stride_kr + kv_head * stride_kh + packed_dim[:, None] * stride_kd,
+            mask=dim_mask[:, None] & valid[None, :], other=0,
+        )
+        k_codes = tl.where(use_low_nibble[:, None], k_bytes & 0x0F, k_bytes >> 4)
+        k_scale = tl.load(k_scale_ptr + physical * stride_ksr + kv_head * stride_ksh, mask=valid, other=0.0)
+        k = tl.load(centroids_ptr + k_codes).to(tl.float32) * k_scale[None, :]
+        scores = tl.dot(q, k) * scale
+        scores = tl.where(valid[None, :], scores, -float("inf"))
+        new_max = tl.maximum(running_max, tl.max(scores, axis=1))
+        alpha = tl.where(new_max == -float("inf"), 1.0, tl.exp(running_max - new_max))
+        probs = tl.where(valid[None, :], tl.exp(scores - new_max[:, None]), 0.0)
+        running_sum = running_sum * alpha + tl.sum(probs, axis=1)
+        acc *= alpha[:, None]
+        v_bytes = tl.load(
+            v_ptr + physical[:, None] * stride_vr + kv_head * stride_vh + packed_dim[None, :] * stride_vd,
+            mask=valid[:, None] & dim_mask[None, :], other=0,
+        )
+        v_codes = tl.where(use_low_nibble[None, :], v_bytes & 0x0F, v_bytes >> 4)
+        v_scale = tl.load(v_scale_ptr + physical * stride_vsr + kv_head * stride_vsh, mask=valid, other=0.0)
+        v = tl.load(centroids_ptr + v_codes).to(tl.float32) * v_scale[:, None]
+        acc += tl.dot(probs.to(v.dtype), v)
+        running_max = new_max
+    output = tl.where(running_sum[:, None] > 0, acc / running_sum[:, None], 0.0)
+    tl.store(
+        out_ptr + row * stride_on + heads[:, None] * stride_oh + dims[None, :] * stride_od,
+        output.to(out_ptr.dtype.element_ty), mask=head_mask[:, None] & dim_mask[None, :],
+    )
+
+
+def _qsa_sparse_gqa_tq4(
+    q: torch.Tensor, k_rows: torch.Tensor, v_rows: torch.Tensor, k_scale: torch.Tensor,
+    v_scale: torch.Tensor, selected_rows: torch.Tensor, counts: torch.Tensor, sm_scale: float,
+    logical_head_dim: int,
+) -> torch.Tensor:
+    q, k_rows, v_rows = q.contiguous(), k_rows.contiguous(), v_rows.contiguous()
+    k_scale, v_scale = k_scale.contiguous(), v_scale.contiguous()
+    selected_rows, counts = selected_rows.to(torch.int32).contiguous(), counts.to(torch.int32).contiguous()
+    n, heads, dim = q.shape
+    kv_heads, gqa = k_rows.shape[1], heads // k_rows.shape[1]
+    if dim != logical_head_dim or gqa > BLOCK_H:
+        raise ValueError("TQ4 QSA requires matching logical head dim and GQA group <= 16")
+    output = torch.empty_like(q)
+    centroids = _tq4_centroids(q.device.index if q.device.index is not None else torch.cuda.current_device())
+    _qsa_sparse_gqa_tq4_kernel[(n, kv_heads)](
+        q, k_rows, v_rows, k_scale, v_scale, selected_rows, counts, output, centroids, float(sm_scale),
+        heads, kv_heads, dim, gqa,
+        q.stride(0), q.stride(1), q.stride(2), k_rows.stride(0), k_rows.stride(1), k_rows.stride(2),
+        v_rows.stride(0), v_rows.stride(1), v_rows.stride(2), k_scale.stride(0), k_scale.stride(1),
+        v_scale.stride(0), v_scale.stride(1), selected_rows.stride(0), selected_rows.stride(1),
+        output.stride(0), output.stride(1), output.stride(2), BLOCK_D=triton.next_power_of_2(dim),
+        BLOCK_H=BLOCK_H, BLOCK_T=BLOCK_T, num_warps=8, num_stages=2,
+    )
+    return output
+
+
 def _torch_qsa_sparse_gqa(
     q: torch.Tensor, k_rows: torch.Tensor, v_rows: torch.Tensor,
     selected_rows: torch.Tensor, counts: torch.Tensor, sm_scale: float,
@@ -156,15 +256,38 @@ def _torch_qsa_sparse_gqa(
 def qsa_sparse_gqa(
     q: torch.Tensor, k_rows: torch.Tensor, v_rows: torch.Tensor,
     selected_rows: torch.Tensor, counts: torch.Tensor, sm_scale: float,
+    *,
+    k_scale: torch.Tensor | None = None,
+    v_scale: torch.Tensor | None = None,
+    logical_head_dim: int | None = None,
 ) -> torch.Tensor:
     if q.ndim != 3 or k_rows.ndim != 3 or v_rows.shape != k_rows.shape:
         raise ValueError("QSA expects q [N,H,D] and matching k/v [R,KVH,D]")
-    if q.shape[-1] != k_rows.shape[-1] or q.shape[1] % k_rows.shape[1]:
+    packed_tq4 = k_rows.dtype is torch.uint8
+    if packed_tq4:
+        if k_scale is None or v_scale is None or logical_head_dim is None:
+            raise ValueError("packed TQ4 QSA needs k_scale, v_scale, and logical_head_dim")
+        if logical_head_dim % 2 or k_rows.shape[-1] != logical_head_dim // 2:
+            raise ValueError("packed TQ4 QSA storage width does not match logical_head_dim")
+        if k_scale.shape != v_scale.shape or k_scale.shape != k_rows.shape[:2]:
+            raise ValueError("packed TQ4 QSA scales must match [rows, kv_heads]")
+    elif k_scale is not None or v_scale is not None or logical_head_dim is not None:
+        raise ValueError("BF16 QSA does not take packed-KV scale metadata")
+    head_dim = int(logical_head_dim) if packed_tq4 else k_rows.shape[-1]
+    if q.shape[-1] != head_dim or q.shape[1] % k_rows.shape[1]:
         raise ValueError("QSA requires matching head dimensions and integral GQA groups")
     if selected_rows.shape[0] != q.shape[0] or counts.numel() != q.shape[0]:
         raise ValueError("QSA selection rows must match query rows")
     if not q.is_cuda:
+        if packed_tq4:
+            k_rows = decode_tq4(k_rows, k_scale, head_dim=head_dim)
+            v_rows = decode_tq4(v_rows, v_scale, head_dim=head_dim)
         return _torch_qsa_sparse_gqa(q, k_rows, v_rows, selected_rows, counts, sm_scale)
+
+    if packed_tq4:
+        return _qsa_sparse_gqa_tq4(
+            q, k_rows, v_rows, k_scale, v_scale, selected_rows, counts, sm_scale, head_dim
+        )
     q, k_rows, v_rows = q.contiguous(), k_rows.contiguous(), v_rows.contiguous()
     selected_rows, counts = selected_rows.to(torch.int32).contiguous(), counts.to(torch.int32).contiguous()
     output = torch.empty_like(q)

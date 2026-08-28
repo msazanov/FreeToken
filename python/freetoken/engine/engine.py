@@ -1247,6 +1247,7 @@ def _validate_quantized_kv_config(config: EngineConfig) -> None:
     from freetoken.kvcache import resolve_pool_class
     from freetoken.kvcache.base import KV_CACHE_DTYPES
     from freetoken.kvcache.mha_pool import MHAKVCache
+    from freetoken.kvcache.qsa_pool import QSAKVCache
 
     mode = getattr(config, "kv_cache_dtype", "bf16")
     if mode not in KV_CACHE_DTYPES:
@@ -1256,12 +1257,19 @@ def _validate_quantized_kv_config(config: EngineConfig) -> None:
     if mode == "bf16":
         return
     backend_parts = [part.strip() for part in config.attention_backend.split(",")]
+    pool_class = resolve_pool_class(config.model_config)
+    if backend_parts == ["qsa"]:
+        if mode == "tq4-nc" and pool_class is QSAKVCache:
+            return
+        raise ValueError(
+            f"--attention-backend qsa supports only --kv-cache-dtype tq4-nc with "
+            f"QSAKVCache, got {mode} with {pool_class.__name__}."
+        )
     if any(part != "triton" for part in backend_parts):
         raise ValueError(
             f"--kv-cache-dtype {mode} requires --attention-backend triton for every "
             f"attention phase, got {config.attention_backend!r}."
         )
-    pool_class = resolve_pool_class(config.model_config)
     if pool_class is not MHAKVCache:
         raise ValueError(
             f"--kv-cache-dtype {mode} is currently implemented only for MHAKVCache, "

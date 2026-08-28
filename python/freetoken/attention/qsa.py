@@ -116,6 +116,29 @@ def select_qsa_logical_rows(
     )
 
 
+def qsa_tq4_sparse_gqa(
+    q: torch.Tensor, packed_k: torch.Tensor, packed_v: torch.Tensor,
+    k_scale: torch.Tensor, v_scale: torch.Tensor, selected_rows: torch.Tensor,
+    counts: torch.Tensor, *, layer_id: int,
+) -> torch.Tensor:
+    """Attend over TQ4 full KV while retaining QSA's unquantized index selection."""
+    from freetoken.kernel.triton.qsa import qsa_sparse_gqa
+    from freetoken.kvcache.tq4 import randomized_hadamard
+
+    num_kv_heads = packed_k.shape[-2]
+    transformed_q = randomized_hadamard(
+        q, layer_id=layer_id, num_kv_heads=num_kv_heads
+    )
+    transformed_output = qsa_sparse_gqa(
+        transformed_q, packed_k, packed_v, selected_rows, counts,
+        q.shape[-1] ** -0.5, k_scale=k_scale, v_scale=v_scale,
+        logical_head_dim=q.shape[-1],
+    )
+    return randomized_hadamard(
+        transformed_output, layer_id=layer_id, num_kv_heads=num_kv_heads, inverse=True
+    )
+
+
 class QSAAttnBackend(BaseAttnBackend):
     def __init__(self, config: ModelConfig) -> None:
         from freetoken.kvcache.qsa_pool import QSAKVCache
@@ -261,18 +284,25 @@ class QSAAttnBackend(BaseAttnBackend):
     ) -> torch.Tensor:
         from freetoken.kernel.triton.qsa import qsa_sparse_gqa
 
-        if self.kvcache.is_quantized:
+        if self.kvcache.is_quantized and self.kvcache.kv_cache_dtype != "tq4-nc":
             raise NotImplementedError(
-                "QSA packed-KV attention is not integrated yet; use BF16 KV until its "
-                "TQ4/INT8 gathered-row kernel has passed the Ornith parity tests"
+                "QSA supports packed full KV only with tq4-nc; INT8/FP8 need their own "
+                "scale-aware gathered-row attention kernel"
             )
         self.kvcache.store_kv(k, v, batch.out_loc, layer_id)
         self._compress_current_keys(indexer, index_k, layer_id, batch)
         selected, counts = self._select_physical_rows(index_q, layer_id, batch)
         k_raw, v_raw = self.kvcache.k_cache(layer_id), self.kvcache.v_cache(layer_id)
+        k_rows = k_raw.view(-1, k_raw.shape[-2], k_raw.shape[-1])
+        v_rows = v_raw.view(-1, v_raw.shape[-2], v_raw.shape[-1])
+        if self.kvcache.kv_cache_dtype == "tq4-nc":
+            k_scale = self.kvcache.k_scale(layer_id).view(-1, k_raw.shape[-2])
+            v_scale = self.kvcache.v_scale(layer_id).view(-1, v_raw.shape[-2])
+            return qsa_tq4_sparse_gqa(
+                q, k_rows, v_rows, k_scale, v_scale, selected, counts, layer_id=layer_id
+            )
         return qsa_sparse_gqa(
-            q, k_raw.view(-1, k_raw.shape[-2], k_raw.shape[-1]),
-            v_raw.view(-1, v_raw.shape[-2], v_raw.shape[-1]), selected, counts,
+            q, k_rows, v_rows, selected, counts,
             q.shape[-1] ** -0.5,
         )
 
@@ -286,4 +316,4 @@ class QSAAttnBackend(BaseAttnBackend):
         self.prepare_metadata(batch)
 
 
-__all__ = ["QSAAttnBackend", "QSAMetadata", "select_qsa_logical_rows"]
+__all__ = ["QSAAttnBackend", "QSAMetadata", "qsa_tq4_sparse_gqa", "select_qsa_logical_rows"]
