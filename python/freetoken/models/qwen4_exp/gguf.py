@@ -545,7 +545,13 @@ def convert_qwen4_to_gguf(model, config: ModelConfig, *, model_path: str) -> Non
             swap_linear(residual, "block_inject_weight", qt(source_layer, f"{name}_inject.weight"))
 
     inner = model.model
-    embed = GGUFEmbedding(config.vocab_size, config.hidden_size, qt(-1, "token_embd.weight"))
+    runtime_dtype = inner.embed_tokens.weight.dtype
+    embed = GGUFEmbedding(
+        config.vocab_size,
+        config.hidden_size,
+        qt(-1, "token_embd.weight"),
+        output_dtype=runtime_dtype,
+    )
     inner.embed_tokens = embed
     qkv_sizes = [
         config.num_qo_heads * config.head_dim * 2,

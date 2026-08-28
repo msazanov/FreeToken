@@ -265,10 +265,15 @@ class GGUFEmbedding(BaseOP):
         embedding_dim: int,
         quant_type: int,
         embed_scale: float | None = None,
+        output_dtype: torch.dtype | None = None,
     ):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self._quant_type = quant_type
+        # Most GGUF callers historically compute in BF16. Qwen4's runtime is
+        # instantiated under the requested engine dtype, so preserve that
+        # source dtype to avoid a BF16 embedding feeding FP16 GDN state on SM75.
+        self._output_dtype = output_dtype
         self.qweight = torch.empty(
             num_embeddings, row_bytes(embedding_dim, quant_type), dtype=torch.uint8
         )
@@ -280,18 +285,23 @@ class GGUFEmbedding(BaseOP):
 
         flat = x.flatten()
         rows = self.qweight.index_select(0, flat)  # [n, row_bytes] packed
+        output_dtype = self._output_dtype or torch.bfloat16
         if self._quant_type in GGML_UNQUANTIZED:
             # Raw value bytes, not blocks: there is no dequant kernel for the unquantized
             # types (ggml_dequantize rejects type 1), so reinterpret the gathered rows.
-            y = rows.view(_UNQUANTIZED_DTYPE[self._quant_type]).to(torch.bfloat16)
+            y = rows.view(_UNQUANTIZED_DTYPE[self._quant_type]).to(output_dtype)
         else:
-            y = ggml_dequantize(rows, self._quant_type, flat.shape[0], self.embedding_dim, torch.bfloat16)
+            y = ggml_dequantize(rows, self._quant_type, flat.shape[0], self.embedding_dim, output_dtype)
         y = y.view(*x.shape, self.embedding_dim)
         if self._embed_scale is not None:
             if self._embed_scale_t is None:
                 self._embed_scale_t = torch.tensor(self._embed_scale, dtype=y.dtype, device=y.device)
             y = y * self._embed_scale_t
         return y
+
+    @property
+    def output_dtype(self) -> torch.dtype:
+        return self._output_dtype or torch.bfloat16
 
 
 def gguf_merged_or_plain(

@@ -404,3 +404,28 @@ same normalized top-k result rather than crashing the scheduler:
 ```text
 13 passed in 6.76s
 ```
+
+## 2026-08-28 — Qwen3.8 FP16 activation-boundary repair
+
+The 256-slot, `--dtype float16` live launch reached the first GDN
+causal-convolution with BF16 embeddings but FP16 recurrent state. That mismatch
+was produced by `GGUFEmbedding`, which historically dequantized embeddings to
+BF16 regardless of the engine dtype. It is not evidence that Q4_K_M expert
+weights should be expanded to FP16.
+
+The Qwen4 GGUF adapter now passes its requested runtime dtype to the embedding,
+so an FP16 engine emits FP16 embeddings. The model's packed GGUF weights retain
+their original Q4_K_M/IQ types; FP16 is only the activation/state math format
+native to this Turing experiment.
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4_exp.py tests/models/test_qwen4exp_gguf.py \
+  tests/models/test_qwen4exp_gguf_experts.py \
+  tests/moe/test_fused_moe.py::test_fused_topk_falls_back_when_optional_triton_kernel_rejects_geometry -q
+18 passed in 4.47s
+```
+
+No performance figure is claimed by this unit-level repair. The next required
+measurement is a real FP16 server request, followed by warm decode and context
+tests.

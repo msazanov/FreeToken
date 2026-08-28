@@ -138,6 +138,21 @@ def test_batch_exposes_optional_mrope_positions_for_text_only_qwen4():
     assert field.default is None
 
 
+def test_qwen4_gguf_embedding_retains_runtime_compute_dtype(monkeypatch):
+    from freetoken.layers.gguf import GGUFEmbedding
+    from freetoken.models.gguf.dequant import GGML_Q8_0
+
+    embed = GGUFEmbedding(4, 32, GGML_Q8_0, output_dtype=torch.float16)
+
+    def fake_dequantize(packed, _quant_type, rows, dims, output_dtype):
+        return torch.ones((rows, dims), dtype=output_dtype, device=packed.device)
+
+    monkeypatch.setattr("freetoken.kernel.gguf.ggml_dequantize", fake_dequantize)
+
+    assert embed.output_dtype == torch.float16
+    assert embed.forward(torch.tensor([0, 3])).dtype == torch.float16
+
+
 def test_qwen4_text_decoder_class_is_importable_without_vision():
     from freetoken.models.qwen4_exp import Qwen4ExpForCausalLM
 

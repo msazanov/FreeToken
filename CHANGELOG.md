@@ -248,3 +248,19 @@ failed and inconclusive hypotheses; do not rewrite history.
   geometry during JIT. `fused_topk` now treats optional-kernel runtime failures
   like a missing package: it logs once and uses the numerically equivalent
   PyTorch implementation rather than terminating the scheduler.
+
+### Accepted FP16 activation boundary for Qwen4 GGUF
+
+- Qwen4's engine honours the requested `--dtype`, but the shared GGUF embedding
+  layer unconditionally returned BF16. With `--dtype float16` that made the
+  very first GDN causal-convolution receive BF16 activations and FP16 state;
+  Triton correctly rejected the mixed input. This was a compute-dtype bug, not
+  a request to convert the GGUF expert weights.
+- `GGUFEmbedding` now accepts an output dtype. The Qwen4 GGUF adapter takes it
+  from the original meta-constructed embedding, which is the engine's requested
+  compute dtype. Thus the checkpoint remains Q4_K_M/IQ GGUF on disk and in its
+  packed expert cache, while token embeddings, activations, GDN state and
+  compute use FP16 on the Turing runtime.
+- The regression invokes the embedding's actual dequantization call through a
+  small mocked kernel and verifies an FP16 tensor is returned. This protects
+  behaviour rather than merely testing configuration plumbing.
