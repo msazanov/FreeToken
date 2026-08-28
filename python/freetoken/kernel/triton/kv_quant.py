@@ -43,7 +43,7 @@ def _store_tq4_nc_kv_kernel(
     k = tl.load(k_ptr + token * stride_kt + source_offset, mask=mask_d, other=0.0).to(tl.float32)
     v = tl.load(v_ptr + token * stride_vt + source_offset, mask=mask_d, other=0.0).to(tl.float32)
     k_scale, v_scale = tl.sqrt(tl.sum(k * k, axis=0) / D), tl.sqrt(tl.sum(v * v, axis=0) / D)
-    k_safe, v_safe = tl.maximum(k_scale, _SCALE_EPS), tl.maximum(v_scale, _SCALE_EPS)
+    k_safe, v_safe = tl.maximum(k_scale, 1.0e-8), tl.maximum(v_scale, 1.0e-8)
     offs_p = tl.arange(0, PACKED_D)
     even, odd = 2 * offs_p, 2 * offs_p + 1
     k_even = tl.load(k_ptr + token * stride_kt + kv_head * D + even, mask=even < D, other=0.0).to(tl.float32) / k_safe

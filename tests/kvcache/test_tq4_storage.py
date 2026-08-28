@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import torch
+import pytest
 
 
 def setup_module() -> None:
@@ -57,3 +58,28 @@ def test_tq4_pool_scatter_matches_reference_packing():
     )
     assert torch.equal(pool.k_cache(1).view(-1, 2, 4)[rows.long()], expected)
     assert torch.equal(pool.k_scale(1).view(-1, 2)[rows.long()], scales)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA Triton JIT")
+def test_tq4_cuda_store_compiles_without_python_global_constants():
+    """The CUDA implementation must compile on Triton 3.6, not only pass its CPU oracle."""
+    from freetoken.kernel.triton.kv_quant import store_tq4_nc_kv
+
+    device = torch.device("cuda")
+    k_cache = torch.empty((4, 2, 4), dtype=torch.uint8, device=device)
+    v_cache = torch.empty_like(k_cache)
+    k_scale = torch.empty((4, 2), dtype=torch.bfloat16, device=device)
+    v_scale = torch.empty_like(k_scale)
+    rows = torch.tensor([3, 1], dtype=torch.int32, device=device)
+    k = torch.arange(32, dtype=torch.float16, device=device).reshape(2, 16) / 16
+    v = (k + 1).contiguous()
+
+    store_tq4_nc_kv(
+        k_cache=k_cache, v_cache=v_cache, k_scale=k_scale, v_scale=v_scale,
+        indices=rows, k=k, v=v, layer_id=0, head_dim=8,
+        inputs_are_transformed=True,
+    )
+    torch.cuda.synchronize()
+
+    assert torch.isfinite(k_scale[rows.long()].float()).all()
+    assert torch.isfinite(v_scale[rows.long()].float()).all()
