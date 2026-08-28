@@ -106,3 +106,11 @@ def test_kv_cache_dtype_defaults_to_bf16_and_accepts_turing_fp8_and_qsa_tq4():
     assert default.kv_cache_dtype == "bf16"
     assert fp8.kv_cache_dtype == "fp8-e5m2"
     assert tq4.kv_cache_dtype == "tq4-nc"
+
+
+def test_moe_collect_stats_flag_enables_telemetry():
+    config = _Config({"architectures": ["LlamaForCausalLM"], "torch_dtype": "bfloat16"})
+    with patch("freetoken.utils.cached_load_hf_config", lambda _path: config):
+        args, _ = parse_args(["--model", "x", "--moe-collect-stats"])
+
+    assert args.moe_collect_stats is True

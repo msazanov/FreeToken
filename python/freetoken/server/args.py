@@ -583,6 +583,13 @@ def parse_args(
     )
 
     parser.add_argument(
+        "--moe-collect-stats",
+        action="store_true",
+        default=ServerArgs.moe_collect_stats,
+        help="Collect bounded per-request MoE decode telemetry; requires one running request.",
+    )
+
+    parser.add_argument(
         "--disable-moe-prefill-overlap",
         action="store_false",
         dest="moe_prefill_overlap",

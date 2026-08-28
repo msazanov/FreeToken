@@ -957,6 +957,27 @@ class OffloadMoeCache:
         self.stat_active_layer.zero_()
         self.stat_fetched_layer.zero_()
         self.stat_steps_layer.zero_()
+        self.decode_freq.zero_()
+
+    def telemetry_snapshot(self) -> dict[str, object]:
+        """Read the bounded, serializable telemetry for the current request once."""
+        miss = self.decode_miss_stats()
+        per_layer = self.decode_miss_stats_per_layer()["per_layer"]
+        routing = dict(self.decode_routing_stats())
+        if "oracle_hit_at_slots" in routing:
+            routing["stationary_top_c_hit_at_slots"] = routing.pop("oracle_hit_at_slots")
+        routing["method"] = "stationary_per_layer_top_c"
+        return {
+            "miss": miss,
+            "per_layer": per_layer,
+            "routing": routing,
+            "routing_frequency_enabled": bool(self.collect_decode_freq),
+            "cache": {
+                "num_layers": self.num_layers,
+                "num_experts": self.num_experts,
+                "cache_size": self.cache_size,
+            },
+        }
 
     def record_decode_stats(self, layer_id: int) -> None:
         """No-op: ``ensure_experts`` accumulates into ``lru_stats`` inside its own launch.
