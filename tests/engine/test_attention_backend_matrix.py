@@ -67,6 +67,11 @@ def _model_config(kind):
     elif kind == "bsa":
         # MiniMax-M3 shape: one FULL-family group, mla=False + index dims -> BSA.
         specs = (_spec("full", AttnType.BSA, index_head_dim=128),)
+    elif kind == "qsa":
+        mc.has_linear_attention = True
+        mc.requires_naive_cache = True
+        mc.supports_cuda_graph = False
+        specs = (_spec("qsa", AttnType.QSA, index_head_dim=128),)
     elif kind == "linear_hybrid":
         mc.has_linear_attention = True
         specs = (_spec("full", AttnType.FULL),)
@@ -109,6 +114,7 @@ def _patch_env(monkeypatch, *, major=9, flashinfer=True, sgl=True):
         ("dsa", "dsa"),  # MLA + DSA indexer (GLM-5.2 shape)
         ("dsv4", "dsv4_sparse"),
         ("bsa", "m3_sparse"),  # MiniMax-M3 block-sparse GQA
+        ("qsa", "qsa"),
     ],
 )
 def test_auto_resolves_per_type(monkeypatch, kind, expected):
@@ -129,6 +135,18 @@ def test_auto_bsa_sets_block_page_size(monkeypatch):
     config = _config("bsa", attention_backend="auto")
     _adjust_config(config)
     assert config.page_size == 128
+
+
+def test_auto_qsa_forces_safe_cache_and_disables_cuda_graphs(monkeypatch):
+    from freetoken.engine.engine import _adjust_config
+
+    _patch_env(monkeypatch)
+    config = _config("qsa", attention_backend="auto")
+    _adjust_config(config)
+    assert config.attention_backend == "qsa"
+    assert config.cache_type == "naive"
+    assert config.cuda_graph_bs == []
+    assert config.cuda_graph_max_bs == 0
 
 
 def test_bsa_rejects_float32_dtype(monkeypatch):
@@ -196,6 +214,7 @@ def test_illegal_combinations_rejected_at_config_time(monkeypatch, kind, backend
         ("mla", "dsa"),
         ("dsa", "dsa"),
         ("dsv4", "dsv4_sparse"),
+        ("qsa", "qsa"),
         ("swa", "triton"),
         ("full", "triton"),
         ("full", "fa,fi"),
