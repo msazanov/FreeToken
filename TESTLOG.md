@@ -595,3 +595,34 @@ graceful shutdown left it waiting on a dead worker; VRAM returned to 9 MiB.
 Future context benchmarking must first add request cancellation/timeout handling
 and profile the CPU/mmap/Pinned-DMA stages instead of treating this as a GPU
 throughput limit.
+
+## 2026-08-28 — Batched Qwen4 file-backed expert-copy correction
+
+Before changing the runtime, a direct real-weight microprofile of ten selected
+experts from each of the three layer-0 banks measured the transfer mechanism,
+with CUDA synchronized after each trial:
+
+| transfer mechanism | selected rows | best steady-state time |
+| --- | ---: | ---: |
+| former per-row copies | 10 × 3 banks | 2.0979 s |
+| gather once + scatter once per bank | 10 × 3 banks | 0.6009 s |
+
+This is a **3.49× reduction** for the measured selected-expert transfer
+primitive. It is not yet an end-to-end token/s claim: a real prefill also
+contains PLE lookups, GDN/QSA, router work and all decoder layers.
+
+The runtime now applies the batched path only if a bank's source and cache rows
+have equal shapes. Otherwise it keeps the previous prefix-copy semantics.
+Regression and focused architecture suite after the change:
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4_exp.py tests/models/test_qwen4exp_gguf.py \
+  tests/models/test_qwen4exp_gguf_experts.py tests/moe/test_fused_copy.py \
+  tests/moe/test_fused_moe.py::test_fused_topk_falls_back_when_optional_triton_kernel_rejects_geometry -q
+27 passed in 8.62s
+```
+
+Next measurement: restart the server from this commit, repeat the known 28- and
+56-token probes, and only then extend the context ladder. The entry deliberately
+does not claim a context-speed win until that end-to-end evidence exists.

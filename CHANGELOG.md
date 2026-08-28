@@ -328,3 +328,22 @@ failed and inconclusive hypotheses; do not rewrite history.
   limitation, not a benchmark value.
 - Do not launch 1K+ context tests on this revision until the synchronous
   file-backed path has cancellation/timeout observability and host-side profiling.
+
+### Qwen4 file-backed expert transfers are now batched per bank
+
+- Profiling isolated the principal prefill mechanical cost after routing: a
+  selected Qwen4 GGUF expert was copied to the LRU cache one row at a time,
+  producing `3 * top_k` synchronous host-to-device submissions per MoE layer
+  (`gate`, `up`, and `down`). This is especially costly for mmap/NVMe-backed
+  source rows: kernel work is small, while submission and page-fault latency is
+  repeated for each expert.
+- The `qwen4_gguf` file-backed selected-miss path now gathers all chosen source
+  rows once per bank with `index_select`, transfers the gathered tensor once,
+  then scatters it to its remapped LRU slots with `index_copy_`. Whole-layer and
+  heterogeneous compact-row layouts intentionally retain the prior
+  prefix-copy fallback, so the optimisation does not widen the supported GGUF
+  contract.
+- A regression fails if the new selected-Qwen path reaches the former per-row
+  helper, and verifies non-sequential source IDs land in the correct LRU slots
+  for all three banks. This makes the optimisation behavioural rather than a
+  timing-only change.

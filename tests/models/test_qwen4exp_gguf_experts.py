@@ -115,6 +115,43 @@ def test_qwen4_file_backed_cache_does_not_require_cpu_decode():
     assert not cache.is_cpu_layer(0)
 
 
+def test_qwen4_file_backed_copy_batches_selected_rows_without_per_row_dma(monkeypatch):
+    """A routed GGUF miss gathers each bank once, then scatters into LRU slots."""
+    from freetoken.moe import offload_cache
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=1,
+        num_experts=4,
+        cache_size=4,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+    )
+    sources = {
+        "gate": [torch.arange(4 * 2 * 3, dtype=torch.uint8).reshape(4, 2, 3)],
+        "up": [torch.arange(40, 64, dtype=torch.uint8).reshape(4, 2, 3)],
+        "down": [torch.arange(4 * 3 * 2, dtype=torch.uint8).reshape(4, 3, 2)],
+    }
+    cache.set_bank_sources(sources, layer_residency=["file_backed"])
+    cache._pending_src_layer = 0
+    cache._pending_whole_layer = False
+    cache.num_indices.fill_(3)
+    cache.evict_slots[:3] = torch.tensor([3, 1, 0], dtype=torch.int32)
+    cache.src_indices[:3] = torch.tensor([0, 2, 1], dtype=torch.int32)
+
+    def old_per_row_copy(*_args, **_kwargs):
+        raise AssertionError("file-backed selected copies must be batched per bank")
+
+    monkeypatch.setattr(offload_cache, "_copy_compact_row_prefix", old_per_row_copy)
+    cache.copy_missing()
+
+    for name, source in sources.items():
+        actual = cache.bank_caches[name]
+        assert torch.equal(actual[3], source[0][0])
+        assert torch.equal(actual[1], source[0][2])
+        assert torch.equal(actual[0], source[0][1])
+
+
 def test_qwen4_gguf_dispatch_passes_three_quant_types(monkeypatch):
     """The separate banks must reach a separate-projection GGUF GEMV path."""
     from freetoken.layers.moe import OffloadMoELayer

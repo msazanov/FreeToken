@@ -1080,11 +1080,28 @@ class OffloadMoeCache:
                     pairs = [(slot, slot) for slot in range(self.num_experts)]
                 else:
                     count = int(self.num_indices.item())
-                    slots = self.evict_slots[:count].cpu().tolist()
-                    source_ids = self.src_indices[:count].cpu().tolist()
-                    pairs = list(zip(slots, source_ids))
+                    # Qwen4 GGUF keeps expert rows in mmap-backed CPU tensors.  A
+                    # per-row CUDA copy turns one routed miss into 3 * top_k
+                    # synchronous DMA submissions per layer.  Gather the selected
+                    # rows while they are still contiguous in host memory, then
+                    # scatter the one staged tensor into its LRU slots.  Do this
+                    # only when the compact source row has the cache row shape
+                    # exactly; heterogeneous GGUF layouts retain the conservative
+                    # prefix-copy fallback below.
+                    slot_indices = self.evict_slots[:count].to(dtype=torch.long)
+                    source_indices = self.src_indices[:count].to(
+                        device="cpu", dtype=torch.long
+                    )
+                    pairs = list(zip(slot_indices.cpu().tolist(), source_indices.tolist()))
                 for per_layer, cache in self.banks:
                     source = per_layer[layer_id]
+                    if not self._pending_whole_layer and source.shape[1:] == cache.shape[1:]:
+                        selected = source.index_select(0, source_indices)
+                        # mmap pages are pageable, so the host read must complete
+                        # before CUDA can consume it; non_blocking would not make
+                        # this transfer asynchronous.
+                        cache.index_copy_(0, slot_indices, selected.to(cache.device))
+                        continue
                     for slot, source_id in pairs:
                         _copy_compact_row_prefix(
                             cache[slot : slot + 1], source[source_id : source_id + 1]
