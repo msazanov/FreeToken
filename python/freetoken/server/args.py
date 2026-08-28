@@ -359,11 +359,12 @@ def parse_args(
 
     parser.add_argument(
         "--kv-cache-dtype",
-        choices=["bf16", "fp8-e5m2", "int8"],
+        choices=["bf16", "fp8-e5m2", "int8", "tq4-nc"],
         default=ServerArgs.kv_cache_dtype,
         help=(
-            "Paged MHA KV storage format. fp8-e5m2 and int8 use BF16 per-vector "
-            "scales; bf16 keeps the default unquantized cache."
+            "Paged KV storage format. fp8-e5m2 and int8 use BF16 per-vector "
+            "scales; tq4-nc stores packed 4-bit normalized vectors; bf16 keeps "
+            "the default unquantized cache."
         ),
     )
 
