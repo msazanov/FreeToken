@@ -20,6 +20,9 @@ class SamplingParams:
     temperature: float = 0.0
     top_k: int = -1
     top_p: float = 1.0
+    # OpenAI-compatible optional seed. Greedy sampling needs no RNG; non-greedy
+    # requests own a generator initialized from this value in Sampler.prepare.
+    seed: int | None = None
     ignore_eos: bool = False
     max_tokens: int = 1024
     # Stop strings (OpenAI `stop` / Anthropic `stop_sequences`). Generation finishes when one
@@ -40,6 +43,7 @@ class Req:
     uid: int
     sampling_params: SamplingParams
     cache_handle: BaseCacheHandle
+    sampling_generator: torch.Generator | None = field(default=None, init=False, repr=False)
     # Optional precomputed multimodal soft-token embeddings (GPU, [num_image_tokens,
     # hidden]) scattered at image-token positions during this request's prefill.
     mm_embeds: torch.Tensor | None = None

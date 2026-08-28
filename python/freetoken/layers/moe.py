@@ -413,6 +413,9 @@ class OffloadMoELayer(MoELayer):
                     )
                 )
             return torch.cat(outputs, dim=0)
+        # Standard host-bank prefill materializes a full layer below rather
+        # than calling ensure_experts(), so record its raw routing at this seam.
+        cache.record_prefill_routes(self.layer_id, topk_ids)
         if cache.prefill_overlap:
             views = self._wait_prefill_overlap(cache)
             out = self._expert_gemm(

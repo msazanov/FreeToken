@@ -111,3 +111,16 @@ def test_process_counter_delta_parses_proc_records_and_preserves_missing_values(
         "major_faults": None,
         "minor_faults": None,
     }
+
+
+def test_child_environment_disables_parent_request_body_logging(tmp_path):
+    from benchmarks.qwen38_turing_profile import child_environment
+
+    environment = child_environment(
+        tmp_path,
+        inherited={"FREETOKEN_API_LOG_DIR": "/unsafe/request-logs", "KEEP": "yes"},
+    )
+
+    assert "FREETOKEN_API_LOG_DIR" not in environment
+    assert environment["KEEP"] == "yes"
+    assert environment["PYTHONPATH"].split(":")[0] == str(tmp_path / "python")

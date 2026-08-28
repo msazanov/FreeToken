@@ -348,6 +348,9 @@ class OffloadMoeCache:
             device=self.device,
         )
         self._trace_resident_slots = torch.zeros((), dtype=torch.int64, device=self.device)
+        self._trace_prefill_active = torch.zeros(
+            (self.num_experts,), dtype=torch.int64, device=self.device
+        )
         self._trace_copy_pending = False
         # (per-layer sources, cache) per bank, in schema order. Every piece of cache
         # machinery that moves bank bytes (copy_missing, the prefill double buffers,
@@ -1029,9 +1032,23 @@ class OffloadMoeCache:
     def materialize_layer(self, layer_id: int) -> None:
         from freetoken.moe.offload_kernels import materialize_layer
 
+        if self.collect_stats:
+            # materialize_layer replaces slots [0, E) with this layer. Count
+            # only displaced rows from other layers; reloading this layer is not
+            # an L1 eviction.
+            old_ids = self.id_of_slot[: self.num_experts]
+            base = layer_id * self.num_experts
+            displaced = (
+                old_ids.ge(0) & ((old_ids < base) | (old_ids >= base + self.num_experts))
+            ).sum()
+            self._trace_counters[
+                self._trace_phase_index(), layer_id, _TRACE_COUNTER_INDEX["evictions"]
+            ].add_(displaced)
         self._pending_src_layer = layer_id
         self._pending_whole_layer = True
         materialize_layer(self, layer_id)
+        if self.collect_stats:
+            self._trace_resident_slots.copy_(self.id_of_slot.ge(0).sum())
         self._trace_copy_pending = self.collect_stats
 
     def reset(self) -> None:
@@ -1056,6 +1073,7 @@ class OffloadMoeCache:
         self.stat_steps_layer.zero_()
         self.decode_freq.zero_()
         self._trace_counters.zero_()
+        self._trace_prefill_active.zero_()
         # Preserve the cache's warm state while making eviction accounting request-local.
         self._trace_resident_slots.copy_(self.id_of_slot.ge(0).sum())
         self._trace_copy_pending = False
@@ -1108,6 +1126,27 @@ class OffloadMoeCache:
         evictions = (copied - free_slots).clamp_min(0)
         counters[_TRACE_COUNTER_INDEX["evictions"]].add_(evictions)
         self._trace_resident_slots.add_(copied).clamp_(max=self.cache_size)
+
+    def record_prefill_routes(self, layer_id: int, expert_ids: torch.Tensor) -> None:
+        """Record ordinary prefill routing before full-layer materialization.
+
+        Standard host-bank prefill deliberately bypasses ``ensure_experts`` and
+        therefore needs its own aggregate-only seam. The reusable device mask
+        computes one unique/hit/miss count for this layer invocation without
+        retaining expert IDs or transferring them to the host.
+        """
+        if not self.collect_stats:
+            return
+        ids = expert_ids.reshape(-1).long()
+        self._trace_prefill_active.zero_()
+        self._trace_prefill_active.scatter_(0, ids, 1)
+        unique = self._trace_prefill_active.sum()
+        hits = (self._trace_prefill_active.bool() & self.slot_for_id[layer_id].ge(0)).sum()
+        counters = self._trace_counters[self._trace_phase_index(), layer_id]
+        counters[_TRACE_COUNTER_INDEX["route_references"]].add_(ids.numel())
+        counters[_TRACE_COUNTER_INDEX["route_unique"]].add_(unique)
+        counters[_TRACE_COUNTER_INDEX["l1_hits"]].add_(hits)
+        counters[_TRACE_COUNTER_INDEX["l1_misses"]].add_(unique - hits)
 
     def _record_trace_copy(self, layer_id: int, *, whole_layer: bool | None = None) -> None:
         if not (self.collect_stats and self._trace_copy_pending):

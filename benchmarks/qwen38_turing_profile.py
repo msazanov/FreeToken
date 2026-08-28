@@ -107,6 +107,19 @@ def result_directory(repo_root: Path, run_name: str | None = None) -> Path:
     return destination
 
 
+def child_environment(
+    repo_root: Path, *, inherited: dict[str, str] | None = None
+) -> dict[str, str]:
+    """Return the Qwen child environment without request-body logging enabled."""
+    environment = dict(os.environ if inherited is None else inherited)
+    # The parent may deliberately log API traffic, but this runner constructs a
+    # long prompt in memory and must not let that body escape its result tree.
+    environment.pop("FREETOKEN_API_LOG_DIR", None)
+    source_root = str(repo_root.resolve() / "python")
+    environment["PYTHONPATH"] = source_root + os.pathsep + environment.get("PYTHONPATH", "")
+    return environment
+
+
 def _int_at(values: list[str], index: int) -> int | None:
     try:
         return int(values[index])
@@ -251,9 +264,7 @@ def run_context_point(args: argparse.Namespace, context_tokens: int, results_dir
     artifact = results_dir / f"context-{context_tokens}.json"
     stdout = (results_dir / f"context-{context_tokens}.stdout.log").open("wb")
     stderr = (results_dir / f"context-{context_tokens}.stderr.log").open("wb")
-    environment = dict(os.environ)
-    source_root = str(args.repo_root.resolve() / "python")
-    environment["PYTHONPATH"] = source_root + os.pathsep + environment.get("PYTHONPATH", "")
+    environment = child_environment(args.repo_root)
     process = subprocess.Popen(
         _server_command(args, port),
         stdout=stdout,

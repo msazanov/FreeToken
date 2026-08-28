@@ -37,6 +37,43 @@ def test_reset_stats_clears_routing_frequency_and_snapshot_labels_stationary_top
     assert snapshot["cache"]["cache_size"] == 4
 
 
+def test_standard_prefill_records_routes_before_materialization_and_counts_evictions(monkeypatch):
+    """The ordinary prefill path does not call ensure_experts()."""
+    cache = OffloadMoeCache(
+        num_layers=2,
+        num_experts=4,
+        cache_size=4,
+        device=torch.device("cpu"),
+    )
+    cache.collect_stats = True
+    cache.set_trace_phase("prefill")
+    cache.id_of_slot.copy_(torch.tensor([4, 1, -1, 3], dtype=torch.int32))
+    cache.slot_for_id[1, 0] = 0
+    cache.slot_for_id[0, 1] = 1
+    cache.slot_for_id[0, 3] = 3
+
+    def materialize(cache, layer_id):
+        cache.id_of_slot.copy_(torch.arange(4, 8, dtype=torch.int32))
+        cache.slot_for_id.fill_(-1)
+        cache.slot_for_id[layer_id].copy_(torch.arange(4, dtype=torch.int32))
+
+    monkeypatch.setattr("freetoken.moe.offload_kernels.materialize_layer", materialize)
+
+    cache.record_prefill_routes(1, torch.tensor([[0, 1], [1, 2]], dtype=torch.int32))
+    cache.materialize_layer(1)
+    layer = cache.telemetry_snapshot()["trace"]["prefill"]["layers"][1]
+
+    assert {key: layer[key] for key in (
+        "route_references", "route_unique", "l1_hits", "l1_misses", "evictions"
+    )} == {
+        "route_references": 4,
+        "route_unique": 3,
+        "l1_hits": 1,
+        "l1_misses": 2,
+        "evictions": 2,
+    }
+
+
 def test_auto_cuda_graphs_do_not_enable_routing_frequency_collection():
     cache = SimpleNamespace()
     config = SimpleNamespace(moe_collect_stats=True, cuda_graph_bs=None)

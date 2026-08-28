@@ -15,6 +15,7 @@ class BatchSamplingArgs:
     temperatures: torch.Tensor | None
     top_k: torch.Tensor | None = None
     top_p: torch.Tensor | None = None
+    generators: List[torch.Generator | None] | None = None
 
 
 def make_device_tensor(data: List, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -50,6 +51,40 @@ def sample_impl(
     return sampling.top_k_top_p_sampling_from_probs(probs, top_k, top_p)
 
 
+def _sample_with_generators(
+    logits: torch.Tensor,
+    temperatures: torch.Tensor,
+    top_k: torch.Tensor | None,
+    top_p: torch.Tensor | None,
+    generators: List[torch.Generator | None],
+) -> torch.Tensor:
+    """Torch fallback for requests that require a reproducible RNG stream.
+
+    The kernel samplers consume their own RNG state and cannot accept a
+    per-request generator. This path is intentionally opt-in (only when at
+    least one request supplied ``seed``), preserving the fast kernel path for
+    ordinary traffic while making a seed a real sampling control.
+    """
+    samples: list[torch.Tensor] = []
+    for row, generator in enumerate(generators):
+        scores = logits[row] / temperatures[row]
+        if top_k is not None:
+            k = int(top_k[row].item())
+            if k < scores.numel():
+                cutoff = torch.topk(scores, k).values[-1]
+                scores = scores.masked_fill(scores < cutoff, float("-inf"))
+        probs = torch.softmax(scores, dim=-1)
+        if top_p is not None and float(top_p[row].item()) < 1.0:
+            sorted_probs, sorted_ids = probs.sort(descending=True)
+            keep = sorted_probs.cumsum(dim=-1) <= top_p[row]
+            keep[0] = True
+            filtered = torch.zeros_like(probs)
+            filtered.scatter_(0, sorted_ids, sorted_probs * keep)
+            probs = filtered / filtered.sum()
+        samples.append(torch.multinomial(probs, 1, generator=generator))
+    return torch.cat(samples)
+
+
 @dataclass
 class Sampler:
     device: torch.device
@@ -70,11 +105,23 @@ class Sampler:
             top_k = make_device_tensor(top_ks, torch.int32, self.device)
         if any(p < 1.0 for p in top_ps):
             top_p = make_device_tensor(top_ps, torch.float32, self.device)
-        return BatchSamplingArgs(temperatures, top_k=top_k, top_p=top_p)
+        generators = None
+        if any(p.seed is not None for p in params):
+            generators = []
+            for req, params in zip(batch.reqs, params, strict=True):
+                if params.seed is not None and req.sampling_generator is None:
+                    req.sampling_generator = torch.Generator(device=self.device)
+                    req.sampling_generator.manual_seed(params.seed)
+                generators.append(req.sampling_generator)
+        return BatchSamplingArgs(temperatures, top_k=top_k, top_p=top_p, generators=generators)
 
     @nvtx_annotate("Sampler")
     def sample(self, logits: torch.Tensor, args: BatchSamplingArgs) -> torch.Tensor:
         with torch.cuda.nvtx.range("Sampler"):
             if args.temperatures is None:  # greedy sampling
                 return torch.argmax(logits, dim=-1)
+            if args.generators is not None:
+                return _sample_with_generators(
+                    logits.float(), args.temperatures, args.top_k, args.top_p, args.generators
+                )
             return sample_impl(logits.float(), args.temperatures, args.top_k, args.top_p)
