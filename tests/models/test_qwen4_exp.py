@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 from freetoken.models.register import get_model_spec
@@ -74,3 +75,9 @@ def test_qwen4_text_config_builds_qsa_and_linear_groups():
     assert config.qwen4_args.ple_layer_ids == (1,)
     assert config.requires_naive_cache
     assert not config.supports_cuda_graph
+
+
+def test_qwen4_mrope_can_supply_positions_to_shared_qwen35_projection():
+    from freetoken.models.qwen3_5_moe.attention import Qwen3_5Attention
+
+    assert "positions" in inspect.signature(Qwen3_5Attention._project).parameters
