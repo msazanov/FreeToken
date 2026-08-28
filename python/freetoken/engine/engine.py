@@ -667,8 +667,7 @@ class Engine:
             self._resolve_hybrid_fetch(config, cache)
         # Must be set before CUDA graph capture so the (device-side) accumulation ops are
         # captured and re-run on every decode replay.
-        cache.collect_stats = config.moe_collect_stats
-        cache.collect_decode_freq = config.moe_collect_stats and not config.cuda_graph_bs
+        _configure_moe_telemetry(cache, config)
         # attach_offload_moe_cache walks for OffloadMoELayers, or defers to a model's
         # _iter_offload_moe_layers() hook when its MoE blocks are bespoke nn.Modules (DSV4).
         layers = attach_offload_moe_cache(self.model, cache)
@@ -1310,6 +1309,12 @@ def _validate_quantized_kv_config(config: EngineConfig) -> None:
             f"--kv-cache-dtype {mode} is currently implemented only for MHAKVCache, "
             f"but this model resolves to {pool_class.__name__}."
         )
+
+
+def _configure_moe_telemetry(cache, config: EngineConfig) -> None:
+    """Apply telemetry switches after CUDA graph sizing has been normalized."""
+    cache.collect_stats = config.moe_collect_stats
+    cache.collect_decode_freq = config.moe_collect_stats and config.cuda_graph_bs == []
 
 
 def _adjust_config(config: EngineConfig):
