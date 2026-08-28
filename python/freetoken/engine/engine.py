@@ -324,6 +324,7 @@ class Engine:
         # (num_pages sizing, --moe-cache-auto); the instance owns rebuild/validation after.
         self._pool_cls = resolve_pool_class(config.model_config)
         self.ctx = Context(config.page_size)
+        self.ctx.qsa_score_workspace_bytes = config.qsa_score_workspace_mib << 20
         set_global_ctx(self.ctx)
 
         self.tp_cpu_group = self._init_communication(config)
@@ -1320,6 +1321,9 @@ def _configure_moe_telemetry(cache, config: EngineConfig) -> None:
 def _adjust_config(config: EngineConfig):
     def override(attr: str, value: Any):  # this is dangerous, use with caution
         object.__setattr__(config, attr, value)
+
+    if config.qsa_score_workspace_mib <= 0:
+        raise ValueError("qsa-score-workspace-mib must be >= 1")
 
     model_config = config.model_config
     requires_naive_cache = getattr(model_config, "requires_naive_cache", False)

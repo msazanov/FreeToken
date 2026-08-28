@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -44,6 +45,47 @@ def test_qsa_selection_is_independent_of_score_workspace_size():
 
     assert torch.equal(small_selected, large_selected)
     assert torch.equal(small_counts, large_counts)
+
+
+def test_qsa_backend_passes_context_score_workspace_bytes(monkeypatch):
+    from freetoken.attention import qsa
+    from freetoken.attention.qsa import QSAAttnBackend, QSAMetadata
+    from freetoken.core import Context
+
+    ctx = Context(page_size=1, qsa_score_workspace_bytes=8 << 20)
+    ctx.page_table = torch.tensor([[0, 1]], dtype=torch.int32)
+    monkeypatch.setattr(qsa, "get_global_ctx", lambda: ctx)
+
+    backend = object.__new__(QSAAttnBackend)
+    backend.device = torch.device("cpu")
+    backend.compress_ratio = 2
+    backend.token_budget = 2
+    backend.kvcache = SimpleNamespace(
+        compressed_k_cache=lambda _layer_id: torch.zeros((1, 1, 2))
+    )
+    batch = SimpleNamespace(
+        reqs=[SimpleNamespace(table_idx=0)],
+        attn_metadata=QSAMetadata(
+            cu_seqlens_q=torch.tensor([0, 1], dtype=torch.int32),
+            cu_seqlens_q_host=(0, 1),
+            logical_positions=torch.tensor([0]),
+            last_indices=torch.tensor([0], dtype=torch.int32),
+            compressed_rows=(torch.tensor([0]),),
+        ),
+    )
+    seen = {}
+
+    def capture_workspace(*args, **kwargs):
+        seen["bytes"] = kwargs["score_workspace_bytes"]
+        return (
+            torch.tensor([[0, 1]], dtype=torch.int32),
+            torch.tensor([2], dtype=torch.int32),
+        )
+
+    monkeypatch.setattr(qsa, "select_qsa_logical_rows", capture_workspace)
+    backend._select_physical_rows(torch.zeros((1, 1, 2)), 0, batch)
+
+    assert seen["bytes"] == 8 << 20
 
 
 def test_qsa_sparse_gqa_cpu_reference_respects_selected_physical_rows():

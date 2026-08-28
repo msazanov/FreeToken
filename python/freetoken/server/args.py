@@ -385,6 +385,13 @@ def parse_args(
     )
 
     parser.add_argument(
+        "--qsa-score-workspace-mib",
+        type=_positive_int,
+        default=ServerArgs.qsa_score_workspace_mib,
+        help="Workspace size in MiB for QSA compressed-key scoring.",
+    )
+
+    parser.add_argument(
         "--model-source",
         type=str,
         default="huggingface",

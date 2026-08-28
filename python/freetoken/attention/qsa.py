@@ -259,7 +259,8 @@ class QSAAttnBackend(BaseAttnBackend):
         md = batch.attn_metadata
         assert isinstance(md, QSAMetadata)
         reqs = batch.padded_reqs if hasattr(batch, "padded_reqs") else batch.reqs
-        page_table, cu, ratio = get_global_ctx().page_table, md.cu_seqlens_q_host, self.compress_ratio
+        ctx = get_global_ctx()
+        page_table, cu, ratio = ctx.page_table, md.cu_seqlens_q_host, self.compress_ratio
         selections: list[torch.Tensor] = []
         counts: list[torch.Tensor] = []
         compressed_pool = self.kvcache.compressed_k_cache(layer_id)
@@ -274,6 +275,7 @@ class QSAAttnBackend(BaseAttnBackend):
             logical, live = select_qsa_logical_rows(
                 index_q[begin:stop], compressed_keys, md.logical_positions[begin:stop],
                 compress_ratio=ratio, token_budget=self.token_budget,
+                score_workspace_bytes=ctx.qsa_score_workspace_bytes,
             )
             safe = logical.clamp_min(0).long()
             physical = page_table[int(req.table_idx)].index_select(0, safe.reshape(-1)).reshape_as(logical)

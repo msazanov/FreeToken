@@ -22,6 +22,7 @@ class EngineConfig:
     kv_cache_dtype: str = "bf16"
     max_running_req: int = 4
     attention_backend: str = "auto"
+    qsa_score_workspace_mib: int = 16
     moe_backend: str = "auto"
     # NVFP4 routed-expert GEMM backend (--nvfp4-backend): auto|marlin|flashinfer|triton.
     nvfp4_backend: str = "triton"

@@ -171,6 +171,9 @@ class Batch:
 @dataclass
 class Context:
     page_size: int
+    # Fixed QSA compressed-key scoring workspace budget, copied from EngineConfig before
+    # attention backends are created. Direct Context users retain the 16 MiB default.
+    qsa_score_workspace_bytes: int = 16 << 20
     # NOTE: this table always treat page_size = 1
     page_table: torch.Tensor = field(init=False)
     attn_backend: BaseAttnBackend = field(init=False)

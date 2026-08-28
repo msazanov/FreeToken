@@ -12,6 +12,7 @@ the moment it is added, and has to be dispositioned here to stay green.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -114,3 +115,24 @@ def test_moe_collect_stats_flag_enables_telemetry():
         args, _ = parse_args(["--model", "x", "--moe-collect-stats"])
 
     assert args.moe_collect_stats is True
+
+
+def test_qsa_score_workspace_mib_accepts_positive_and_rejects_zero():
+    config = _Config({"architectures": ["LlamaForCausalLM"], "torch_dtype": "bfloat16"})
+    with patch("freetoken.utils.cached_load_hf_config", lambda _path: config):
+        args, _ = parse_args(
+            ["--model", ANON_PATH, "--qsa-score-workspace-mib", "8"]
+        )
+
+    assert args.qsa_score_workspace_mib == 8
+
+    with patch("freetoken.utils.cached_load_hf_config", lambda _path: config):
+        with pytest.raises(SystemExit):
+            parse_args(["--model", ANON_PATH, "--qsa-score-workspace-mib", "0"])
+
+
+def test_adjust_config_rejects_non_positive_qsa_score_workspace():
+    from freetoken.engine.engine import _adjust_config
+
+    with pytest.raises(ValueError, match="qsa-score-workspace-mib must be >= 1"):
+        _adjust_config(SimpleNamespace(qsa_score_workspace_mib=0))
