@@ -842,3 +842,39 @@ would cap routed prefill fragments at a single token. The next experiment must
 determine whether FreeToken's existing `max_extend_tokens` scheduler chunking
 preserves Qwen PLE/GDN/QSA state; if so it can bound activation workspace
 without discarding a useful expert cache.
+
+## 2026-08-28 — 16K stateful scheduler-chunking and thermal boundary
+
+Source review and the existing scheduler/QSA/Qwen geometry suite establish that
+`--max-prefill-length 2048` makes a 16,383-token request into eight sequential
+forwards while retaining one request table row, GDN state, QSA pending
+compression state and PLE convolution state. The relevant local verification
+passed before the live trial:
+
+```text
+tests/scheduler/test_scheduler_chunked_prefill.py
+tests/kvcache/test_qsa_pool.py
+tests/models/test_qwen4_exp.py
+tests/models/test_qwen4exp_gguf.py
+21 passed in 16.75s
+```
+
+Live configuration: FP16 Q4_K_M, TQ4-NC KV, 16,384 KV tokens, 256 expert
+slots, `--max-prefill-length 2048`, naive cache, one request. The first three
+real continuation chunks completed without OOM:
+
+| completed scheduler chunk | tokens | reported prefill tok/s |
+| ---: | ---: | ---: |
+| 1 | 2048 | 11.26 |
+| 2 | 2048 | 36.93 |
+| 3 | 2048 | 20.42 |
+
+The request was intentionally stopped before completion because the mobile RTX
+2070 reached 91–92 C. `nvidia-smi` reported `SW Thermal Slowdown: Active`, a
+780 MHz SM clock (versus about 1215 MHz after cooling), and the GPU has a 94 C
+slowdown / 99 C shutdown threshold. This is therefore **not** a full 16K speed
+result; it proves the stateful chunking path and records three partial chunks.
+After a 30-second idle cooldown the GPU returned to 77 C, 1215 MHz and 9 MiB
+used. Future long benchmarks must use a stable thermal/power envelope or cool
+between chunks; otherwise apparent runtime regressions are thermal throttling,
+not FreeToken performance.

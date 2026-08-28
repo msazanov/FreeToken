@@ -437,3 +437,16 @@ failed and inconclusive hypotheses; do not rewrite history.
   still OOM in separate GDN/FLA temporary buffers. `TESTLOG.md` retains both
   failure points and decode-speed caveat rather than treating the memory win as
   a completed long-context benchmark.
+
+### Qwen 16K uses the existing stateful chunked-prefill path
+
+- Repository review confirmed that `--max-prefill-length 2048` produces one
+  continued request, preserving Qwen4's naive GDN/QSA/PLE runtime state. The
+  existing scheduler/QSA/Qwen regression subset passed (21 tests) before live
+  use; no bespoke state transport was added.
+- The first three 2048-token continuations completed at 11.26, 36.93 and 20.42
+  prefill tok/s with 256 MoE slots and no OOM. The full request was deliberately
+  stopped at 91–92 C because the RTX 2070 Mobile had active software thermal
+  throttling and fell to 780 MHz. These partial values validate the mechanism,
+  but they are not presented as a 16K benchmark until the thermal envelope is
+  held stable.
