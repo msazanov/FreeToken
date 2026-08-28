@@ -120,7 +120,10 @@ def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
         indexer_head_dim=int(_kv(shim, "attention.indexer.key_length")),
         indexer_budget=indexer_budget,
         indexer_compress_ratio=compress_ratio,
-        output_gate_type="silu",
+        # Qwen3.8's official text config uses a sigmoid GDN output gate.  This
+        # is not encoded as a GGUF KV today, so keep the architecture constant
+        # here rather than inheriting the older Qwen3.5 SiLU default.
+        output_gate_type="sigmoid",
         mrope_section=mrope_section,
         mrope_interleaved=True,
         ple_layer_multipliers=tuple(int(value) for value in _kv(shim, "ple.layer_multipliers")),

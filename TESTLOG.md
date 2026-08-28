@@ -505,3 +505,42 @@ tail: [..., 248045, 74455, 198, 248068, 198] on both sides
 The currently running server initialized its tokenizer before this correction.
 It must be restarted before the next quality/speed request; no conclusion about
 Qwen's answer quality is valid until that run completes.
+
+## 2026-08-28 — Qwen3.8 GDN gate and RMSNorm audit
+
+The tokenizer-corrected, thinking-disabled request still produced deterministic
+garbage (`Packagefinois已经是 symbol];`, HTTP 200, 17 input / 7 output tokens,
+144.40 s). This ruled out the template/parsing explanation but is not a quality
+result.
+
+We investigated a fresh external Qwen4 RMSNorm report. It correctly describes
+ones-centered Qwen weights being broken by a runtime that also applies `1 + w`.
+Actual values in this GGUF confirm the same raw convention:
+
+```text
+blk.0.ssm_norm.weight       mean 0.9668, std 0.0326
+blk.0.hc_attn_norm.weight   mean 0.9365, std 0.4729
+blk.0.hc_ffn_norm.weight    mean 0.8905, std 1.0008
+blk.3.indexer.q_norm.weight mean 0.9628, std 0.0651
+```
+
+This runner's GGUF iterator already applies `raw - 1` for those norm parameters
+before `GemmaPlusOneRMSNorm` performs `1 + w`; its effective scale is therefore
+the original raw value. No RMSNorm change was made.
+
+The same official `config.json` exposes a direct, independent mismatch:
+`output_gate_type` is `"sigmoid"`, while `parse_gguf_config()` was hard-coded
+to `"silu"`. The GGUF format does not include this architecture value. The
+adapter now uses sigmoid and its metadata regression passes:
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4_exp.py tests/models/test_qwen4exp_gguf.py \
+  tests/models/test_qwen4exp_gguf_experts.py \
+  tests/moe/test_fused_moe.py::test_fused_topk_falls_back_when_optional_triton_kernel_rejects_geometry -q
+20 passed in 7.68s
+```
+
+The next required experiment is a clean server restart and the identical
+thinking-disabled request. Only a coherent answer permits speed/context
+benchmarking.

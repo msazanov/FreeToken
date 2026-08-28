@@ -296,3 +296,17 @@ failed and inconclusive hypotheses; do not rewrite history.
 - Direct comparison against the downloaded official `tokenizer.json` now has
   identical rendered text and all 45 IDs. The prior nonsense response is
   therefore invalid as a quality measurement and must be repeated after restart.
+
+### Accepted Qwen4 GDN output-gate correction
+
+- The official Qwen3.8 text config specifies `output_gate_type: "sigmoid"`.
+  The GGUF metadata does not carry this value, and the local adapter had copied
+  an older Qwen-family default of `"silu"`. This changes every Gated DeltaNet
+  layer, so it is a correctness error rather than a performance preference.
+- The Qwen4 GGUF architecture constant is now `sigmoid`, with a regression on
+  the actual AtomicChat Q4_K_M metadata fixture. This supersedes the prior
+  hard-coded SiLU assumption.
+- A contemporaneous Qwen4 RMSNorm issue was investigated too. Our actual GGUF
+  norm values are ones-centered, but this adapter already subtracts one before
+  feeding `GemmaPlusOneRMSNorm`; the effective scale remains the raw checkpoint
+  scale. That hypothesis is explicitly rejected for this runner.

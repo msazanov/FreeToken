@@ -61,6 +61,7 @@ def test_qwen4exp_gguf_parses_actual_qsa_gdn_and_ple_geometry():
     assert config.model_type == "qwen4exp"
     assert config.num_layers == 48
     assert config.num_experts_per_tok == 10
+    assert config.qwen4_args.output_gate_type == "sigmoid"
     assert config.qwen4_args.ple_layer_ids == (1,)  # GGUF ids are already zero-based.
     assert config.qwen4_args.mrope_section == (11, 11, 10)
     assert config.qwen4_args.indexer_budget == 2048
