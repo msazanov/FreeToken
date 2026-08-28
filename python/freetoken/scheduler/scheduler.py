@@ -47,6 +47,36 @@ def _gib(n_bytes: int) -> str:
     return f"{n_bytes / (1 << 30):.2f} GiB"
 
 
+def _reset_moe_stats_for_prefill(config, engine, batch) -> None:
+    """Reset telemetry when a first prefill batch is about to execute.
+
+    ``prompt_admissions`` is populated by PrefillManager only for requests entering their
+    first prepared prefill batch. Keeping this at the forward seam prevents a queued request
+    from clearing counters belonging to the request currently running.
+    """
+    if not (
+        getattr(config, "moe_collect_stats", False)
+        and getattr(batch, "is_prefill", False)
+        and getattr(batch, "prompt_admissions", None)
+    ):
+        return
+    cache = engine.moe_offload_cache
+    if cache is not None:
+        cache.reset_stats()
+
+
+def _snapshot_finished_moe_stats(config, engine, replies: List[DetokenizeMsg]) -> None:
+    """Attach one terminal telemetry snapshot to finished detokenize replies."""
+    if not getattr(config, "moe_collect_stats", False) or not any(m.finished for m in replies):
+        return
+    cache = engine.moe_offload_cache
+    moe_stats = cache.telemetry_snapshot() if cache is not None else None
+    if moe_stats is not None:
+        for msg in replies:
+            if msg.finished:
+                msg.moe_stats = moe_stats
+
+
 # For overlap scheduling, we also need to cache some other data to avoid IMA
 class ForwardInput(NamedTuple):
     batch: Batch
@@ -388,13 +418,7 @@ class Scheduler(SchedulerIOMixin):
                     self.cache_manager.cache_req(req, finished=False)
 
         self.finished_reqs = new_finished_reqs
-        if getattr(self.config, "moe_collect_stats", False) and any(m.finished for m in reply):
-            cache = self.engine.moe_offload_cache
-            moe_stats = cache.telemetry_snapshot() if cache is not None else None
-            if moe_stats is not None:
-                for m in reply:
-                    if m.finished:
-                        m.moe_stats = moe_stats
+        _snapshot_finished_moe_stats(self.config, self.engine, reply)
         # Stamp each reply with the post-batch KV page occupancy so the frontend (shell
         # status bar) can show live KV usage without a separate query.
         used, total = self._kv_usage_pages()
@@ -527,10 +551,6 @@ class Scheduler(SchedulerIOMixin):
                 logger.warning_rank0(
                     f"Adjust max_tokens to {max_output_len} for request {msg.uid}."
                 )
-            if getattr(self.config, "moe_collect_stats", False):
-                cache = self.engine.moe_offload_cache
-                if cache is not None:
-                    cache.reset_stats()
             self.prefill_manager.add_one_req(msg)
         elif isinstance(msg, AbortBackendMsg):
             logger.debug_rank0("Aborting request %d", msg.uid)
@@ -879,6 +899,7 @@ class Scheduler(SchedulerIOMixin):
         batch.input_ids = self.token_pool[input_mapping]
         if self.toolcall_anchor_id is not None and not batch.is_prefill:
             self.cache_manager.snapshot_toolcall_anchor(batch.reqs)
+        _reset_moe_stats_for_prefill(self.config, self.engine, batch)
         forward_output = self.engine.forward_batch(batch, sample_args)
         self.token_pool[output_mapping] = forward_output.next_tokens_gpu
         self.decode_manager.filter_reqs(forward_input.batch.reqs)

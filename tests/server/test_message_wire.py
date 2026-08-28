@@ -107,6 +107,42 @@ def test_detokenize_msg_carries_kv_usage_round_trip():
     assert decoded.moe_stats == moe_stats
 
 
+def test_old_user_reply_payload_decodes_with_new_optional_field():
+    payload = {
+        "__type__": "UserReply",
+        "uid": 7,
+        "incremental_output": "done",
+        "finished": True,
+    }
+
+    decoded = BaseFrontendMsg.decoder(payload)
+
+    assert isinstance(decoded, UserReply)
+    assert decoded.moe_stats is None
+
+
+def test_old_detokenize_payload_decodes_with_new_optional_field():
+    payload = {
+        "__type__": "DetokenizeMsg",
+        "uid": 7,
+        "next_token": 42,
+        "finished": True,
+    }
+
+    decoded = BaseTokenizerMsg.decoder(payload)
+
+    assert isinstance(decoded, DetokenizeMsg)
+    assert decoded.moe_stats is None
+
+
+def test_absent_moe_stats_is_omitted_from_new_wire_messages():
+    user_reply = UserReply(uid=7, incremental_output="", finished=True)
+    detokenize = DetokenizeMsg(uid=7, next_token=42, finished=True)
+
+    assert "moe_stats" not in BaseFrontendMsg.encoder(user_reply)
+    assert "moe_stats" not in BaseTokenizerMsg.encoder(detokenize)
+
+
 def test_client_dicts_with_the_wire_tag_key_survive_intact():
     """Tool JSON Schemas and chat_template_kwargs are free-form client data. A field literally
     named ``__type__`` (a common discriminator) must not be read back as a serialized class --

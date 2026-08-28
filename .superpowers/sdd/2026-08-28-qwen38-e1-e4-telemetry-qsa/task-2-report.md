@@ -57,3 +57,35 @@ PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/
   the separate telemetry regression are the verified gates.
 - The pre-existing untracked plan file was preserved and not included in the
   Task 2 changes.
+
+## Fix Round 1
+
+Addressed all review findings:
+
+- Moved `reset_stats()` out of `UserMsg` queue handling. The scheduler now
+  resets only at the `_forward()` seam for a prefill `Batch` carrying
+  `prompt_admissions`, immediately before `engine.forward_batch()`. A queued
+  request therefore cannot clear the counters of a running request.
+- Both message encoders omit `moe_stats` when it is `None`, allowing an old
+  peer to decode telemetry-disabled new messages. New message decoders retain
+  the default `None` when reading old payloads without the optional key.
+- Added compatibility tests for old payloads and absent optional fields, plus
+  lifecycle tests proving queue isolation and `copy_done.synchronize()` before
+  the terminal snapshot.
+
+Fix-round TDD evidence:
+
+- Red: the focused suite failed on absent-field serialization and queue-time
+  reset; the first lifecycle fixture failure was corrected as a test-fixture
+  issue before rerunning.
+- Green: the focused command below passed 14 tests.
+
+Final Fix Round 1 verification:
+
+```text
+PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/server/test_message_wire.py tests/server/test_stats.py -q
+14 passed in 3.60s
+```
+
+The pre-existing untracked plan remains preserved. No model server, GPU,
+OpenCode, or OmniRoute was used.

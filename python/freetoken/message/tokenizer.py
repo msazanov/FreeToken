@@ -12,7 +12,10 @@ from .utils import deserialize_type, serialize_type
 class BaseTokenizerMsg:
     @staticmethod
     def encoder(msg: BaseTokenizerMsg) -> Dict:
-        return serialize_type(msg)
+        encoded = serialize_type(msg)
+        if getattr(msg, "moe_stats", None) is None:
+            encoded.pop("moe_stats", None)
+        return encoded
 
     @staticmethod
     def decoder(json: Dict) -> BaseTokenizerMsg:

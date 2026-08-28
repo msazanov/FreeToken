@@ -10,7 +10,10 @@ from .utils import deserialize_type, serialize_type
 class BaseFrontendMsg:
     @staticmethod
     def encoder(msg: BaseFrontendMsg) -> Dict:
-        return serialize_type(msg)
+        encoded = serialize_type(msg)
+        if getattr(msg, "moe_stats", None) is None:
+            encoded.pop("moe_stats", None)
+        return encoded
 
     @staticmethod
     def decoder(json: Dict) -> BaseFrontendMsg:
