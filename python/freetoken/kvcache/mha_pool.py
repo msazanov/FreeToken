@@ -12,6 +12,7 @@ from .base import BaseKVCachePool, KV_CACHE_DTYPES
 _KV_DATA_DTYPES = {
     "fp8-e5m2": torch.float8_e5m2,
     "int8": torch.int8,
+    "tq4-nc": torch.uint8,
 }
 
 
@@ -45,6 +46,12 @@ class MHAKVCache(BaseKVCachePool):
                 f"unsupported kv_cache_dtype {kv_cache_dtype!r}; "
                 f"expected one of {sorted(KV_CACHE_DTYPES)}"
             )
+        if kv_cache_dtype == "tq4-nc" and head_dim % 2:
+            raise ValueError("tq4-nc requires an even KV head dimension")
+        if kv_cache_dtype == "tq4-nc" and (head_dim <= 0 or head_dim & (head_dim - 1)):
+            raise ValueError(
+                f"tq4-nc Hadamard dimension must be a power of two, got {head_dim}"
+            )
         tp_info = get_tp_info()
         local_kv_heads = div_even(num_kv_heads, tp_info.size, allow_replicate=True)
         self._num_layers = num_layers
@@ -76,12 +83,13 @@ class MHAKVCache(BaseKVCachePool):
         self._allocate(num_pages)
 
     def _allocate(self, num_pages: int) -> None:
+        storage_head_dim = self._head_dim // 2 if self._kv_cache_dtype == "tq4-nc" else self._head_dim
         data_shape = (
             self._num_storage_layers,
             num_pages,
             self._page_size,
             self._local_kv_heads,
-            self._head_dim,
+            storage_head_dim,
         )
         if self._kv_cache_dtype == "bf16":
             self._kv_buffer = torch.empty(
@@ -99,7 +107,7 @@ class MHAKVCache(BaseKVCachePool):
             self._v_scale_buffer = torch.empty(
                 scale_shape, device=self._device, dtype=torch.bfloat16
             )
-        self._storage_shape = (num_pages * self._page_size, self._local_kv_heads, self._head_dim)
+        self._storage_shape = (num_pages * self._page_size, self._local_kv_heads, storage_head_dim)
 
     def rebuild(self, num_pages: int) -> None:
         """Reallocate the KV buffer for ``num_pages`` pages IN PLACE.
@@ -182,6 +190,18 @@ class MHAKVCache(BaseKVCachePool):
     ) -> None:
         dense = self._dense(layer_id)
         assert self._k_buffer is not None and self._v_buffer is not None
+        if self._kv_cache_dtype == "tq4-nc":
+            from freetoken.kernel.triton.kv_quant import store_tq4_nc_kv
+
+            assert self._k_scale_buffer is not None and self._v_scale_buffer is not None
+            store_tq4_nc_kv(
+                k_cache=self._k_buffer[dense].view(self._storage_shape),
+                v_cache=self._v_buffer[dense].view(self._storage_shape),
+                k_scale=self._k_scale_buffer[dense].view(self._storage_shape[:2]),
+                v_scale=self._v_scale_buffer[dense].view(self._storage_shape[:2]),
+                indices=out_loc, k=k, v=v, layer_id=layer_id, head_dim=self._head_dim,
+            )
+            return
         if self.is_quantized:
             from freetoken.kernel.triton.kv_quant import store_quantized_kv
 
@@ -222,6 +242,18 @@ class MHAKVCache(BaseKVCachePool):
     @property
     def is_quantized(self) -> bool:
         return self._kv_cache_dtype != "bf16"
+
+    @property
+    def head_dim(self) -> int:
+        return self._head_dim
+
+    @property
+    def logical_head_dim(self) -> int:
+        return self._head_dim
+
+    @property
+    def is_packed(self) -> bool:
+        return self._kv_cache_dtype == "tq4-nc"
 
     @property
     def num_layers(self) -> int:

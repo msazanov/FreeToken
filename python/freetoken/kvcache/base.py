@@ -9,7 +9,7 @@ from freetoken.utils import div_even, init_logger, mem_GB
 
 logger = init_logger(__name__)
 
-KV_CACHE_DTYPES = frozenset({"bf16", "fp8-e5m2", "int8"})
+KV_CACHE_DTYPES = frozenset({"bf16", "fp8-e5m2", "int8", "tq4-nc"})
 
 
 def kv_cache_storage_bytes_per_vector(
@@ -20,6 +20,10 @@ def kv_cache_storage_bytes_per_vector(
         return head_dim * value_dtype_bytes
     if mode in {"fp8-e5m2", "int8"}:
         return head_dim + 2
+    if mode == "tq4-nc":
+        if head_dim % 2:
+            raise ValueError("tq4-nc requires an even KV head dimension")
+        return head_dim // 2 + 2
     raise ValueError(
         f"unsupported kv_cache_dtype {mode!r}; expected one of {sorted(KV_CACHE_DTYPES)}"
     )

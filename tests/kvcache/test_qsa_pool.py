@@ -7,9 +7,10 @@ import torch
 
 def setup_module() -> None:
     """The pool unit tests don't initialize distributed runtime state."""
-    from freetoken.distributed.info import set_tp_info
+    from freetoken.distributed.info import set_tp_info, try_get_tp_info
 
-    set_tp_info(rank=0, size=1)
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
 
 
 def _pool(*, kv_cache_dtype: str = "bf16"):
