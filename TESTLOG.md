@@ -1061,3 +1061,33 @@ Two incomplete attempts are retained rather than overwritten:
   because an orphan from the first attempt owned 7.09 GiB VRAM.  The exact
   orphaned Qwen PIDs were then terminated and the v3 control began with 7.49
   GiB free VRAM.  Neither directory is used as a performance datapoint.
+
+## 2026-08-29 — Qwen3.8 16K TQ4-NC profile (complete)
+
+The same fixed seed/model/cache configuration completed a 16,396-token real
+prompt plus 255 generated tokens with a 18,432-token allocation ceiling.  The
+extra 2,048 positions are only prompt-template/output headroom; K+V used 0.16
+GiB and the process reported 0.98 GiB free after model initialisation.
+
+| metric | result |
+| --- | ---: |
+| complete request wall time | 616.26 s |
+| end-to-end prompt throughput | 35.21 tok/s |
+| steady scheduler prefill chunks | 39.27–40.79 tok/s |
+| end-to-end decode throughput | 1.686 tok/s |
+| mean / peak sampled GPU util. | 67% / 97% |
+| peak sampled VRAM | 7,396 MiB |
+| process physical reads | 17.20 MiB |
+| major / minor faults | 2,474 / 54,357 |
+
+The cold initial 1,024-token prefill was 8.06 tok/s and the first decode report
+was 0.08 tok/s; neither is a steady-state comparison point.  Most meaningful
+is that the 16K request was successful with no thermal cap or OOM. The
+aggregate decode trace remains 0 L1 hits, 122,400 misses and 122,400 evictions
+for 48 layers; the stationary per-layer top-C oracle is 38.58%. This strengthens
+the evidence that global-LRU cross-layer interference, rather than a lack of
+route locality, is the next decode optimisation target.
+
+Raw reproducible evidence:
+`benchmarks/results/qwen38-e1e4-16k-ws16-top10-router/context-16384.json`
+and its sibling stdout/stderr logs.

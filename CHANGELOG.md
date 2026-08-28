@@ -531,3 +531,14 @@ failed and inconclusive hypotheses; do not rewrite history.
   throughput from 0.910 to 1.834 tok/s (+101.6%) and increased mean sampled GPU
   utilisation from 17.1% to 28.3%. The raw artifacts and all failed attempts
   are retained in `TESTLOG.md` and `benchmarks/results/`.
+
+### Verified — 16K Qwen3.8 profile with TQ4-NC and native top-10 routing
+
+- The automated fixed-seed runner completed 16,396 prompt tokens and 255 output
+  tokens without OOM. End-to-end prompt throughput was 35.21 tok/s; warmed
+  1,024-token prefill chunks sustained 39.27–40.79 tok/s and decode was 1.686
+  tok/s. GPU utilisation averaged 67% and peaked at 97%.
+- This validates the page-size-4/TQ4-NC QSA allocation at 16K in the exact
+  disk-backed Q4_K_M runtime. Decode still has zero global-LRU hits despite a
+  38.58% stationary per-layer oracle, making layer-aware cache partitioning the
+  next evidence-backed optimisation rather than a larger undifferentiated LRU.
