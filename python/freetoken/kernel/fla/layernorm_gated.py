@@ -46,6 +46,7 @@ def _layer_norm_fwd_1pass_kernel(
     HAS_Z: tl.constexpr,
     NORM_BEFORE_GATE: tl.constexpr,
     IS_RMS_NORM: tl.constexpr,
+    WEIGHT_PLUS_ONE: tl.constexpr,
     ACTIVATION: tl.constexpr,
 ):
     # Map the program id to the starting row of X and Y it should compute.
@@ -106,6 +107,8 @@ def _layer_norm_fwd_1pass_kernel(
     w_offsets = cols + group * N
     w_mask = cols < N
     w = tl.load(W + w_offsets, mask=w_mask, other=0.0).to(tl.float32)
+    if WEIGHT_PLUS_ONE:
+        w += 1.0
 
     if HAS_BIAS:
         b = tl.load(B + w_offsets, mask=w_mask, other=0.0).to(tl.float32)
@@ -154,6 +157,7 @@ def _layer_norm_fwd(
     group_size=None,
     norm_before_gate=True,
     is_rms_norm=False,
+    weight_plus_one: bool = False,
     activation: str = "swish",
 ):
     M, N = x.shape
@@ -214,6 +218,7 @@ def _layer_norm_fwd(
             HAS_Z=z is not None,
             NORM_BEFORE_GATE=norm_before_gate,
             IS_RMS_NORM=is_rms_norm,
+            WEIGHT_PLUS_ONE=weight_plus_one,
             num_warps=num_warps,
             ACTIVATION=activation,
         )
@@ -230,9 +235,10 @@ def rms_norm_gated(
     group_size=None,
     norm_before_gate=True,
     is_rms_norm=False,
+    weight_plus_one: bool = False,
     activation: str = "swish",
 ):
-    """If z is not None, we do norm(x) * silu(z) if norm_before_gate, else norm(x * silu(z))"""
+    """Fused norm/gate; ``weight_plus_one`` selects centered checkpoint weights."""
 
     x_shape_og = x.shape
     # reshape input data into 2D tensor
@@ -256,6 +262,7 @@ def rms_norm_gated(
         group_size=group_size,
         norm_before_gate=norm_before_gate,
         is_rms_norm=is_rms_norm,
+        weight_plus_one=weight_plus_one,
         activation=activation,
     )
     return y.reshape(x_shape_og)
