@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from freetoken.engine.engine import _configure_moe_telemetry, _adjust_config
 from freetoken.engine.config import EngineConfig
 from freetoken.distributed import DistributedInfo
+from freetoken.layers.moe import OffloadMoELayer
 from freetoken.moe.offload_cache import OffloadMoeCache
 
 
@@ -71,6 +72,45 @@ def test_standard_prefill_records_routes_before_materialization_and_counts_evict
         "l1_hits": 1,
         "l1_misses": 2,
         "evictions": 2,
+    }
+
+
+def test_offload_moe_prefill_routed_records_standard_prefill_trace(monkeypatch):
+    """The standard host-bank production branch records routes before materializing."""
+    cache = OffloadMoeCache(
+        num_layers=1,
+        num_experts=4,
+        cache_size=4,
+        device=torch.device("cpu"),
+    )
+    cache.collect_stats = True
+    cache.set_trace_phase("prefill")
+    cache.slot_for_id[0, 1] = 1
+    monkeypatch.setattr(cache, "materialize_layer", lambda layer_id: None)
+    monkeypatch.setattr(cache, "copy_missing", lambda: None)
+    monkeypatch.setattr(cache, "bank_views", lambda n: ())
+
+    layer = OffloadMoELayer.__new__(OffloadMoELayer)
+    layer.layer_id = 0
+    layer.num_experts = 4
+    layer.offload_cache = cache
+    layer._expert_gemm = lambda *args, **kwargs: torch.zeros((2, 3))
+
+    output = layer._prefill_routed(
+        torch.zeros((2, 3)),
+        torch.ones((2, 2)),
+        torch.tensor([[0, 1], [1, 2]], dtype=torch.int32),
+    )
+
+    assert output.shape == (2, 3)
+    trace = cache.telemetry_snapshot()["trace"]["prefill"]["layers"][0]
+    assert {key: trace[key] for key in (
+        "route_references", "route_unique", "l1_hits", "l1_misses"
+    )} == {
+        "route_references": 4,
+        "route_unique": 3,
+        "l1_hits": 1,
+        "l1_misses": 2,
     }
 
 

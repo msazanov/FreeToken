@@ -31,3 +31,16 @@ Status: implemented and committed in the Task 5 source/test scope.
 - `PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/moe/test_telemetry.py tests/benchmarks/test_qwen38_turing_profile.py -q` — `7 passed`.
 - Focused OpenAI seed plus Responses/Anthropic adapter checks — `4 passed` (one upstream FastAPI/httpx deprecation warning).
 - CPU-only seeded torch-sampling probe returned identical samples for two generators seeded with `73`.
+
+## Fix round 2 — seeded nucleus boundary and production seams
+
+- Seeded torch sampling now keeps the first token whose inclusion crosses the `top_p` boundary, matching the kernel's nucleus semantics. The direct regression uses probabilities `[0.6, 0.4]` with `top_p=0.8` and proves both remain eligible.
+- Added a CPU-only test through `Sampler.prepare()` and `Sampler.sample()` that verifies two independently created seeded requests produce the same sampled sequence and retain their per-request generator.
+- Added a CPU-only `OffloadMoELayer._prefill_routed()` standard-host-bank seam test. It proves that actual layer method records aggregate prefill route references, unique routes, hits, and misses before materialization; the snapshot retains no raw route IDs or prompt text.
+
+### Fix-round verification
+
+- Red phase: `PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/engine/test_sample.py::test_seeded_top_p_retains_first_crossover_token -q` — failed as expected before the mask fix: observed `[1, 0]` rather than `[0.6, 0.4]`.
+- `PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/engine/test_sample.py tests/moe/test_telemetry.py tests/server/test_openai_api.py::test_openai_request_seed_reaches_sampling_parameters tests/benchmarks/test_qwen38_turing_profile.py -q` — `11 passed` (one existing FastAPI/httpx deprecation warning).
+- `py_compile` for the edited sampler and added CPU tests, plus `git diff --check` — passed.
+- No live server, model load, or GPU benchmark was run.

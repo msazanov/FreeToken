@@ -76,8 +76,10 @@ def _sample_with_generators(
         probs = torch.softmax(scores, dim=-1)
         if top_p is not None and float(top_p[row].item()) < 1.0:
             sorted_probs, sorted_ids = probs.sort(descending=True)
-            keep = sorted_probs.cumsum(dim=-1) <= top_p[row]
-            keep[0] = True
+            # Keep every token whose *preceding* cumulative mass is within the
+            # nucleus. This includes the first token that crosses ``top_p`` --
+            # the same inclusive boundary used by the kernel sampler.
+            keep = (sorted_probs.cumsum(dim=-1) - sorted_probs) <= top_p[row]
             filtered = torch.zeros_like(probs)
             filtered.scatter_(0, sorted_ids, sorted_probs * keep)
             probs = filtered / filtered.sum()
