@@ -76,8 +76,23 @@ def test_qwen4_text_config_builds_qsa_and_linear_groups():
     assert config.requires_naive_cache
     assert not config.supports_cuda_graph
 
+    from freetoken.distributed.info import set_tp_info, try_get_tp_info
+    from freetoken.models.qwen4_exp import Qwen4ExpForCausalLM
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+    model = Qwen4ExpForCausalLM(config)
+    assert model.model.layers.op_list[1].ple is not None
+    assert not hasattr(model, "visual")
+
 
 def test_qwen4_mrope_can_supply_positions_to_shared_qwen35_projection():
     from freetoken.models.qwen3_5_moe.attention import Qwen3_5Attention
 
     assert "positions" in inspect.signature(Qwen3_5Attention._project).parameters
+
+
+def test_qwen4_text_decoder_class_is_importable_without_vision():
+    from freetoken.models.qwen4_exp import Qwen4ExpForCausalLM
+
+    assert Qwen4ExpForCausalLM.__name__ == "Qwen4ExpForCausalLM"
