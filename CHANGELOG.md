@@ -234,3 +234,13 @@ failed and inconclusive hypotheses; do not rewrite history.
   to ordinary one-dimensional positions could not run. `Batch` now exposes it
   as `None` by default, while the attention path also remains defensive for
   compatibility with external batch-like callers.
+
+### Runtime dependency: fused Triton router
+
+- Installed OpenAI/Triton-Lang `triton_kernels` from the Triton `v3.6.0` commit
+  (`7c56a5e`) into the FreeToken venv. The newest main revision was incompatible
+  with FreeToken's pinned Triton 3.6.0 (`is_hip_gfx1250` import failure); the
+  matching tag imports `triton_kernels.topk.topk` successfully.
+- The source install briefly upgraded NumPy to 2.5.2; it was restored to 2.4.6,
+  within FreeToken's declared `<2.5` constraint. This enables the fused router
+  without silently changing the core Triton runtime.

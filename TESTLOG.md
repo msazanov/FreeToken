@@ -378,3 +378,19 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
   tests/models/test_qwen4exp_gguf_experts.py -q
 16 passed in 4.61s
 ```
+
+## 2026-08-28 — optional fused router dependency
+
+During the first real Qwen forward, FreeToken reported a pure-PyTorch top-k
+router fallback because `triton_kernels` was absent. We installed the official
+Triton-Lang source package. Main initially failed to import against the pinned
+Triton 3.6.0, so it was replaced with the matching upstream `v3.6.0` commit.
+
+```text
+numpy 2.4.6
+triton 3.6.0
+from triton_kernels.topk import topk  # OK
+```
+
+This verifies package compatibility, not speed. The next Qwen request must
+verify that the fused kernel itself compiles and runs on SM75.
