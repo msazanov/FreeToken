@@ -77,6 +77,52 @@ def test_fused_topk_falls_back_when_optional_triton_kernel_rejects_geometry(monk
     torch.testing.assert_close(weights.sum(dim=-1), torch.ones(1))
 
 
+def test_fused_topk_uses_vendored_router_for_non_power_of_two_topk(monkeypatch):
+    """Qwen3.8's top-10 geometry must not enter triton_kernels.topk.
+
+    ``triton_kernels.topk`` constructs a ten-wide ``tl.arange`` and fails to
+    compile.  The vendored router pads its internal tile and masks the two
+    inactive lanes instead.
+    """
+    from freetoken.moe.fused import fused_topk
+    import freetoken.kernel.backend as backend
+
+    called = {}
+    vendored = types.ModuleType("freetoken.kernel.triton.moe_router")
+
+    def fake_vendored(logits, topk, renormalize, num_token_non_padded):
+        called["args"] = (logits, topk, renormalize, num_token_non_padded)
+        return (
+            torch.ones((logits.shape[0], topk), dtype=torch.float32),
+            torch.arange(topk, dtype=torch.int32).expand(logits.shape[0], -1),
+        )
+
+    vendored.fused_topk_softmax = fake_vendored
+    monkeypatch.setattr(backend, "is_triton_kernels_installed", lambda: True)
+    monkeypatch.setitem(sys.modules, "freetoken.kernel.triton.moe_router", vendored)
+
+    logits = torch.randn((2, 512), dtype=torch.float32)
+    weights, ids = fused_topk(torch.zeros((2, 4)), logits, topk=10, renormalize=True)
+
+    assert called["args"][1:] == (10, True, None)
+    assert weights.shape == ids.shape == (2, 10)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_vendored_top10_router_matches_unique_reference_on_cuda():
+    """The padded top-10 tile preserves Qwen's routed experts on SM75."""
+    from freetoken.kernel.triton.moe_router import fused_topk_softmax
+
+    logits = torch.arange(512, device="cuda", dtype=torch.float32).reshape(1, -1) / 1000
+    weights, ids = fused_topk_softmax(logits, topk=10, renormalize=True)
+    reference_weights, reference_ids = torch.topk(torch.softmax(logits, dim=-1), 10, dim=-1)
+    reference_weights = reference_weights / reference_weights.sum(dim=-1, keepdim=True)
+    torch.cuda.synchronize()
+
+    torch.testing.assert_close(ids, reference_ids.to(torch.int32))
+    torch.testing.assert_close(weights, reference_weights, rtol=2e-5, atol=2e-6)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.parametrize("batch_size", [1, 2, 4, 8, 16, 24])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
