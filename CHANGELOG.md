@@ -226,3 +226,11 @@ failed and inconclusive hypotheses; do not rewrite history.
   This is safe because the file-backed prefill path routes before copying; it is
   intentionally an LRU capacity trade-off, not an assertion that ten slots give
   good cache hits. Generic formats retain the full-layer guard.
+
+### Qwen4 text MRoPE batch contract
+
+- Qwen4's QSA attention reads optional three-axis `rope_positions`; generic
+  text batches did not declare that attribute at all, so the intended fallback
+  to ordinary one-dimensional positions could not run. `Batch` now exposes it
+  as `None` by default, while the attention path also remains defensive for
+  compatibility with external batch-like callers.

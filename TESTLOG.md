@@ -357,3 +357,24 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 The broader cache-budget file had two pre-existing environment failures because
 its `fi` backend needs FlashInfer, which is not installed. Those are not counted
 as evidence for or against this patch.
+
+## 2026-08-28 — Qwen3.8 QSA/MRoPE first-forward correction
+
+With 256 slots the server initialized with 1.06 GiB free VRAM and began the
+actual short prefill. It then compiled the router (falling back to pure PyTorch
+because optional `triton_kernels` is absent) and reached the first QSA layer,
+where it stopped with `AttributeError: Batch has no attribute rope_positions`.
+The attention code was meant to fall back to ordinary text positions when MRoPE
+positions are absent, but direct attribute access prevented that fallback.
+
+`Batch.rope_positions` is now an optional, default-`None` field; Qwen4 attention
+uses defensive lookup before falling back to `positions`. This is a text-only
+correctness fix. Multimodal callers may later set actual `[3, tokens]` MRoPE
+coordinates.
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4_exp.py tests/models/test_qwen4exp_gguf.py \
+  tests/models/test_qwen4exp_gguf_experts.py -q
+16 passed in 4.61s
+```

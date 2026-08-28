@@ -131,6 +131,13 @@ def test_qwen4_mrope_can_supply_positions_to_shared_qwen35_projection():
     assert "positions" in inspect.signature(Qwen3_5Attention._project).parameters
 
 
+def test_batch_exposes_optional_mrope_positions_for_text_only_qwen4():
+    from freetoken.core import Batch
+
+    field = Batch.__dataclass_fields__["rope_positions"]
+    assert field.default is None
+
+
 def test_qwen4_text_decoder_class_is_importable_without_vision():
     from freetoken.models.qwen4_exp import Qwen4ExpForCausalLM
 

@@ -116,6 +116,10 @@ class Batch:
     # these fields should be set by scheduler
     input_ids: torch.Tensor = field(init=False)
     positions: torch.Tensor = field(init=False)
+    # Optional three-axis MRoPE positions for text/vision models such as
+    # Qwen3.8 Flash Next. Text-only requests leave this unset and use the
+    # ordinary one-dimensional ``positions`` fallback.
+    rope_positions: torch.Tensor | None = field(default=None, init=False)
     out_loc: torch.Tensor | None = field(init=False)
     # Per-(padded-)request table_idx as a GPU int64 tensor, used by GatedDeltaNet
     # decode to gather/scatter recurrent+conv state without host-side loops (so the

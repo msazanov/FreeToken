@@ -639,7 +639,7 @@ class Qwen4ExpAttention(Qwen3_5Attention):
     @nvtx_annotate("QSA")
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         ctx = get_global_ctx()
-        rope_positions = ctx.batch.rope_positions
+        rope_positions = getattr(ctx.batch, "rope_positions", None)
         if rope_positions is None:
             rope_positions = ctx.batch.positions
         q, k, v, gate = self._project(x, rope_positions)
