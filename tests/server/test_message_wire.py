@@ -205,6 +205,7 @@ def test_client_dicts_with_the_wire_tag_key_survive_intact():
         {"type": "object", "properties": {"__type__": {"type": "string"}}},
         {"__raw_dict__": {"a": 1}},                                  # collides with the escape key
         {"deep": {"__type__": "AbortMsg", "l": [{"__type__": "x"}]}},
+        {"nested": {"__type__": "DetokenizeMsg", "moe_stats": None}},
     ]
     for payload in hostile:
         msg = TokenizeMsg(

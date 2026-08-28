@@ -115,3 +115,29 @@ Final Fix Round 2 verification:
 PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/server/test_message_wire.py tests/server/test_stats.py -q
 16 passed
 ```
+
+## Fix Round 3
+
+Addressed the compatibility regression introduced by Fix Round 2:
+
+- The omission logic now traverses original Python message instances in
+  parallel with their serialized values. It removes `moe_stats` only from
+  actual `UserReply`/`DetokenizeMsg` instances and their `Batch*` children.
+- Free-form dictionaries are not traversed, so nested client data containing
+  `{"__type__": "DetokenizeMsg", "moe_stats": None}` remains unchanged in
+  `chat_template_kwargs` and tool schemas.
+- Retained both batch compatibility tests and extended the hostile-dictionary
+  regression to cover this exact nested payload.
+
+Fix-round TDD evidence:
+
+- Red: the hostile `TokenizeMsg` regression failed because the serialized
+  dictionary scrub deleted the nested client field.
+- Green: the final focused command passed 16 tests.
+
+Final Fix Round 3 verification:
+
+```text
+PYTHONPATH=/home/random/dev/qwen/freetoken/python /home/random/freetoken-turing/.venv/bin/python -m pytest tests/server/test_message_wire.py tests/server/test_stats.py -q
+16 passed
+```

@@ -6,28 +6,30 @@ from typing import Any, Dict, List
 from .utils import deserialize_type, serialize_type
 
 
-def _omit_none_moe_stats(value: Any) -> Any:
-    if isinstance(value, dict):
-        message_type = value.get("__type__")
-        return {
-            key: nested
-            for key, nested in (
-                (key, _omit_none_moe_stats(nested)) for key, nested in value.items()
-            )
-            if not (message_type == "UserReply" and key == "moe_stats" and nested is None)
-        }
-    if isinstance(value, list):
-        return [_omit_none_moe_stats(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_omit_none_moe_stats(item) for item in value)
-    return value
+def _omit_none_moe_stats(message: Any, encoded: Any) -> Any:
+    """Strip absent telemetry only from actual message objects, including batch children."""
+    if isinstance(message, UserReply) and isinstance(encoded, dict):
+        encoded = dict(encoded)
+        if message.moe_stats is None:
+            encoded.pop("moe_stats", None)
+        return encoded
+    if isinstance(message, BatchFrontendMsg) and isinstance(encoded, dict):
+        encoded = dict(encoded)
+        encoded_data = encoded.get("data")
+        if isinstance(encoded_data, list):
+            encoded["data"] = [
+                _omit_none_moe_stats(child, child_encoded)
+                for child, child_encoded in zip(message.data, encoded_data, strict=True)
+            ]
+        return encoded
+    return encoded
 
 
 @dataclass
 class BaseFrontendMsg:
     @staticmethod
     def encoder(msg: BaseFrontendMsg) -> Dict:
-        return _omit_none_moe_stats(serialize_type(msg))
+        return _omit_none_moe_stats(msg, serialize_type(msg))
 
     @staticmethod
     def decoder(json: Dict) -> BaseFrontendMsg:
