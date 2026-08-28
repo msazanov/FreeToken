@@ -74,7 +74,7 @@ def _compact_expanded_selection(
 
 def select_qsa_logical_rows(
     index_q: torch.Tensor, compressed_keys: torch.Tensor, query_positions: torch.Tensor,
-    *, compress_ratio: int, token_budget: int,
+    *, compress_ratio: int, token_budget: int, score_workspace_bytes: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Score compressed keys and return exact logical token selections."""
     rows, heads, dim = index_q.shape
@@ -88,19 +88,28 @@ def select_qsa_logical_rows(
             output_blocks, query_positions, compress_ratio=compress_ratio, token_budget=token_budget
         )
     if blocks:
-        bytes_per_row = max(blocks * torch.float32.itemsize * (heads + 1), 1)
-        row_chunk = max(1, min(rows, _SCORE_WORKSPACE_BYTES // bytes_per_row))
+        workspace_bytes = _SCORE_WORKSPACE_BYTES if score_workspace_bytes is None else score_workspace_bytes
+        if workspace_bytes <= 0:
+            raise ValueError("QSA score workspace must be positive")
+        bytes_per_row = max(
+            blocks * torch.float32.itemsize * (1 if index_q.is_cuda else heads + 1), 1
+        )
+        row_chunk = max(1, min(rows, workspace_bytes // bytes_per_row))
         keys = compressed_keys[:, 0].transpose(0, 1)
         columns = torch.arange(blocks, device=index_q.device).unsqueeze(0)
         for start in range(0, rows, row_chunk):
             stop = min(start + row_chunk, rows)
-            queries = index_q[start:stop].reshape((stop - start) * heads, dim)
-            if queries.is_cuda and queries.dtype in (torch.bfloat16, torch.float16):
-                dots = torch.mm(queries, keys, out_dtype=torch.float32)
+            if index_q.is_cuda:
+                from freetoken.kernel.triton.qsa import qsa_head_reduced_scores
+
+                logits = qsa_head_reduced_scores(
+                    index_q, compressed_keys, row_start=start, row_stop=stop
+                )
             else:
+                queries = index_q[start:stop].reshape((stop - start) * heads, dim)
                 dots = queries.float() @ keys.float()
-            logits = torch.relu_(dots.view(stop - start, heads, blocks)).sum(dim=1)
-            logits.mul_(dim**-0.5)
+                logits = torch.relu_(dots.view(stop - start, heads, blocks)).sum(dim=1)
+                logits.mul_(dim**-0.5)
             visible_blocks = torch.div(
                 query_positions[start:stop].to(torch.long) + 1,
                 compress_ratio, rounding_mode="floor",

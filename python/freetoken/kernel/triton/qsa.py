@@ -12,6 +12,8 @@ from freetoken.kvcache.tq4 import TQ4_CENTROIDS, decode_tq4
 
 BLOCK_H = 16
 BLOCK_T = 32
+_QSA_SCORE_BLOCKS = 32
+_QSA_SCORE_DIMS = 64
 
 
 @functools.lru_cache(maxsize=None)
@@ -85,6 +87,83 @@ def compact_qsa_blocks(
         BLOCK_OUTPUT=triton.next_power_of_2(width), num_warps=8, num_stages=1,
     )
     return output, counts
+
+
+@triton.jit
+def _qsa_head_reduced_scores_kernel(
+    q_ptr, k_ptr, scores_ptr, scale,
+    stride_qr, stride_qh, stride_qd, stride_kr, stride_kd, stride_sr, stride_sb,
+    HEADS: tl.constexpr, D: tl.constexpr, BLOCKS: tl.constexpr,
+    BLOCK_HEADS: tl.constexpr, BLOCK_BLOCKS: tl.constexpr, BLOCK_D: tl.constexpr,
+):
+    """One program scores one query row against one compressed-key tile."""
+    row = tl.program_id(0)
+    block_offsets = tl.program_id(1) * BLOCK_BLOCKS + tl.arange(0, BLOCK_BLOCKS)
+    block_mask = block_offsets < BLOCKS
+    dim_offsets = tl.arange(0, BLOCK_D)
+    reduced = tl.zeros((BLOCK_BLOCKS,), tl.float32)
+
+    # The small, fixed tiles keep the 256-wide Qwen index heads within SM75's
+    # register budget while avoiding a [heads, blocks] score workspace.
+    for head_start in range(0, HEADS, BLOCK_HEADS):
+        head_offsets = head_start + tl.arange(0, BLOCK_HEADS)
+        head_mask = head_offsets < HEADS
+        dot = tl.zeros((BLOCK_HEADS, BLOCK_BLOCKS), tl.float32)
+        for dim_start in range(0, D, BLOCK_D):
+            dims = dim_start + dim_offsets
+            dim_mask = dims < D
+            q = tl.load(
+                q_ptr + row * stride_qr + head_offsets[:, None] * stride_qh
+                + dims[None, :] * stride_qd,
+                mask=head_mask[:, None] & dim_mask[None, :], other=0.0,
+            )
+            k = tl.load(
+                k_ptr + block_offsets[:, None] * stride_kr + dims[None, :] * stride_kd,
+                mask=block_mask[:, None] & dim_mask[None, :], other=0.0,
+            )
+            dot += tl.dot(q, tl.trans(k))
+        reduced += tl.sum(tl.maximum(dot, 0.0), axis=0)
+
+    tl.store(
+        scores_ptr + row * stride_sr + block_offsets * stride_sb,
+        reduced * scale, mask=block_mask,
+    )
+
+
+@torch.no_grad()
+def qsa_head_reduced_scores(
+    index_q: torch.Tensor,
+    compressed_keys: torch.Tensor,
+    *,
+    row_start: int,
+    row_stop: int,
+) -> torch.Tensor:
+    """Return FP32 QSA scores without materializing per-head dot products."""
+    if not index_q.is_cuda or not compressed_keys.is_cuda:
+        raise ValueError("qsa_head_reduced_scores is a CUDA kernel")
+    if index_q.ndim != 3 or compressed_keys.ndim != 3:
+        raise ValueError("QSA scorer expects index_q [rows, heads, dim] and compressed keys [blocks, heads, dim]")
+    rows, heads, dim = index_q.shape
+    blocks, key_heads, key_dim = compressed_keys.shape
+    if not key_heads or key_dim != dim:
+        raise ValueError("QSA scorer needs a shared compressed key with matching head dimension")
+    if index_q.device != compressed_keys.device:
+        raise ValueError("QSA scorer inputs must share a CUDA device")
+    if not 0 <= row_start <= row_stop <= rows:
+        raise ValueError("QSA scorer row range is outside index_q")
+    scores = torch.empty(
+        (row_stop - row_start, blocks), dtype=torch.float32, device=index_q.device
+    )
+    if not scores.numel():
+        return scores
+    _qsa_head_reduced_scores_kernel[(row_stop - row_start, triton.cdiv(blocks, _QSA_SCORE_BLOCKS))](
+        index_q[row_start:row_stop], compressed_keys[:, 0], scores, dim**-0.5,
+        index_q.stride(0), index_q.stride(1), index_q.stride(2),
+        compressed_keys.stride(0), compressed_keys.stride(2), scores.stride(0), scores.stride(1),
+        HEADS=heads, D=dim, BLOCKS=blocks, BLOCK_HEADS=BLOCK_H, BLOCK_BLOCKS=_QSA_SCORE_BLOCKS,
+        BLOCK_D=_QSA_SCORE_DIMS, num_warps=4, num_stages=2,
+    )
+    return scores
 
 
 @triton.jit
@@ -311,4 +390,4 @@ def qsa_sparse_gqa(
     return output
 
 
-__all__ = ["compact_qsa_blocks", "qsa_sparse_gqa"]
+__all__ = ["compact_qsa_blocks", "qsa_head_reduced_scores", "qsa_sparse_gqa"]

@@ -25,6 +25,27 @@ def test_qsa_selection_expands_complete_blocks_and_visible_tail():
     assert torch.equal(counts, torch.tensor([4, 5], dtype=torch.int32))
 
 
+def test_qsa_selection_is_independent_of_score_workspace_size():
+    from freetoken.attention.qsa import select_qsa_logical_rows
+
+    torch.manual_seed(7)
+    index_q = torch.randn(6, 2, 3)
+    compressed_keys = torch.randn(7, 1, 3)
+    query_positions = torch.tensor([11, 12, 13, 14, 15, 16])
+
+    small_selected, small_counts = select_qsa_logical_rows(
+        index_q, compressed_keys, query_positions, compress_ratio=4, token_budget=8,
+        score_workspace_bytes=84,
+    )
+    large_selected, large_counts = select_qsa_logical_rows(
+        index_q, compressed_keys, query_positions, compress_ratio=4, token_budget=8,
+        score_workspace_bytes=4096,
+    )
+
+    assert torch.equal(small_selected, large_selected)
+    assert torch.equal(small_counts, large_counts)
+
+
 def test_qsa_sparse_gqa_cpu_reference_respects_selected_physical_rows():
     from freetoken.kernel.triton.qsa import qsa_sparse_gqa
 
@@ -144,3 +165,37 @@ def test_qsa_tq4_packed_kernel_compiles_and_matches_cpu_oracle_on_cuda():
     ).cuda()
 
     assert torch.allclose(actual, expected, atol=2e-2, rtol=2e-2)
+
+
+@pytest.mark.skipif(
+    os.environ.get("FREETOKEN_RUN_QSA_CUDA_TESTS") != "1" or not torch.cuda.is_available(),
+    reason="explicit GPU validation only; do not contend with a serving runtime",
+)
+def test_qsa_head_reduced_scorer_matches_explicit_256_wide_reference_on_cuda():
+    from freetoken.attention.qsa import select_qsa_logical_rows
+    from freetoken.kernel.triton.qsa import qsa_head_reduced_scores
+
+    torch.manual_seed(8)
+    index_q = torch.randn(4, 3, 256, device="cuda", dtype=torch.float16)
+    compressed_keys = torch.randn(7, 1, 256, device="cuda", dtype=torch.float16)
+    query_positions = torch.tensor([12, 13, 14, 15], device="cuda")
+
+    actual_scores = qsa_head_reduced_scores(
+        index_q, compressed_keys, row_start=1, row_stop=4
+    )
+    expected_scores = torch.relu(
+        index_q[1:4].float() @ compressed_keys[:, 0].float().transpose(0, 1)
+    ).sum(dim=1) * (256**-0.5)
+    assert actual_scores.dtype is torch.float32
+    assert torch.allclose(actual_scores, expected_scores, atol=2e-2, rtol=2e-2)
+
+    actual_selected, actual_counts = select_qsa_logical_rows(
+        index_q, compressed_keys, query_positions, compress_ratio=4, token_budget=8,
+        score_workspace_bytes=84,
+    )
+    expected_selected, expected_counts = select_qsa_logical_rows(
+        index_q.cpu(), compressed_keys.cpu(), query_positions.cpu(),
+        compress_ratio=4, token_budget=8, score_workspace_bytes=84,
+    )
+    assert torch.equal(actual_selected.cpu(), expected_selected)
+    assert torch.equal(actual_counts.cpu(), expected_counts)
