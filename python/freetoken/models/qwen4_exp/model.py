@@ -695,6 +695,11 @@ class Qwen4ExpForCausalLM(BaseLLMModel):
 
             self.visual = Qwen4VisionModel(config.vision_config)
         super().__init__()
+        from .gguf import convert_qwen4_to_gguf, is_gguf_model
+
+        if is_gguf_model(config):
+            assert config.gguf_model_path is not None
+            convert_qwen4_to_gguf(self, config, model_path=config.gguf_model_path)
 
     @torch.inference_mode()
     def encode_images(

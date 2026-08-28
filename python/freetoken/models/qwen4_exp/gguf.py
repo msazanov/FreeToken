@@ -165,4 +165,132 @@ def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
     )
 
 
-__all__ = ["parse_gguf_config"]
+def _scan_quant_types(model_path: str) -> dict[tuple[int, str], int]:
+    """Return GGML types keyed by ``(layer, suffix)``; globals use layer ``-1``."""
+    from freetoken.models.gguf.reader import iter_gguf_tensors
+
+    result: dict[tuple[int, str], int] = {}
+    for tensor in iter_gguf_tensors(model_path):
+        if tensor.name.startswith("blk."):
+            _, raw_layer, suffix = tensor.name.split(".", 2)
+            result[(int(raw_layer), suffix)] = tensor.ggml_type
+        else:
+            result[(-1, tensor.name)] = tensor.ggml_type
+    return result
+
+
+def is_gguf_model(config: ModelConfig) -> bool:
+    return config.gguf_model_path is not None
+
+
+def convert_qwen4_to_gguf(model, config: ModelConfig, *, model_path: str) -> None:
+    """Replace Qwen4 resident projections with native packed GGUF operators.
+
+    Routed experts and the 38-GiB PLE table are deliberately excluded: they need
+    their own offload/mmap providers and must never become resident tensors.
+    """
+    from freetoken.layers.gguf import GGUFEmbedding, GGUFLinear, GGUFLMHead, gguf_merged_or_plain
+
+    quant = _scan_quant_types(model_path)
+
+    def qt(layer_id: int, suffix: str) -> int:
+        try:
+            return quant[(layer_id, suffix)]
+        except KeyError as exc:
+            prefix = suffix if layer_id < 0 else f"blk.{layer_id}.{suffix}"
+            raise ValueError(f"GGUF {model_path}: missing required tensor {prefix}") from exc
+
+    def swap_linear(owner, attr: str, quant_type: int) -> None:
+        linear = getattr(owner, attr)
+        setattr(
+            owner,
+            attr,
+            GGUFLinear(
+                linear.weight.shape[1], linear.weight.shape[0], quant_type,
+                has_bias=linear.bias is not None,
+            ),
+        )
+
+    def swap_hc(residual, layer_id: int | None, prefix: str) -> None:
+        source_layer = -1 if layer_id is None else layer_id
+        name = "output_hc" if layer_id is None else prefix
+        swap_linear(residual, "input_mix_weight_down", qt(source_layer, f"{name}_down.weight"))
+        swap_linear(residual, "input_mix_weight_up", qt(source_layer, f"{name}_up.weight"))
+        if residual.block_inject_weight is not None:
+            swap_linear(residual, "block_inject_weight", qt(source_layer, f"{name}_inject.weight"))
+
+    inner = model.model
+    embed = GGUFEmbedding(config.vocab_size, config.hidden_size, qt(-1, "token_embd.weight"))
+    inner.embed_tokens = embed
+    qkv_sizes = [
+        config.num_qo_heads * config.head_dim * 2,
+        config.num_kv_heads * config.head_dim,
+        config.num_kv_heads * config.head_dim,
+    ]
+    linear = config.linear_attention_group()
+    assert linear is not None
+    gdn_sizes = [
+        2 * linear.num_key_heads * linear.key_head_dim
+        + linear.num_value_heads * linear.value_head_dim,
+        linear.num_value_heads * linear.value_head_dim,
+        linear.num_value_heads,
+        linear.num_value_heads,
+    ]
+    shared_size = config.shared_expert_intermediate_size
+    for layer_id, layer in enumerate(inner.layers.op_list):
+        swap_hc(layer.attn_hyper_connection, layer_id, "hc_attn")
+        swap_hc(layer.mlp_hyper_connection, layer_id, "hc_ffn")
+        if layer._is_linear:
+            layer.linear_attn.in_proj = gguf_merged_or_plain(
+                config.hidden_size,
+                gdn_sizes,
+                [
+                    qt(layer_id, "attn_qkv.weight"),
+                    qt(layer_id, "attn_gate.weight"),
+                    qt(layer_id, "ssm_beta.weight"),
+                    qt(layer_id, "ssm_alpha.weight"),
+                ],
+                has_bias=False,
+            )
+            # ``ssm_out`` needs a column-level V-head reorder and is loaded dense.
+        else:
+            attn = layer.self_attn
+            attn.qkv_proj = gguf_merged_or_plain(
+                config.hidden_size,
+                qkv_sizes,
+                [
+                    qt(layer_id, "attn_q.weight"),
+                    qt(layer_id, "attn_k.weight"),
+                    qt(layer_id, "attn_v.weight"),
+                ],
+                has_bias=False,
+            )
+            swap_linear(attn, "o_proj", qt(layer_id, "attn_output.weight"))
+            indexer = attn.indexer
+            indexer.index_qk_proj = gguf_merged_or_plain(
+                config.hidden_size,
+                [indexer.q_dim, indexer.k_dim],
+                [qt(layer_id, "indexer.q_proj.weight"), qt(layer_id, "indexer.k_proj.weight")],
+                has_bias=False,
+            )
+
+        mlp = layer.mlp
+        mlp.shared_expert.gate_up_proj = gguf_merged_or_plain(
+            config.hidden_size,
+            [shared_size, shared_size],
+            [qt(layer_id, "ffn_gate_shexp.weight"), qt(layer_id, "ffn_up_shexp.weight")],
+            has_bias=False,
+        )
+        swap_linear(mlp.shared_expert, "down_proj", qt(layer_id, "ffn_down_shexp.weight"))
+        if layer.ple is not None:
+            ple = layer.ple
+            swap_linear(ple, "key_proj", qt(layer_id, "ple_key.weight"))
+            swap_linear(ple, "value_proj", qt(layer_id, "ple_value.weight"))
+
+    swap_hc(inner.hyper_connection_mixer, None, "")
+    model.lm_head = GGUFLMHead(
+        config.hidden_size, config.vocab_size, qt(-1, "output.weight"), has_bias=False
+    )
+
+
+__all__ = ["convert_qwen4_to_gguf", "is_gguf_model", "parse_gguf_config"]

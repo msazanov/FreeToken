@@ -13,7 +13,7 @@ def test_qwen4_text_model_registry_entry():
     assert spec.model_cls == "Qwen4ExpForCausalLM"
 
 
-def test_qwen4_text_config_builds_qsa_and_linear_groups():
+def test_qwen4_text_config_builds_qsa_and_linear_groups(monkeypatch):
     from freetoken.models.qwen4_exp.config import parse_config
 
     text = SimpleNamespace(
@@ -84,6 +84,42 @@ def test_qwen4_text_config_builds_qsa_and_linear_groups():
     model = Qwen4ExpForCausalLM(config)
     assert model.model.layers.op_list[1].ple is not None
     assert not hasattr(model, "visual")
+
+    from dataclasses import replace
+
+    from freetoken.layers.gguf import GGUFEmbedding, GGUFLinear
+    from freetoken.models.gguf.dequant import GGML_BF16, GGML_Q8_0
+    from freetoken.models.qwen4_exp import gguf
+
+    quant_types = {
+        (-1, name): GGML_Q8_0
+        for name in (
+            "token_embd.weight", "output.weight", "output_hc_down.weight",
+            "output_hc_up.weight", "output_hc_inject.weight",
+        )
+    }
+    for layer_id in range(config.num_layers):
+        for name in (
+            "hc_attn_down.weight", "hc_attn_up.weight", "hc_attn_inject.weight",
+            "hc_ffn_down.weight", "hc_ffn_up.weight", "hc_ffn_inject.weight",
+            "ffn_gate_shexp.weight", "ffn_up_shexp.weight", "ffn_down_shexp.weight",
+        ):
+            quant_types[(layer_id, name)] = GGML_Q8_0
+    for layer_id in (0, 1, 2):
+        for name in ("attn_qkv.weight", "attn_gate.weight", "ssm_beta.weight", "ssm_alpha.weight"):
+            quant_types[(layer_id, name)] = GGML_Q8_0
+    for name in ("attn_q.weight", "attn_k.weight", "attn_v.weight", "attn_output.weight"):
+        quant_types[(3, name)] = GGML_Q8_0
+    for name in ("indexer.q_proj.weight", "indexer.k_proj.weight"):
+        quant_types[(3, name)] = GGML_BF16
+    for name in ("ple_key.weight", "ple_value.weight"):
+        quant_types[(1, name)] = GGML_Q8_0
+    monkeypatch.setattr(gguf, "_scan_quant_types", lambda _path: quant_types)
+
+    gguf_model = Qwen4ExpForCausalLM(replace(config, gguf_model_path="/fixture.gguf"))
+    assert isinstance(gguf_model.model.embed_tokens, GGUFEmbedding)
+    assert isinstance(gguf_model.model.layers.op_list[3].self_attn.o_proj, GGUFLinear)
+    assert isinstance(gguf_model.model.layers.op_list[1].ple.key_proj, GGUFLinear)
 
 
 def test_qwen4_mrope_can_supply_positions_to_shared_qwen35_projection():
