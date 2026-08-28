@@ -3,6 +3,47 @@
 This changelog is append-only for experiments as well as code. Keep successful,
 failed and inconclusive hypotheses; do not rewrite history.
 
+## 2026-08-28
+
+### Accepted — Qwen3.8 Flash Next GGUF base
+
+- Added the text-only Qwen4Exp model descriptor for the local AtomicChat
+  `Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64` checkpoint: 48 decoder layers,
+  512 routed experts with top-10 selection, GDN/QSA layer layout, MRoPE and the
+  PLE metadata are read from GGUF rather than guessed. Commit `e243dda`.
+- Added a native Turing-validated packed TQ4 QSA KV path. Its CUDA test passed
+  on the actual RTX 2070 SM75 with the Qwen-width head geometry; it is a KV
+  storage/attention-cache format, not a claim that all model weights use native
+  INT4 tensor-core arithmetic. Commits `22ad4da` through `1fa2163`.
+- Replaced resident Qwen4Exp projections with native packed GGUF operators:
+  token embedding, output head, hyper-connection projections, GDN/QSA
+  projections, QSA indexer, shared experts and PLE key/value projections.
+  The focused construction/configuration suite passed `5/5` before commit
+  `14785c7`.
+
+### Upstream findings adopted as requirements
+
+- llama.cpp's merged Qwen4Exp implementation (PR #27742) is the behavioural
+  reference for this port. PLE must remain a single mmap-backed row table; only
+  the host-selected rows may be transferred and dequantized. The PLE hash uses
+  exact 64-bit multiplier/XOR arithmetic, EOS-aware history and persistent
+  dilated-convolution state.
+- The same upstream implementation requires one consistent inverse V-head
+  permutation for every GDN V-indexed parameter (QKV V rows, gate, alpha/beta,
+  A/dt, convolution V channels and output columns). Reordering only QKV can
+  preserve shapes and throughput while producing incorrect text.
+- The open follow-up PR #27774 establishes that QSA must cache the rotated K/V
+  representation and undo the V rotation after attention; its indexer needs a
+  separate raw-key cache that shares attention-cache slots during rewrites and
+  restoration.
+
+### Deliberately not accepted yet
+
+- The 38 GiB Q5_1 PLE table and routed-expert stacks are **not** loaded into
+  RAM or VRAM by the resident-GGUF commit. They require respectively a mmap row
+  provider and a native packed expert-offload bank. No Qwen inference claim is
+  made until both are implemented and a real request completes.
+
 ## 2026-08-27
 
 ### Accepted
