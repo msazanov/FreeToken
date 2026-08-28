@@ -124,21 +124,23 @@ def test_qsa_tq4_packed_kernel_compiles_and_matches_cpu_oracle_on_cuda():
     from freetoken.kvcache.tq4 import encode_tq4
 
     torch.manual_seed(1)
-    q = torch.randn(2, 4, 8, device="cuda", dtype=torch.float16)
-    dense_k = torch.randn(7, 2, 8, device="cuda", dtype=torch.float16)
-    dense_v = torch.randn(7, 2, 8, device="cuda", dtype=torch.float16)
+    # Qwen3.8 Flash Next uses 256-wide full-attention heads.  Cover the actual
+    # SM75 Triton specialization, including its register pressure.
+    q = torch.randn(2, 4, 256, device="cuda", dtype=torch.float16)
+    dense_k = torch.randn(7, 2, 256, device="cuda", dtype=torch.float16)
+    dense_v = torch.randn(7, 2, 256, device="cuda", dtype=torch.float16)
     packed_k, k_scale = encode_tq4(dense_k)
     packed_v, v_scale = encode_tq4(dense_v)
     selected = torch.tensor([[6, 3, 0], [5, 2, 1]], device="cuda", dtype=torch.int32)
     counts = torch.tensor([3, 2], device="cuda", dtype=torch.int32)
 
     actual = qsa_sparse_gqa(
-        q, packed_k, packed_v, selected, counts, 8**-0.5,
-        k_scale=k_scale, v_scale=v_scale, logical_head_dim=8,
+        q, packed_k, packed_v, selected, counts, 256**-0.5,
+        k_scale=k_scale, v_scale=v_scale, logical_head_dim=256,
     )
     expected = qsa_sparse_gqa(
-        q.cpu(), packed_k.cpu(), packed_v.cpu(), selected.cpu(), counts.cpu(), 8**-0.5,
-        k_scale=k_scale.cpu(), v_scale=v_scale.cpu(), logical_head_dim=8,
+        q.cpu(), packed_k.cpu(), packed_v.cpu(), selected.cpu(), counts.cpu(), 256**-0.5,
+        k_scale=k_scale.cpu(), v_scale=v_scale.cpu(), logical_head_dim=256,
     ).cuda()
 
     assert torch.allclose(actual, expected, atol=2e-2, rtol=2e-2)
