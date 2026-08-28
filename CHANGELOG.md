@@ -200,3 +200,19 @@ failed and inconclusive hypotheses; do not rewrite history.
   the AtomicChat Q4_K_M tensor table but were never yielded, causing a
   `KeyError` in `load_state_dict`. They now map to the two packed PLE projection
   operators. Both fixes have focused regression tests.
+- A subsequent live load found the adjacent PLE normalization names were emitted
+  as `norm_norm_key/query/conv`. The checkpoint names already include `norm_`;
+  the adapter now emits the model's actual `norm_key`, `norm_query`, and
+  `norm_conv` parameters, protected by the same iterator regression.
+
+### Review findings retained for the next performance stage
+
+- The independent review confirmed the new routed-prefill branch is required and
+  is present from `21a40c8` onward; it prevents generic `materialize_layer()`
+  from sweeping all 512 file-backed experts before routing.
+- `qwen4_gguf` does **not** yet implement the CPU/hybrid expert executor. The
+  live experiment therefore keeps explicit `--moe-backend offload`; auto/hybrid
+  must not be enabled until its three-bank contract is implemented and tested.
+- Selected file-backed copy is intentionally synchronous today. It is correct
+  but a likely dominant cache-miss cost; bounded pinned staging/overlap remains
+  a performance experiment after basic end-to-end functionality is proven.

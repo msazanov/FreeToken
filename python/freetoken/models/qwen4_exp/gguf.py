@@ -408,8 +408,11 @@ def iter_gguf_weights(
             yield f"{base}.linear_attn.conv1d.weight", value.unsqueeze(1)
             continue
         if suffix in ("ple_norm_key.weight", "ple_norm_query.weight", "ple_norm_conv.weight"):
+            # Names already include the ``norm_`` prefix.  Prepending it again
+            # produced e.g. ``norm_norm_key`` and left the real PLE parameters
+            # absent from the state dict at load time.
             target = suffix.removeprefix("ple_").removesuffix(".weight")
-            yield f"{base}.ple.norm_{target}.weight", _to_bf16(tensor) - 1
+            yield f"{base}.ple.{target}.weight", _to_bf16(tensor) - 1
             continue
         if suffix == "ple_conv1d.weight":
             yield f"{base}.ple.conv1d.weight", _to_bf16(tensor).reshape(

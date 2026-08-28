@@ -117,10 +117,17 @@ def test_qwen4exp_gguf_yields_packed_ple_key_and_value_projections(monkeypatch):
     monkeypatch.setattr(reader, "iter_gguf_tensors", lambda _path: iter((
         _Tensor("blk.1.ple_key.weight"),
         _Tensor("blk.1.ple_value.weight"),
+        _Tensor("blk.1.ple_norm_key.weight"),
+        _Tensor("blk.1.ple_norm_query.weight"),
+        _Tensor("blk.1.ple_norm_conv.weight"),
     )))
     monkeypatch.setattr(gguf, "_scan_quant_types", lambda _path: {})
+    monkeypatch.setattr(gguf, "_to_bf16", lambda _tensor: torch.ones(8, dtype=torch.bfloat16))
 
     weights = dict(gguf.iter_gguf_weights("/fixture.gguf", "cpu", include_moe_experts=False, include_non_moe=True))
 
     assert "model.layers.1.ple.key_proj.qweight" in weights
     assert "model.layers.1.ple.value_proj.qweight" in weights
+    assert "model.layers.1.ple.norm_key.weight" in weights
+    assert "model.layers.1.ple.norm_query.weight" in weights
+    assert "model.layers.1.ple.norm_conv.weight" in weights

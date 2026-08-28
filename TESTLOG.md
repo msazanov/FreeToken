@@ -299,3 +299,25 @@ PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
 
 No answer-generation or tok/s result exists yet. The next live launch is the
 required evidence for that stage.
+
+## 2026-08-28 — Qwen3.8 PLE normalization mapping correction
+
+After the tokenizer/projection corrections, the live scheduler reached the
+next PLE field and failed at `model.layers.1.ple.norm_key.weight`. The real GGUF
+contains `blk.1.ple_norm_key.weight`, `ple_norm_query.weight`, and
+`ple_norm_conv.weight`; the iterator was spelling their destinations as
+`norm_norm_*`. This is a local adapter typo, not missing checkpoint data.
+
+The PLE iterator regression was expanded with all three real source names and
+first failed on the expected `norm_key` absence. The destination is now
+`model.layers.1.ple.norm_{key,query,conv}.weight`.
+
+```text
+PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest \
+  tests/models/test_qwen4exp_gguf.py tests/models/test_qwen4_exp.py \
+  tests/models/test_qwen4exp_gguf_experts.py tests/models/test_gguf_dispatch.py -q
+32 passed in 8.10s
+```
+
+The service again stopped cleanly after the failed child scheduler. No Qwen
+server remains running, and no tok/s result is claimed at this point.
