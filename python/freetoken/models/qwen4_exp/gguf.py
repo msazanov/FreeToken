@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterator
+
+import torch
 
 from freetoken.models.config import (
     LinearGatedDeltaGroupConfig,
@@ -183,6 +185,308 @@ def is_gguf_model(config: ModelConfig) -> bool:
     return config.gguf_model_path is not None
 
 
+_EXPERT_SUFFIXES = frozenset({
+    "ffn_gate_exps.weight",
+    "ffn_up_exps.weight",
+    "ffn_down_exps.weight",
+})
+
+
+def _ungroup_v(
+    tensor: torch.Tensor,
+    dim: int,
+    num_key_heads: int,
+    num_v_per_key: int,
+    head_dim: int,
+) -> torch.Tensor:
+    """Inverse llama.cpp's grouped-to-tiled GDN V-head permutation."""
+    shape = list(tensor.shape)
+    if dim < 0:
+        dim += len(shape)
+    view = shape[:dim] + [num_v_per_key, num_key_heads, head_dim] + shape[dim + 1 :]
+    result = tensor.reshape(*view)
+    permutation = list(range(len(view)))
+    permutation[dim], permutation[dim + 1] = permutation[dim + 1], permutation[dim]
+    return result.permute(*permutation).contiguous().reshape(*shape)
+
+
+def _ungroup_packed_rows(
+    packed: torch.Tensor, num_key_heads: int, num_v_per_key: int, head_dim: int
+) -> torch.Tensor:
+    """Undo tiled V heads while keeping each GGUF quantization row intact."""
+    return _ungroup_v(packed, 0, num_key_heads, num_v_per_key, head_dim)
+
+
+def _to_bf16(tensor) -> torch.Tensor:
+    """Materialize a small F32/F16/BF16 GGUF tensor as BF16."""
+    from freetoken.models.gguf.dequant import dequantize
+
+    return dequantize(tensor.packed().reshape(-1), tensor.ggml_type, torch.bfloat16).reshape(
+        tensor.shape
+    )
+
+
+def _to_f32(tensor) -> torch.Tensor:
+    """Materialize a small F32/F16/BF16 GGUF tensor as F32."""
+    from freetoken.models.gguf.dequant import dequantize
+
+    return dequantize(tensor.packed().reshape(-1), tensor.ggml_type, torch.float32).reshape(
+        tensor.shape
+    )
+
+
+def _dequant_any(tensor) -> torch.Tensor:
+    """Materialize the exceptional packed matrix whose columns need reordering."""
+    from freetoken.models.gguf.dequant import GGML_NAME, GGML_UNQUANTIZED, row_bytes
+
+    if tensor.ggml_type in GGML_UNQUANTIZED:
+        return _to_bf16(tensor)
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            f"{tensor.name}: CUDA is required to dequantize "
+            f"{GGML_NAME.get(tensor.ggml_type, tensor.ggml_type)} before GDN output reordering"
+        )
+    from freetoken.kernel.gguf import ggml_dequantize
+
+    out_features, in_features = tensor.shape
+    packed = tensor.packed().reshape(
+        out_features, row_bytes(in_features, tensor.ggml_type)
+    ).cuda()
+    return ggml_dequantize(
+        packed, tensor.ggml_type, out_features, in_features, torch.bfloat16
+    ).cpu()
+
+
+def _require_tp1(what: str) -> None:
+    from freetoken.distributed import get_tp_info
+
+    if get_tp_info().size > 1:
+        raise NotImplementedError(
+            f"Qwen4Exp GGUF {what} supports TP=1 only; packed GGUF operators and "
+            "expert banks are not tensor-parallel sharded"
+        )
+
+
+def iter_gguf_weights(
+    model_path: str,
+    device,
+    *,
+    include_moe_experts: bool,
+    include_non_moe: bool,
+) -> Iterator[tuple[str, torch.Tensor]]:
+    """Yield Qwen4Exp GGUF weights, keeping every safe projection packed.
+
+    The source format uses tiled V heads for GDN.  FreeToken's GDN uses the HF
+    grouped order, hence all V-indexed rows are inverted together.  ``ssm_out``
+    is the only column-wise permutation and is deliberately materialized once.
+    """
+    from freetoken.models.gguf.reader import iter_gguf_tensors
+    from freetoken.utils import cached_load_hf_config
+
+    assert not include_moe_experts, (
+        "Qwen4Exp GGUF routes experts through a native offload bank; the ordinary "
+        "weight iterator must not materialize them."
+    )
+    assert include_non_moe
+    _require_tp1("weight loading")
+    config = parse_gguf_config(cached_load_hf_config(model_path))
+    linear = config.linear_attention_group()
+    assert linear is not None
+    key_heads = linear.num_key_heads
+    value_heads = linear.num_value_heads
+    value_per_key = value_heads // key_heads
+    value_dim = linear.value_head_dim
+    qk_rows = 2 * key_heads * linear.key_head_dim
+    untile = key_heads != value_heads
+    qsa_layers = {layer for layer in range(config.num_layers) if not config.is_linear_layer(layer)}
+    quant = _scan_quant_types(model_path)
+    gdn_parts: dict[int, dict[str, torch.Tensor]] = {}
+    qsa_parts: dict[int, dict[str, torch.Tensor]] = {}
+    index_parts: dict[int, dict[str, torch.Tensor]] = {}
+    shared_parts: dict[int, dict[str, torch.Tensor]] = {}
+
+    def emit_fused(
+        base: str,
+        target: str,
+        layer_id: int,
+        slots: dict[str, torch.Tensor],
+        order: tuple[str, ...],
+        sources: tuple[str, ...],
+    ) -> Iterator[tuple[str, torch.Tensor]]:
+        types = [quant[(layer_id, source)] for source in sources]
+        if len(set(types)) == 1:
+            yield f"{base}.{target}.qweight", torch.cat([slots[key] for key in order], dim=0)
+        else:
+            for index, key in enumerate(order):
+                yield f"{base}.{target}.qweight_{index}", slots[key]
+
+    for tensor in iter_gguf_tensors(model_path):
+        name = tensor.name
+        if name == "token_embd.weight":
+            yield "model.embed_tokens.qweight", tensor.packed()
+            continue
+        if name == "output.weight":
+            if not config.tie_word_embeddings:
+                yield "lm_head.qweight", tensor.packed()
+            continue
+        if name == "output_hc_norm.weight":
+            yield "model.hyper_connection_mixer.hc_norm.weight", _to_bf16(tensor) - 1
+            continue
+        if name in ("output_hc_down.weight", "output_hc_up.weight"):
+            target = "input_mix_weight_down" if name.endswith("down.weight") else "input_mix_weight_up"
+            yield f"model.hyper_connection_mixer.{target}.qweight", tensor.packed()
+            continue
+        if not name.startswith("blk."):
+            continue
+        layer_id = int(name.split(".")[1])
+        if layer_id >= config.num_layers:
+            continue
+        suffix = name.split(".", 2)[2]
+        base = f"model.layers.{layer_id}"
+        if suffix in _EXPERT_SUFFIXES:
+            continue
+
+        hc_packed_targets = {
+            "hc_attn_down.weight": "attn_hyper_connection.input_mix_weight_down",
+            "hc_attn_up.weight": "attn_hyper_connection.input_mix_weight_up",
+            "hc_attn_inject.weight": "attn_hyper_connection.block_inject_weight",
+            "hc_ffn_down.weight": "mlp_hyper_connection.input_mix_weight_down",
+            "hc_ffn_up.weight": "mlp_hyper_connection.input_mix_weight_up",
+            "hc_ffn_inject.weight": "mlp_hyper_connection.block_inject_weight",
+        }
+        if suffix in hc_packed_targets:
+            yield f"{base}.{hc_packed_targets[suffix]}.qweight", tensor.packed()
+            continue
+        if suffix in ("hc_attn_norm.weight", "hc_ffn_norm.weight"):
+            target = "attn_hyper_connection" if suffix.startswith("hc_attn") else "mlp_hyper_connection"
+            yield f"{base}.{target}.hc_norm.weight", _to_bf16(tensor) - 1
+            continue
+        if suffix == "ffn_gate_inp.weight":
+            yield f"{base}.mlp.gate.weight", _to_bf16(tensor)
+            continue
+        if suffix == "ffn_gate_inp_shexp.weight":
+            yield f"{base}.mlp.shared_expert_gate.weight", _to_bf16(tensor).reshape(1, -1)
+            continue
+        if suffix == "ssm_norm.weight":
+            yield f"{base}.linear_attn.norm.weight", _to_bf16(tensor)
+            continue
+        if suffix == "ssm_a":
+            value = _to_f32(tensor)
+            if untile:
+                value = _ungroup_v(value, 0, key_heads, value_per_key, 1)
+            if not bool((value < 0).all()):
+                raise ValueError(f"{name}: expected llama.cpp's pre-transformed negative A")
+            yield f"{base}.linear_attn.A_log", torch.log(-value)
+            continue
+        if suffix == "ssm_dt.bias":
+            value = _to_f32(tensor)
+            if untile:
+                value = _ungroup_v(value, 0, key_heads, value_per_key, 1)
+            yield f"{base}.linear_attn.dt_bias", value
+            continue
+        if suffix == "ssm_conv1d.weight":
+            value = _to_bf16(tensor).reshape(qk_rows + value_heads * value_dim, linear.conv_kernel_dim)
+            if untile:
+                value = torch.cat(
+                    [value[:qk_rows], _ungroup_v(value[qk_rows:], 0, key_heads, value_per_key, value_dim)],
+                    dim=0,
+                )
+            yield f"{base}.linear_attn.conv1d.weight", value.unsqueeze(1)
+            continue
+        if suffix in ("ple_norm_key.weight", "ple_norm_query.weight", "ple_norm_conv.weight"):
+            target = suffix.removeprefix("ple_").removesuffix(".weight")
+            yield f"{base}.ple.norm_{target}.weight", _to_bf16(tensor) - 1
+            continue
+        if suffix == "ple_conv1d.weight":
+            yield f"{base}.ple.conv1d.weight", _to_bf16(tensor).reshape(
+                config.hidden_size * config.qwen4_args.hc_count,
+                1,
+                config.qwen4_args.ple_conv_kernel_size,
+            )
+            continue
+        if suffix in ("attn_q_norm.weight", "attn_k_norm.weight"):
+            target = "q_norm" if suffix.startswith("attn_q") else "k_norm"
+            yield f"{base}.self_attn.{target}.weight", _to_bf16(tensor) - 1
+            continue
+        if suffix in ("indexer.q_norm.weight", "indexer.k_norm.weight"):
+            target = "q_layernorm" if suffix.startswith("indexer.q") else "k_layernorm"
+            yield f"{base}.self_attn.indexer.{target}.weight", _to_bf16(tensor) - 1
+            continue
+        if suffix == "ffn_down_shexp.weight":
+            yield f"{base}.mlp.shared_expert.down_proj.qweight", tensor.packed()
+            continue
+        if suffix in ("ffn_gate_shexp.weight", "ffn_up_shexp.weight"):
+            parts = shared_parts.setdefault(layer_id, {})
+            parts["gate" if suffix.startswith("ffn_gate") else "up"] = tensor.packed()
+            if len(parts) == 2:
+                yield from emit_fused(
+                    base, "mlp.shared_expert.gate_up_proj", layer_id, parts,
+                    ("gate", "up"), ("ffn_gate_shexp.weight", "ffn_up_shexp.weight"),
+                )
+                del shared_parts[layer_id]
+            continue
+
+        if layer_id in qsa_layers:
+            if suffix in ("attn_q.weight", "attn_k.weight", "attn_v.weight"):
+                parts = qsa_parts.setdefault(layer_id, {})
+                parts[suffix[5]] = tensor.packed()
+                if len(parts) == 3:
+                    yield from emit_fused(
+                        base, "self_attn.qkv_proj", layer_id, parts, ("q", "k", "v"),
+                        ("attn_q.weight", "attn_k.weight", "attn_v.weight"),
+                    )
+                    del qsa_parts[layer_id]
+                continue
+            if suffix == "attn_output.weight":
+                yield f"{base}.self_attn.o_proj.qweight", tensor.packed()
+                continue
+            if suffix in ("indexer.q_proj.weight", "indexer.k_proj.weight"):
+                parts = index_parts.setdefault(layer_id, {})
+                parts["q" if suffix.startswith("indexer.q") else "k"] = tensor.packed()
+                if len(parts) == 2:
+                    yield from emit_fused(
+                        base, "self_attn.indexer.index_qk_proj", layer_id, parts, ("q", "k"),
+                        ("indexer.q_proj.weight", "indexer.k_proj.weight"),
+                    )
+                    del index_parts[layer_id]
+                continue
+        else:
+            if suffix in ("attn_qkv.weight", "attn_gate.weight", "ssm_beta.weight", "ssm_alpha.weight"):
+                key = {
+                    "attn_qkv.weight": "qkv", "attn_gate.weight": "gate",
+                    "ssm_beta.weight": "beta", "ssm_alpha.weight": "alpha",
+                }[suffix]
+                value = tensor.packed()
+                if untile:
+                    if key == "qkv":
+                        value = torch.cat([value[:qk_rows], _ungroup_packed_rows(value[qk_rows:], key_heads, value_per_key, value_dim)], dim=0)
+                    elif key == "gate":
+                        value = _ungroup_packed_rows(value, key_heads, value_per_key, value_dim)
+                    else:
+                        value = _ungroup_packed_rows(value, key_heads, value_per_key, 1)
+                parts = gdn_parts.setdefault(layer_id, {})
+                parts[key] = value
+                if len(parts) == 4:
+                    yield from emit_fused(
+                        base, "linear_attn.in_proj", layer_id, parts,
+                        ("qkv", "gate", "beta", "alpha"),
+                        ("attn_qkv.weight", "attn_gate.weight", "ssm_beta.weight", "ssm_alpha.weight"),
+                    )
+                    del gdn_parts[layer_id]
+                continue
+            if suffix == "ssm_out.weight":
+                value = _dequant_any(tensor)
+                if untile:
+                    value = _ungroup_v(value, 1, key_heads, value_per_key, value_dim)
+                yield f"{base}.linear_attn.out_proj.weight", value
+                continue
+
+    assert not gdn_parts, f"incomplete Qwen4 GDN projections: {sorted(gdn_parts)}"
+    assert not qsa_parts, f"incomplete Qwen4 QSA projections: {sorted(qsa_parts)}"
+    assert not index_parts, f"incomplete Qwen4 indexer projections: {sorted(index_parts)}"
+    assert not shared_parts, f"incomplete Qwen4 shared-expert projections: {sorted(shared_parts)}"
+
+
 def convert_qwen4_to_gguf(model, config: ModelConfig, *, model_path: str) -> None:
     """Replace Qwen4 resident projections with native packed GGUF operators.
 
@@ -293,4 +597,9 @@ def convert_qwen4_to_gguf(model, config: ModelConfig, *, model_path: str) -> Non
     )
 
 
-__all__ = ["convert_qwen4_to_gguf", "is_gguf_model", "parse_gguf_config"]
+__all__ = [
+    "convert_qwen4_to_gguf",
+    "is_gguf_model",
+    "iter_gguf_weights",
+    "parse_gguf_config",
+]

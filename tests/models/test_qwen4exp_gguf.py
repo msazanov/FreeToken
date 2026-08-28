@@ -68,3 +68,15 @@ def test_qwen4exp_gguf_parses_actual_qsa_gdn_and_ple_geometry():
         layer for layer in range(48) if layer % 4 != 3
     )
     assert config.requires_naive_cache and not config.supports_cuda_graph
+
+
+def test_qwen4exp_gguf_is_registered_with_the_native_weight_iterator():
+    from freetoken.models.gguf.config import GGUF_ARCH_TO_REGISTRY
+    from freetoken.models.register import get_model_spec
+
+    registry_key = GGUF_ARCH_TO_REGISTRY["qwen4exp"]
+    spec = get_model_spec(registry_key)
+
+    assert registry_key == "Qwen4ExpGGUFForCausalLM"
+    assert spec.module == "freetoken.models.qwen4_exp"
+    assert spec.iter_weights == "iter_gguf_weights"

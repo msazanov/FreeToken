@@ -19,6 +19,25 @@ labels, runtime cache geometry, sampling mode, actual context, TTFT, prefill and
 decode. Use `temperature=0` / `greedy-argmax` until FreeToken wires API seeds
 through to the sampler; a nominal seed would currently be misleading.
 
+## 2026-08-28 — Qwen4Exp real-GGUF non-expert loader smoke
+
+Worktree: `feat/qwen4exp-gguf-turing`, post-`bb0dde7` dirty implementation.
+Model: local AtomicChat `Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64`, 33 GGUF
+shards. Hardware: RTX 2070 SM75; no inference service active. The smoke
+initialized FreeToken TP=1 exactly as the engine does, then exhausted
+`iter_gguf_weights(... include_moe_experts=False, include_non_moe=True)`.
+
+Result: completed successfully after one cold CUDA compilation of the borrowed
+GGUF kernel, yielding 885 non-expert tensors. Required sentinels had these
+layouts: GDN input `(16480, 2720)` `uint8`; GDN output `(2560, 6144)`
+`bfloat16`; PLE conv `(10240, 1, 4)` `bfloat16`; QSA QKV `(13312, 2720)`
+`uint8`; QSA indexer `(640, 5120)` `uint8`; embedding/LM head `(248320,
+2720)` `uint8`. The iterator's final fusion assertions passed.
+
+This is a loader-level integration test, **not** a TTFT, tok/s or quality result.
+It deliberately skipped both the 38 GiB PLE Q5_1 table and every routed-expert
+bank; model construction/service startup remains blocked on their providers.
+
 ## 2026-08-27 — DeepSeek Harness composition inspection
 
 Read-only inspection of the live `dsh web --no-open` installation and

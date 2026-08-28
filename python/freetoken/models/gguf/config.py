@@ -26,6 +26,7 @@ GGUF_ARCH_TO_REGISTRY: dict[str, str] = {
     "qwen35": "Qwen35GGUFForCausalLM",
     "qwen3moe": "Qwen3MoeGGUFForCausalLM",
     "deepseek4": "DeepseekV4GGUFForCausalLM",
+    "qwen4exp": "Qwen4ExpGGUFForCausalLM",
 }
 
 

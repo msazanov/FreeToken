@@ -44,6 +44,15 @@ failed and inconclusive hypotheses; do not rewrite history.
   provider and a native packed expert-offload bank. No Qwen inference claim is
   made until both are implemented and a real request completes.
 
+### Loader smoke evidence
+
+- The real 33-shard AtomicChat Q4_K_M checkpoint completed a full non-expert
+  iterator pass (885 yielded parameters) with no incomplete GDN/QSA/indexer or
+  shared-expert fusions. The observed packed/dense boundaries were intentional:
+  GDN input `16480 x 2720` bytes stays Q8 packed; the column-reordered GDN
+  output is `2560 x 6144` BF16; QSA QKV is packed; and the BF16 indexer uses
+  its native packed row width. This proves the loader mapping, not generation.
+
 ## 2026-08-27
 
 ### Accepted
