@@ -47,6 +47,9 @@ class QSAKVCache(MHAKVCache):
         self._num_index_layers = len(layer_ids)
         self._index_dtype = dtype
         self._compressed_k: torch.Tensor | None = None
+        self._pending_k: torch.Tensor | None = None
+        self._pending_pos: torch.Tensor | None = None
+        self._pending_rope: torch.Tensor | None = None
         super().__init__(
             num_kv_heads=num_kv_heads,
             num_layers=num_layers,
@@ -103,6 +106,82 @@ class QSAKVCache(MHAKVCache):
         self, keys: torch.Tensor, compressed_rows: torch.Tensor, layer_id: int
     ) -> None:
         self.compressed_k_cache(layer_id)[compressed_rows.long()] = keys
+
+    def ensure_pending_capacity(self, request_rows: int) -> None:
+        """Grow the tiny per-request ring for incomplete compression groups."""
+        current = 0 if self._pending_k is None else int(self._pending_k.shape[1])
+        if current >= request_rows:
+            return
+        new_rows = max(request_rows, max(16, current * 2))
+        shape = (
+            self._num_index_layers,
+            new_rows,
+            self._compress_ratio,
+            self._index_num_kv_heads,
+            self._index_head_dim,
+        )
+        pending = torch.empty(shape, dtype=self._index_dtype, device=self._device)
+        positions = torch.full(shape[:3], -1, dtype=torch.int64, device=self._device)
+        rope = torch.full((*shape[:3], 3), -1, dtype=torch.int64, device=self._device)
+        if self._pending_k is not None:
+            pending[:, :current].copy_(self._pending_k)
+            positions[:, :current].copy_(self._pending_pos)
+            rope[:, :current].copy_(self._pending_rope)
+        self._pending_k, self._pending_pos, self._pending_rope = pending, positions, rope
+
+    def clear_pending(self, layer_id: int, request_row: int) -> None:
+        assert self._pending_pos is not None
+        self._pending_pos[self._dense(layer_id), request_row].fill_(-1)
+
+    def pending_group(
+        self, layer_id: int, request_row: int, positions: torch.Tensor
+    ) -> torch.Tensor:
+        assert self._pending_k is not None and self._pending_pos is not None
+        dense = self._dense(layer_id)
+        slots = torch.remainder(positions, self._compress_ratio).long()
+        actual = self._pending_pos[dense, request_row].index_select(0, slots)
+        expected = positions.to(device=actual.device, dtype=actual.dtype)
+        if not torch.equal(actual, expected):
+            raise RuntimeError(
+                "QSA pending-key state is missing; use the naive cache and do not "
+                "resume a prefix without its QSA state"
+            )
+        return self._pending_k[dense, request_row].index_select(0, slots)
+
+    def pending_rope_group(
+        self, layer_id: int, request_row: int, positions: torch.Tensor
+    ) -> torch.Tensor:
+        self.pending_group(layer_id, request_row, positions)
+        assert self._pending_rope is not None
+        slots = torch.remainder(positions, self._compress_ratio).long()
+        return self._pending_rope[self._dense(layer_id), request_row].index_select(0, slots)
+
+    def store_pending(
+        self,
+        layer_id: int,
+        request_row: int,
+        positions: torch.Tensor,
+        keys: torch.Tensor,
+        rope_positions: torch.Tensor | None = None,
+    ) -> None:
+        assert self._pending_k is not None and self._pending_pos is not None
+        assert self._pending_rope is not None
+        dense = self._dense(layer_id)
+        slots = torch.remainder(positions, self._compress_ratio).long()
+        self._pending_k[dense, request_row].index_copy_(0, slots, keys)
+        self._pending_pos[dense, request_row].index_copy_(
+            0, slots, positions.to(device=self._device, dtype=torch.int64)
+        )
+        if rope_positions is None:
+            rope_positions = positions.to(device=self._device, dtype=torch.int64).view(-1, 1).expand(-1, 3)
+        if rope_positions.shape != (positions.numel(), 3):
+            raise ValueError(
+                "QSA pending RoPE positions must have shape [tokens, 3], got "
+                f"{tuple(rope_positions.shape)}"
+            )
+        self._pending_rope[dense, request_row].index_copy_(
+            0, slots, rope_positions.to(device=self._device, dtype=torch.int64)
+        )
 
 
 __all__ = ["QSAKVCache"]
