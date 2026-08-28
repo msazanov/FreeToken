@@ -25,6 +25,9 @@ class Qwen4ExpArgs:
     output_gate_type: str
     mrope_section: tuple[int, int, int]
     mrope_interleaved: bool
+    ple_layer_multipliers: tuple[int, ...] = ()
+    ple_head_vocab_sizes: tuple[int, ...] = ()
+    ple_head_offsets: tuple[int, ...] = ()
 
 
 __all__ = ["Qwen4ExpArgs"]
