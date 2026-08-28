@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+import os
 
+import pytest
 import torch
 
 
@@ -95,3 +97,48 @@ def test_qsa_tq4_adapter_preserves_qsa_row_selection_semantics():
     )
 
     assert torch.allclose(actual, expected, atol=1.2, rtol=0.12)
+
+
+def test_qsa_tq4_rejects_mismatched_packed_value_storage():
+    from freetoken.kernel.triton.qsa import qsa_sparse_gqa
+
+    q = torch.ones(1, 2, 4)
+    packed_k = torch.zeros(2, 1, 2, dtype=torch.uint8)
+    unpacked_v = torch.zeros(2, 1, 2)
+    scales = torch.ones(2, 1, dtype=torch.bfloat16)
+
+    with pytest.raises(ValueError, match="both packed K and V"):
+        qsa_sparse_gqa(
+            q, packed_k, unpacked_v, torch.tensor([[0]], dtype=torch.int32),
+            torch.tensor([1], dtype=torch.int32), 0.5,
+            k_scale=scales, v_scale=scales, logical_head_dim=4,
+        )
+
+
+@pytest.mark.skipif(
+    os.environ.get("FREETOKEN_RUN_QSA_CUDA_TESTS") != "1" or not torch.cuda.is_available(),
+    reason="explicit GPU validation only; do not contend with a serving runtime",
+)
+def test_qsa_tq4_packed_kernel_compiles_and_matches_cpu_oracle_on_cuda():
+    from freetoken.kernel.triton.qsa import qsa_sparse_gqa
+    from freetoken.kvcache.tq4 import encode_tq4
+
+    torch.manual_seed(1)
+    q = torch.randn(2, 4, 8, device="cuda", dtype=torch.float16)
+    dense_k = torch.randn(7, 2, 8, device="cuda", dtype=torch.float16)
+    dense_v = torch.randn(7, 2, 8, device="cuda", dtype=torch.float16)
+    packed_k, k_scale = encode_tq4(dense_k)
+    packed_v, v_scale = encode_tq4(dense_v)
+    selected = torch.tensor([[6, 3, 0], [5, 2, 1]], device="cuda", dtype=torch.int32)
+    counts = torch.tensor([3, 2], device="cuda", dtype=torch.int32)
+
+    actual = qsa_sparse_gqa(
+        q, packed_k, packed_v, selected, counts, 8**-0.5,
+        k_scale=k_scale, v_scale=v_scale, logical_head_dim=8,
+    )
+    expected = qsa_sparse_gqa(
+        q.cpu(), packed_k.cpu(), packed_v.cpu(), selected.cpu(), counts.cpu(), 8**-0.5,
+        k_scale=k_scale.cpu(), v_scale=v_scale.cpu(), logical_head_dim=8,
+    ).cuda()
+
+    assert torch.allclose(actual, expected, atol=2e-2, rtol=2e-2)

@@ -267,6 +267,8 @@ def qsa_sparse_gqa(
         raise ValueError("QSA expects q [N,H,D] and matching k/v [R,KVH,D]")
     packed_tq4 = k_rows.dtype is torch.uint8
     if packed_tq4:
+        if v_rows.dtype is not torch.uint8:
+            raise ValueError("packed TQ4 QSA needs both packed K and V stored as uint8")
         if k_scale is None or v_scale is None or logical_head_dim is None:
             raise ValueError("packed TQ4 QSA needs k_scale, v_scale, and logical_head_dim")
         if logical_head_dim % 2 or k_rows.shape[-1] != logical_head_dim // 2:
