@@ -65,6 +65,15 @@ def _reset_moe_stats_for_prefill(config, engine, batch) -> None:
         cache.reset_stats()
 
 
+def _set_moe_trace_phase(config, engine, batch) -> None:
+    """Keep E4's fixed trace split aligned with the batch about to execute."""
+    if not getattr(config, "moe_collect_stats", False):
+        return
+    cache = engine.moe_offload_cache
+    if cache is not None:
+        cache.set_trace_phase("prefill" if getattr(batch, "is_prefill", False) else "decode")
+
+
 def _snapshot_finished_moe_stats(config, engine, replies: List[DetokenizeMsg]) -> None:
     """Attach one terminal telemetry snapshot to finished detokenize replies."""
     if not getattr(config, "moe_collect_stats", False) or not any(m.finished for m in replies):
@@ -900,6 +909,7 @@ class Scheduler(SchedulerIOMixin):
         if self.toolcall_anchor_id is not None and not batch.is_prefill:
             self.cache_manager.snapshot_toolcall_anchor(batch.reqs)
         _reset_moe_stats_for_prefill(self.config, self.engine, batch)
+        _set_moe_trace_phase(self.config, self.engine, batch)
         forward_output = self.engine.forward_batch(batch, sample_args)
         self.token_pool[output_mapping] = forward_output.next_tokens_gpu
         self.decode_manager.filter_reqs(forward_input.batch.reqs)

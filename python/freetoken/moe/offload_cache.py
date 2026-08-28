@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterable, Iterator
 
 import torch
 from flashlib.kernels.slot_cache import N_STATS, Stat
@@ -24,6 +24,73 @@ _FUSED_COPY = os.getenv("FREETOKEN_FUSED_COPY", "1").strip().lower() not in {"0"
 # whole layer is tiny) and are excluded from the hit gather, so every per-run
 # entry the batch sees is >= this size.
 _SMALL_BANK_FEAT_BYTES = 256 * 1024
+
+_TRACE_PHASES = ("prefill", "decode")
+_TRACE_COUNTERS = (
+    "route_references",
+    "route_unique",
+    "l1_hits",
+    "l1_misses",
+    "copy_records",
+    "copy_bytes",
+    "evictions",
+)
+_TRACE_COUNTER_INDEX = {name: index for index, name in enumerate(_TRACE_COUNTERS)}
+
+
+class AggregateRouteCopyTrace:
+    """Bounded host-side trace shape used by pure tests and result readers.
+
+    The serving path mirrors this fixed phase/layer/counter layout in a device
+    tensor so decode collection does not copy routing IDs back to the host.
+    """
+
+    def __init__(self, num_layers: int) -> None:
+        self._values = {
+            phase: [[0 for _counter in _TRACE_COUNTERS] for _layer in range(num_layers)]
+            for phase in _TRACE_PHASES
+        }
+
+    def record_route(
+        self,
+        *,
+        phase: str,
+        layer_id: int,
+        expert_ids: Iterable[int],
+        l1_hits: int,
+        l1_misses: int,
+        evictions: int,
+    ) -> None:
+        counters = self._layer(phase, layer_id)
+        # Consume the caller's temporary sequence immediately; the trace retains
+        # only its cardinalities, never the IDs themselves.
+        ids = tuple(expert_ids)
+        counters[_TRACE_COUNTER_INDEX["route_references"]] += len(ids)
+        counters[_TRACE_COUNTER_INDEX["route_unique"]] += len(set(ids))
+        counters[_TRACE_COUNTER_INDEX["l1_hits"]] += l1_hits
+        counters[_TRACE_COUNTER_INDEX["l1_misses"]] += l1_misses
+        counters[_TRACE_COUNTER_INDEX["evictions"]] += evictions
+
+    def record_copy(self, *, phase: str, layer_id: int, records: int, nbytes: int) -> None:
+        counters = self._layer(phase, layer_id)
+        counters[_TRACE_COUNTER_INDEX["copy_records"]] += records
+        counters[_TRACE_COUNTER_INDEX["copy_bytes"]] += nbytes
+
+    def snapshot(self) -> dict[str, dict[str, list[dict[str, int]]]]:
+        return {
+            phase: {
+                "layers": [
+                    {"layer": layer_id, **dict(zip(_TRACE_COUNTERS, counters))}
+                    for layer_id, counters in enumerate(self._values[phase])
+                ]
+            }
+            for phase in _TRACE_PHASES
+        }
+
+    def _layer(self, phase: str, layer_id: int) -> list[int]:
+        if phase not in self._values:
+            raise ValueError(f"unknown trace phase {phase!r}")
+        return self._values[phase][layer_id]
 
 from freetoken.utils import init_logger
 
@@ -271,6 +338,17 @@ class OffloadMoeCache:
         self.decode_freq = torch.zeros(
             (self.num_layers, self.num_experts), dtype=torch.int64, device=self.device
         )
+        # Fixed phase x layer x counter telemetry. This deliberately contains no
+        # expert-id dimension: terminals read it once in telemetry_snapshot(), not
+        # during each decode step.
+        self._trace_phase = "decode"
+        self._trace_counters = torch.zeros(
+            (len(_TRACE_PHASES), self.num_layers, len(_TRACE_COUNTERS)),
+            dtype=torch.int64,
+            device=self.device,
+        )
+        self._trace_resident_slots = torch.zeros((), dtype=torch.int64, device=self.device)
+        self._trace_copy_pending = False
         # (per-layer sources, cache) per bank, in schema order. Every piece of cache
         # machinery that moves bank bytes (copy_missing, the prefill double buffers,
         # bank_views) iterates this list, so the slot cache is bank-count agnostic.
@@ -544,6 +622,9 @@ class OffloadMoeCache:
         self.stat_fetched_layer.zero_()
         self.stat_steps_layer.zero_()
         self.decode_freq.zero_()
+        self._trace_counters.zero_()
+        self._trace_resident_slots.copy_(self.id_of_slot.ge(0).sum())
+        self._trace_copy_pending = False
         self.prefill_hit_rows = 0
         self.prefill_total_rows = 0
         self._hit_d2d_fallback_logged = False  # geometry changed; re-log if still unusable
@@ -729,6 +810,11 @@ class OffloadMoeCache:
 
         self._prefill_buffer_layer[buffer_id] = layer_id
         self._prefill_buffer_released[buffer_id] = False
+        # Normal overlap prefill materializes a complete layer rather than
+        # calling copy_missing(); record that bounded transfer here.
+        if self.collect_stats:
+            self._trace_copy_pending = True
+            self._record_trace_copy(layer_id, whole_layer=True)
 
     def _hit_d2d_usable(self) -> bool:
         """Whether the hit-D2D split can serve this prefill; logs the first fallback.
@@ -900,6 +986,7 @@ class OffloadMoeCache:
     def ensure_experts(self, layer_id: int, expert_ids: torch.Tensor) -> None:
         from freetoken.moe.offload_kernels import ensure_experts
 
+        trace_before = self.lru_stats[layer_id].clone() if self.collect_stats else None
         if self.collect_decode_freq:
             # ``expert_ids`` still holds raw expert ids here (the kernel rewrites them to
             # slot ids in place), so snapshot the routing histogram before that happens.
@@ -908,6 +995,13 @@ class OffloadMoeCache:
         self._pending_src_layer = layer_id
         self._pending_whole_layer = False
         ensure_experts(self, layer_id, expert_ids)
+        self._record_trace_after_ensure(
+            layer_id,
+            expert_ids.numel(),
+            trace_before,
+            hybrid=self.is_file_backed_layer(layer_id),
+        )
+        self._trace_copy_pending = self.collect_stats
 
     def ensure_experts_hybrid(self, layer_id: int, expert_ids: torch.Tensor) -> None:
         """Capped-fetch LRU for the hybrid backend.
@@ -929,6 +1023,8 @@ class OffloadMoeCache:
         ensure_experts_hybrid(
             self, layer_id, expert_ids, self.hybrid_max_fetch, self.hybrid_fetch_fraction
         )
+        self._record_trace_after_ensure(layer_id, expert_ids.numel(), None, hybrid=True)
+        self._trace_copy_pending = self.collect_stats
 
     def materialize_layer(self, layer_id: int) -> None:
         from freetoken.moe.offload_kernels import materialize_layer
@@ -936,6 +1032,7 @@ class OffloadMoeCache:
         self._pending_src_layer = layer_id
         self._pending_whole_layer = True
         materialize_layer(self, layer_id)
+        self._trace_copy_pending = self.collect_stats
 
     def reset(self) -> None:
         from freetoken.moe.offload_kernels import reset_cache
@@ -958,6 +1055,80 @@ class OffloadMoeCache:
         self.stat_fetched_layer.zero_()
         self.stat_steps_layer.zero_()
         self.decode_freq.zero_()
+        self._trace_counters.zero_()
+        # Preserve the cache's warm state while making eviction accounting request-local.
+        self._trace_resident_slots.copy_(self.id_of_slot.ge(0).sum())
+        self._trace_copy_pending = False
+
+    def set_trace_phase(self, phase: str) -> None:
+        """Select the phase whose bounded counters the next forward contributes to."""
+        if phase not in _TRACE_PHASES:
+            raise ValueError(f"unknown trace phase {phase!r}")
+        self._trace_phase = phase
+
+    def _trace_phase_index(self) -> int:
+        return _TRACE_PHASES.index(self._trace_phase)
+
+    def _record_trace_after_ensure(
+        self,
+        layer_id: int,
+        references: int,
+        lru_before: torch.Tensor | None,
+        *,
+        hybrid: bool,
+    ) -> None:
+        """Accumulate cache deltas after the in-place route-to-slot rewrite.
+
+        All values remain CUDA scalars until the terminal snapshot. ``ACTIVE`` is
+        the distinct routed-expert count supplied by the existing LRU kernels;
+        for hybrid/file-backed admission, active_mask and num_missing_full carry
+        the equivalent values.
+        """
+        if not self.collect_stats:
+            return
+        phase = self._trace_phase_index()
+        counters = self._trace_counters[phase, layer_id]
+        if hybrid:
+            active = self.active_mask.sum()
+            missing = self.num_missing_full.sum()
+            copied = self.num_indices.sum()
+        else:
+            assert lru_before is not None
+            delta = self.lru_stats[layer_id] - lru_before
+            active = delta[Stat.ACTIVE]
+            missing = delta[Stat.MISS]
+            copied = self.num_indices.sum()
+        counters[_TRACE_COUNTER_INDEX["route_references"]].add_(references)
+        counters[_TRACE_COUNTER_INDEX["route_unique"]].add_(active)
+        counters[_TRACE_COUNTER_INDEX["l1_hits"]].add_((active - missing).clamp_min(0))
+        counters[_TRACE_COUNTER_INDEX["l1_misses"]].add_(missing)
+        # A miss uses a previously vacant slot until the shared LRU is full; the
+        # remaining fetched misses replace resident rows and are evictions.
+        free_slots = (self.cache_size - self._trace_resident_slots).clamp_min(0)
+        evictions = (copied - free_slots).clamp_min(0)
+        counters[_TRACE_COUNTER_INDEX["evictions"]].add_(evictions)
+        self._trace_resident_slots.add_(copied).clamp_(max=self.cache_size)
+
+    def _record_trace_copy(self, layer_id: int, *, whole_layer: bool | None = None) -> None:
+        if not (self.collect_stats and self._trace_copy_pending):
+            return
+        copy_full_layer = self._pending_whole_layer if whole_layer is None else whole_layer
+        rows = (
+            torch.tensor(self.num_experts, dtype=torch.int64, device=self.device)
+            if copy_full_layer
+            else self.num_indices.sum()
+        )
+        # One record is one bank-row transfer; byte totals use compact source
+        # rows, never padded slot strides. This correctly reflects Qwen's three
+        # independent GGUF bank reads without retaining their selected IDs.
+        row_bytes = sum(
+            source[layer_id].numel() // self.num_experts * source[layer_id].element_size()
+            for source, _cache in self.banks
+        )
+        counters = self._trace_counters[self._trace_phase_index(), layer_id]
+        counters[_TRACE_COUNTER_INDEX["copy_records"]].add_(rows * len(self.banks))
+        counters[_TRACE_COUNTER_INDEX["copy_bytes"]].add_(rows * row_bytes)
+        self._trace_copy_pending = False
 
     def telemetry_snapshot(self) -> dict[str, object]:
         """Read the bounded, serializable telemetry for the current request once."""
@@ -967,11 +1138,22 @@ class OffloadMoeCache:
         if "oracle_hit_at_slots" in routing:
             routing["stationary_top_c_hit_at_slots"] = routing.pop("oracle_hit_at_slots")
         routing["method"] = "stationary_per_layer_top_c"
+        trace_values = self._trace_counters.tolist()
+        trace = {
+            phase: {
+                "layers": [
+                    {"layer": layer_id, **dict(zip(_TRACE_COUNTERS, values))}
+                    for layer_id, values in enumerate(trace_values[phase_index])
+                ]
+            }
+            for phase_index, phase in enumerate(_TRACE_PHASES)
+        }
         return {
             "miss": miss,
             "per_layer": per_layer,
             "routing": routing,
             "routing_frequency_enabled": bool(self.collect_decode_freq),
+            "trace": trace,
             "cache": {
                 "num_layers": self.num_layers,
                 "num_experts": self.num_experts,
@@ -1090,6 +1272,7 @@ class OffloadMoeCache:
         assert self.banks, "set_bank_sources must register the banks first"
         layer_id = self._pending_src_layer
         assert layer_id is not None, "no staged misses (ensure_experts/materialize_layer first)"
+        self._record_trace_copy(layer_id)
         if layer_id in self._unpinned_layers:
             if layer_id in self._file_backed_layers:
                 # File-backed ranges cannot be made GPU-addressable without
