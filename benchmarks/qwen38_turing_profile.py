@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from benchmarks.speed_registry import append_artifact
+
 
 DEFAULT_CONTEXT_POINTS = (1024, 16_384, 65_536, 114_688)
 
@@ -106,6 +108,18 @@ def result_directory(repo_root: Path, run_name: str | None = None) -> Path:
     if destination.parent != base:
         raise ValueError("result directory must be directly under benchmarks/results")
     return destination
+
+
+def current_git_commit(repo_root: Path) -> str:
+    """Return the measured source revision without making benchmarks depend on git."""
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
 
 
 def child_environment(
@@ -371,6 +385,15 @@ def run_context_point(args: argparse.Namespace, context_tokens: int, results_dir
             artifact=artifact,
         )
         artifact.write_text(json.dumps(row, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_artifact(
+            artifact,
+            args.speed_registry,
+            model=args.model_name,
+            quantization=args.quantization,
+            runtime_profile=args.runtime_profile,
+            source_kind="end_to_end",
+            git_commit=current_git_commit(args.repo_root),
+        )
         return artifact
     finally:
         if process.poll() is None:
@@ -395,6 +418,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--run-name")
+    parser.add_argument(
+        "--speed-registry",
+        type=Path,
+        default=Path(__file__).resolve().parent / "results" / "model-context-speed.jsonl",
+    )
+    parser.add_argument("--quantization", default="unknown")
+    parser.add_argument("--runtime-profile", default="unspecified")
     parser.add_argument("--server-arg", action="append", default=[])
     parser.add_argument("--startup-timeout-s", type=float, default=900.0)
     parser.add_argument("--request-timeout-s", type=float, default=7200.0)

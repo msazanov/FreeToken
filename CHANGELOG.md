@@ -675,3 +675,20 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   H2D is 276.94 GB versus the control's 252.24 GB, and this REAP run reported
   48.73 MiB physical reads versus 12.02 MiB. The immutable raw artifact is
   `benchmarks/results/qwen38-reap256-64k-lru/context-65536.json`.
+
+### Added — append-only cross-model speed registry
+
+- `benchmarks/results/model-context-speed.jsonl` is now the central durable
+  registry for model × quantization × actual context × prefill/decode speed.
+  It records seed, runtime profile, source revision and immutable artifact path.
+- `benchmarks/qwen38_turing_profile.py` now adds every successfully terminal
+  future run to that registry. The helper refuses a duplicate raw artifact;
+  incomplete streams remain rejected before publication.
+- Backfilled Qwen REAP-256 and new Ornith Q4_K_M 1K/16K/64K points establish the
+  first plot-ready direct hardware comparison. On their model-appropriate
+  FreeToken profiles, Ornith decode is 29.085/20.996/13.591 tok/s against
+  Qwen's 2.175/2.100/2.046 tok/s. This is not an equal-geometry cache-policy A/B.
+- The new Ornith 64K baseline uses `--max-prefill-length 640` and measured
+  53.448 prefill tok/s. It is retained as a conservative baseline; a dedicated
+  640-versus-1024 measurement is still required before changing production
+  chunking.

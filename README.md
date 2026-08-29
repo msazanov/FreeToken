@@ -71,6 +71,33 @@ prefill and +26.7% decode. Decode remains a complete global-LRU miss (`0 /
 does not diagnose an NVMe improvement. Artifact:
 `benchmarks/results/qwen38-reap256-64k-lru/context-65536.json`.
 
+## Cross-model RTX 2070 context-speed registry
+
+`benchmarks/results/model-context-speed.jsonl` is the append-only, plot-ready
+source of truth for every completed end-to-end context-speed point. The runner
+now appends future terminal artifacts automatically; a duplicate artifact is
+rejected rather than rewritten. Each row binds actual input/output tokens,
+prefill and decode throughput, seed, quantization, runtime profile, revision and
+the immutable raw JSON path.
+
+The first normalized cross-model slice uses the same fixed prompt generator,
+temperature `0` and seed `20260828`. It is a useful hardware comparison, not a
+one-variable A/B: Qwen needs `tq4-nc`/256-slot LRU while Ornith uses the
+validated 122,880-token INT8-KV/1,429-slot profile. Each model's tokenizer and
+chat template also give a slightly different actual prompt length.
+
+| Requested context | Qwen3.8 REAP-256 Q3_K_XL prefill / decode | Ornith 1.5 35b Q4_K_M prefill / decode | Ornith decode factor |
+| ---: | ---: | ---: | ---: |
+| 1K | 14.63 / 2.17 tok/s | 63.54 / 29.08 tok/s | 13.4× |
+| 16K | 36.72 / 2.10 tok/s | 91.75 / 21.00 tok/s | 10.0× |
+| 64K | 38.23 / 2.05 tok/s | 53.45 / 13.59 tok/s | 6.6× |
+
+The Ornith 64K `640`-token chunk result is an intentionally conservative baseline,
+not a claim that 640 is optimal. A separate 640-versus-1024 test is required
+before changing the deployed profile. Raw artifacts:
+`benchmarks/results/ornith35-q4km-r2/context-1024.json` and
+`benchmarks/results/ornith35-q4km-r3/context-{16384,65536}.json`.
+
 The PLE loader also accepts the REAP checkpoint's `IQ4_NL`
 `per_layer_token_embd.weight`: its gate follows the exact quantized types
 handled by native `ggml_dequantize`. `Q5_1` remains covered by a regression

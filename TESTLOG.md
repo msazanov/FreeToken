@@ -19,6 +19,10 @@ labels, runtime cache geometry, sampling mode, actual context, TTFT, prefill and
 decode. Use `temperature=0` / `greedy-argmax` until FreeToken wires API seeds
 through to the sampler; a nominal seed would currently be misleading.
 
+For cross-model plots, `benchmarks/results/model-context-speed.jsonl` is the
+append-only registry. Every published row must reference an immutable raw JSON;
+the runner appends terminal runs automatically and rejects duplicate artifacts.
+
 ## 2026-08-28 — Qwen4Exp real-GGUF non-expert loader smoke
 
 Worktree: `feat/qwen4exp-gguf-turing`, post-`bb0dde7` dirty implementation.
@@ -1387,3 +1391,29 @@ loading. The successful `qwen38-reap256-64k-lru-r1` unit adds only
 
 Raw reproducible artifact and sibling stdout/stderr:
 `benchmarks/results/qwen38-reap256-64k-lru/context-65536.json`.
+
+## 2026-08-29 — Ornith 35B Q4_K_M versus Qwen3.8 REAP-256 (complete)
+
+Purpose: establish a current, reproducible hardware comparison after the Qwen
+REAP series. Both models used `temperature=0`, seed `20260828`, one request and
+the same prompt-private fixed-body generator with a requested 1K/16K/64K input.
+They are not a single-variable A/B: Qwen requires its TQ4-NC, 256-slot global
+LRU profile, while Ornith uses its established 122,880-token INT8-KV, 1,429-slot
+MoE cache profile and `--max-prefill-length 640`. Tokenizers/template framing
+produce the small actual-input differences below.
+
+| Requested tier | Model | Actual prompt / output | End-to-end prefill | End-to-end decode | Raw artifact |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1K | Qwen3.8 REAP-256 Q3_K_XL | 1,036 / 254 | 14.630 tok/s | 2.175 tok/s | `qwen38-reap256-1k-lru/context-1024.json` |
+| 1K | Ornith 1.5 35b Q4_K_M | 1,040 / 153 | 63.540 tok/s | 29.085 tok/s | `ornith35-q4km-r2/context-1024.json` |
+| 16K | Qwen3.8 REAP-256 Q3_K_XL | 16,396 / 254 | 36.717 tok/s | 2.100 tok/s | `qwen38-reap256-16k-lru/context-16384.json` |
+| 16K | Ornith 1.5 35b Q4_K_M | 16,400 / 127 | 91.753 tok/s | 20.996 tok/s | `ornith35-q4km-r3/context-16384.json` |
+| 64K | Qwen3.8 REAP-256 Q3_K_XL | 65,548 / 254 | 38.229 tok/s | 2.046 tok/s | `qwen38-reap256-64k-lru/context-65536.json` |
+| 64K | Ornith 1.5 35b Q4_K_M | 65,552 / 128 | 53.448 tok/s | 13.591 tok/s | `ornith35-q4km-r3/context-65536.json` |
+
+Ornith therefore led decode by 13.4× / 10.0× / 6.6× at 1K / 16K / 64K. The
+shorter Ornith output is normal EOS behaviour and is recorded rather than padded;
+the rate is calculated from its actual terminal stream. The 64K Ornith request
+ran for 1,235.97 s. This is a cold-prefix result (not a radix-cache hit) and
+must not be used to predict the high-cache-hit DeepSeek Harness path. All six
+points are indexed in `benchmarks/results/model-context-speed.jsonl`.
