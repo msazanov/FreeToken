@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 
 def test_registry_entry_preserves_actual_speed_and_metadata(tmp_path):
@@ -86,3 +89,18 @@ def test_profile_runner_exposes_registry_metadata_for_every_future_run():
     assert args.speed_registry.name == "model-context-speed.jsonl"
     assert args.quantization == "unknown"
     assert args.runtime_profile == "unspecified"
+
+
+def test_profile_runner_can_execute_as_a_script_entrypoint():
+    repo_root = Path(__file__).resolve().parents[2]
+
+    result = subprocess.run(
+        [sys.executable, "benchmarks/qwen38_turing_profile.py", "--help"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--speed-registry" in result.stdout

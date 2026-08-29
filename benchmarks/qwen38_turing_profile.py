@@ -22,6 +22,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+# Direct ``python benchmarks/qwen38_turing_profile.py`` execution puts only the
+# benchmarks directory on sys.path. Add the repository root before importing the
+# sibling registry module; module execution continues to work unchanged.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from benchmarks.speed_registry import append_artifact
 
 
