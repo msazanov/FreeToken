@@ -31,10 +31,10 @@ the 256-slot global cache thrashes across layers (zero decode L1 hits) rather
 than exposing a fresh-NVMe bottleneck. See [TESTLOG.md](TESTLOG.md) for raw
 artifacts and failures retained as evidence.
 
-The next separate candidate is Qwen3.8 REAP-256 GGUF: 256 instead of 512
-experts per layer. It is being checked as a model-compression control through
-the stable LRU runtime first; no performance or quality result is claimed until
-the model's GGUF metadata passes and matched 1K/16K/64K profiles complete.
+The separate Qwen3.8 REAP-256 GGUF candidate has 256 instead of 512 experts per
+layer. It is being checked as a model-compression control through the stable
+LRU runtime first; the matched 1K and 16K profiles are complete, while the 64K
+profile remains required before making a long-context or quality conclusion.
 
 Each new profile now includes a prompt-private SHA-256 of the final visible
 answer. Incomplete or error SSE streams are rejected before an artifact is
@@ -50,10 +50,18 @@ That verification and the first live control are now complete: the REAP-256
 checkpoint finished the isolated fixed-seed 1K FreeToken run on the RTX 2070
 with stable global LRU.  Its end-to-end prefill/decode were 14.63 / 2.175 tok/s
 versus 12.10 / 1.834 tok/s for the Q4_K_M control.  This is a speed observation,
-not a quality verdict and not yet a long-context result: the 16K and 64K
-controls remain required.  Decode still had zero L1 hits, so pruning does not
-by itself solve global cache thrash; the complete artifact is
+not a quality verdict. Decode still had zero L1 hits, so pruning does not by
+itself solve global cache thrash; the complete artifact is
 `benchmarks/results/qwen38-reap256-1k-lru/context-1024.json`.
+
+The matched 16K control is also complete: 16,396 input tokens and 254 generated
+tokens took 567.03 s, with 36.72 prefill tok/s and 2.100 end-to-end decode
+tok/s. Against Q4_K_M's 616.26 s, 35.21 and 1.686 respectively, that is -8.0%
+wall time, +4.3% prefill and +24.5% decode. The evidence is deliberately
+qualified: REAP's decode trace is still `0 / 121,920` L1 hits/misses and its
+H2D volume is larger (276.94 GB vs 252.24 GB). It is a stable-LRU model control,
+not proof that the cache problem has been solved. The raw artifact is
+`benchmarks/results/qwen38-reap256-16k-lru/context-16384.json`.
 
 The PLE loader also accepts the REAP checkpoint's `IQ4_NL`
 `per_layer_token_embd.weight`: its gate follows the exact quantized types

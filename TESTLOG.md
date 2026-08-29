@@ -1302,3 +1302,42 @@ measurements are the same 16K and 64K controls.
 
 Raw reproducible artifact and stdout/stderr:
 `benchmarks/results/qwen38-reap256-1k-lru/context-1024.json`.
+
+## 2026-08-29 — Qwen3.8 REAP-256 16K stable-LRU control (complete)
+
+This is the matched long-context follow-up to the REAP 1K control. The only
+model change from the already-complete Q4_K_M 16K control is the downloaded
+REAP-256 UD-Q3_K_XL checkpoint. Both runs use BF16 activations, `tq4-nc` KV,
+page size 4, a 16 MiB QSA workspace, 18,432-token allocation ceiling, 256
+global LRU slots, offload backend, naive request cache, one request,
+1,024-token prefill chunks, temperature 0, and seed `20260828`.
+
+| metric | REAP-256 Q3_K_XL | Q4_K_M control | change |
+| --- | ---: | ---: | ---: |
+| prompt / output tokens | 16,396 / 254 | 16,396 / 255 | — |
+| end-to-end wall time | 567.03 s | 616.26 s | -8.0% |
+| end-to-end prompt throughput | 36.717 tok/s | 35.213 tok/s | +4.3% |
+| end-to-end decode throughput | 2.100 tok/s | 1.686 tok/s | +24.5% |
+| TTFT | 445.03 s | 464.09 s | -4.1% |
+| sampled GPU util., mean / peak | 74.39% / 98% | 67.00% / 97% | +7.39 pp / +1 pp |
+| peak sampled VRAM | 7,424 MiB | 7,396 MiB | +28 MiB |
+| process physical reads | 8.64 MiB | 17.20 MiB | -49.8% |
+| decode L1 hits / misses | 0 / 121,920 | 0 / 122,400 | unchanged thrash |
+| decode H2D copy volume | 276.94 GB | 252.24 GB | +9.8% |
+| prefill L1 hits / misses | 707,604 / 26,482 | 768,159 / 30,063 | — |
+
+The scheduler's cold first prefill block reported 8.95 tok/s. Subsequent
+1,024-token blocks were stable near 40.1--40.9 tok/s; these transient scheduler
+figures do not replace the end-to-end 36.717 tok/s value above. Decode similarly
+reported 0.08 tok/s once during the transition, then 2.11, 2.11, 2.16 and 2.24
+tok/s. The runner's end-to-end 2.100 tok/s is retained as the only comparison
+metric because it includes the whole generated response.
+
+The 16K result reproduces the 1K qualification: REAP has a real throughput
+advantage in this fixed configuration, but global LRU still evicts every decode
+route. The lower process physical-read delta must not be treated as a fresh-NVMe
+claim: the control is warm under Linux page cache, and REAP's H2D decode volume
+is actually higher. The required next matched measurement is 64K.
+
+Raw reproducible artifact and sibling stdout/stderr:
+`benchmarks/results/qwen38-reap256-16k-lru/context-16384.json`.

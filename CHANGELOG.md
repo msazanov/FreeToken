@@ -649,3 +649,17 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   remained `0 / 121,920` L1 hits/misses and copied 276.94 GB host-to-device,
   versus Q4_K_M's 252.24 GB; the smaller on-disk model is therefore not proof
   of a smaller decode working set. 16K and 64K are still required.
+
+### Verified — REAP-256 16K stable-LRU control
+
+- With the same seed, LRU, 256 slots, `tq4-nc` KV and 18,432-token allocation
+  geometry as the Q4_K_M 16K control, REAP completed 16,396 prompt plus 254
+  output tokens in 567.03 s. Its end-to-end prefill/decode were 36.72 / 2.100
+  tok/s, against Q4_K_M's 35.21 / 1.686; this is -8.0% wall time, +4.3%
+  prefill and +24.5% decode.
+- This remains a model/quantization observation, not cache-policy attribution:
+  decode recorded zero L1 hits and 121,920 misses/evictions. REAP transferred
+  276.94 GB H2D during decode, above the Q4_K_M control's 252.24 GB. The
+  complete immutable artifact is
+  `benchmarks/results/qwen38-reap256-16k-lru/context-16384.json`; 64K remains
+  the last matched control.
