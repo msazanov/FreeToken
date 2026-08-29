@@ -1158,3 +1158,29 @@ the complete 64K control measured zero decode hits from it.  It must keep the
 same model, KV allocation, QSA workspace, prompt and seed, and it must be
 recorded as a distinct cache-size configuration rather than compared as an
 identical speed control.
+
+## 2026-08-29 — Protected-layer cache: pre-benchmark regression repair
+
+Independent review of the not-yet-benchmarked protected-layer policy found two
+CUDA-critical faults in its initial implementation: a resident route could
+still stage an eviction/copy in the Triton kernel, and the direct engine warmup
+could inherit the initial `decode` phase and apply decoder-only admission to a
+prefill.  Both are fixed in `9749ea1` (`fix: close protected-layer admission
+criticals`), after explicit RED tests.
+
+The focused CPU regression suite is green (4 passed); the relevant full suite
+is 43 passed, 5 skipped, with the two pre-existing environment/assertion
+failures retained.  CUDA compilation/parity remains a required live-SM75 gate,
+not evidence supplied by the sandbox where CUDA is unavailable.  The complete
+root-cause and RED/GREEN record is
+`.superpowers/sdd/2026-08-29-qwen38-protected-layer-cache/task-2-fix-report.md`.
+
+## 2026-08-29 — REAP-256 candidate intake (download in progress)
+
+The next model candidate is `AnonimousA/Qwen3.8-Flash-Next-REAP-256-duo-GGUF`:
+two GGUF shards totalling 61.9 GB, stored separately at
+`/home/random/dev/qwen/models/qwen38-reap256-ud-q3k-xl`.  It is a Qwen4Exp
+checkpoint with 256 rather than 512 experts per layer and the same top-10
+routing.  This is a model-compression experiment, not a cache-policy result:
+the first run must retain stable global LRU and compare only after a GGUF
+metadata/type gate.  No REAP throughput or quality claim is recorded yet.

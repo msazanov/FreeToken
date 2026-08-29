@@ -21,6 +21,20 @@ FreeToken is an edge-native Mixture-of-Experts (MoE) serving engine designed for
 - **Semantic-Aware Caching**: Features semantic anchor checkpoints for recurrent state and KV caches, allowing agentic context edits (e.g., tool calls, thinking blocks) to avoid redundant context recomputation.  
 - **Elastic Memory Management**: Supports dynamic, runtime VRAM re-allocation between expert caches and KV memory without engine restarts or weight reloading.  
 - **Broad MoE & Ecosystem Support**: Supports frontier open-weight MoE models (e.g., DeepSeek-V4-Flash, Qwen3.6-35B-A3B, GLM-5.2) across various parameter scales and quantization formats (e.g., MXFP4, NVFP4, FP8, BF16), with Anthropic/OpenAI-compatible APIs for seamless integration with real-world coding and tool-calling agents (e.g., Codex, Claude Code, OpenCode, OpenClaw, DeepSeek Harness). 
+
+## RTX 2070 Qwen3.8 research status
+
+This fork keeps reproducible Turing results for Qwen3.8 Flash Next on RTX 2070
+Mobile 8 GiB, i7-8750H, 32 GiB RAM and NVMe. The Q4_K_M 64K control completed
+at 38.16 prefill tok/s and 1.614 end-to-end decode tok/s; it established that
+the 256-slot global cache thrashes across layers (zero decode L1 hits) rather
+than exposing a fresh-NVMe bottleneck. See [TESTLOG.md](TESTLOG.md) for raw
+artifacts and failures retained as evidence.
+
+The next separate candidate is Qwen3.8 REAP-256 GGUF: 256 instead of 512
+experts per layer. It is being checked as a model-compression control through
+the stable LRU runtime first; no performance or quality result is claimed until
+the model's GGUF metadata passes and matched 1K/16K/64K profiles complete.
 - **Diverse Consumer Hardware**: Scales across consumer laptops, gaming desktops, and workstation GPUs, with native support for NVIDIA RTX 30, RTX 40, and RTX 50 series GPUs.  
 
 ## RTX 2070 fork mission

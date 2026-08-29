@@ -568,3 +568,19 @@ failed and inconclusive hypotheses; do not rewrite history.
   cache produced zero decode hits at 64K, the next capacity probe may trade
   part of it for GDN activation headroom; it will be labelled separately from
   the fixed-configuration speed matrix.
+
+### Fixed — protected-layer admission critical regressions
+
+- Commit `9749ea1` prevents resident routes from staging a spurious
+  copy/eviction in the protected Triton admission kernel and scopes direct
+  engine warmup to prefill admission. The policy remains opt-in and has not
+  been used for a performance claim yet.
+- CPU RED/GREEN regressions and a CUDA-gated parity regression were added. The
+  latter must run on the actual RTX 2070 before the policy can enter a live A/B.
+
+### Planned — REAP-256 Qwen model control
+
+- A separate 61.9 GB Qwen4Exp GGUF candidate with 256 experts/layer is being
+  downloaded outside `/tmp`. It will first be metadata-validated and then run
+  with the stable LRU baseline. This prevents conflating REAP pruning with the
+  new cache policy or with the existing Q4_K_M quantization.
