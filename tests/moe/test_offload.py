@@ -391,6 +391,58 @@ def test_protected_layer_repeated_route_stays_resident():
     assert (repeated >= 0).all()
 
 
+def test_engine_warmup_prefill_disables_protected_decoder_admission(monkeypatch):
+    """Direct engine warmup must mark its model.forward calls as prefill."""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from freetoken.engine.engine import Engine
+
+    cache = _make_qwen_protected_cpu_cache(layers=2, experts=8, slots=16, topk=2)
+    seen = []
+
+    class FakeEvent:
+        def __init__(self, **_kwargs):
+            pass
+
+        def record(self, _stream):
+            pass
+
+        def elapsed_time(self, _other):
+            return 0.0
+
+    class FakeModel:
+        def forward(self):
+            seen.append(cache.uses_protected_layer_admission(0))
+
+    class FakeAttention:
+        def prepare_metadata(self, _batch):
+            pass
+
+    class FakeContext:
+        def forward_batch(self, _batch):
+            return nullcontext()
+
+    engine = object.__new__(Engine)
+    engine.max_seq_len = 80
+    engine.device = torch.device("cpu")
+    engine.stream = object()
+    engine.page_table = torch.zeros((1, 80), dtype=torch.int32)
+    engine.dummy_req = SimpleNamespace(table_idx=0)
+    engine.moe_offload_cache = cache
+    monkeypatch.setattr(cache, "reset", lambda: None)
+    engine.attn_backend = FakeAttention()
+    engine.ctx = FakeContext()
+    engine.model = FakeModel()
+
+    monkeypatch.setattr(torch.cuda, "Event", FakeEvent)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda _device: None)
+
+    Engine._warmup_prefill(engine)
+
+    assert seen == [False]
+    assert cache._trace_phase == "decode"
+
+
 def test_protected_layer_prefill_keeps_dynamic_hybrid_admission(monkeypatch):
     from freetoken.moe import offload_kernels
 

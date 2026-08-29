@@ -375,37 +375,39 @@ def _ensure_experts_protected_layer_kernel(
     for rank in tl.range(num_active):
         if rank < unique_count:
             is_candidate = needs & (route_rank == rank)
-            expert = tl.argmax(tl.where(is_candidate, off_e, 0), axis=0).to(tl.int32)
-            is_protected = rank < protected_slots
-            zone_start = tl.where(is_protected, protected_start, transient_start)
-            zone_end = tl.where(is_protected, protected_start + protected_slots, cache_size)
+            has_candidate = tl.sum(is_candidate.to(tl.int32)) > 0
+            if has_candidate:
+                expert = tl.argmax(tl.where(is_candidate, off_e, 0), axis=0).to(tl.int32)
+                is_protected = rank < protected_slots
+                zone_start = tl.where(is_protected, protected_start, transient_start)
+                zone_end = tl.where(is_protected, protected_start + protected_slots, cache_size)
 
-            oid = tl.load(id_of_slot_ptr + off_c, mask=c_mask, other=-1)
-            owner_active = tl.zeros((BLOCK_C,), dtype=tl.int1)
-            for i in tl.range(num_active):
-                routed = tl.load(expert_ids_ptr + i)
-                owner_active = owner_active | (oid == base + routed)
-            eligible = c_mask & (off_c >= zone_start) & (off_c < zone_end) & ~owner_active
-            usage = tl.load(
-                usage_ptr + off_c, mask=eligible, other=9223372036854775807
-            ).to(tl.int64)
-            victim = tl.argmin(usage, axis=0).to(tl.int32)
+                oid = tl.load(id_of_slot_ptr + off_c, mask=c_mask, other=-1)
+                owner_active = tl.zeros((BLOCK_C,), dtype=tl.int1)
+                for i in tl.range(num_active):
+                    routed = tl.load(expert_ids_ptr + i)
+                    owner_active = owner_active | (oid == base + routed)
+                eligible = c_mask & (off_c >= zone_start) & (off_c < zone_end) & ~owner_active
+                usage = tl.load(
+                    usage_ptr + off_c, mask=eligible, other=9223372036854775807
+                ).to(tl.int64)
+                victim = tl.argmin(usage, axis=0).to(tl.int32)
 
-            old_slot = tl.sum(tl.where(off_e == expert, slot, 0)).to(tl.int32)
-            has_old_slot = tl.sum((off_e == expert) & (slot >= 0)).to(tl.int32) != 0
-            if has_old_slot:
-                tl.store(id_of_slot_ptr + old_slot, -1)
-                tl.store(usage_ptr + old_slot, 0)
-                tl.store(slot_for_id_ptr + base + expert, -1)
-            old_id = tl.sum(tl.where(off_c == victim, oid, 0)).to(tl.int32)
-            if old_id >= 0:
-                tl.store(slot_for_id_ptr + old_id, -1)
-            tl.store(id_of_slot_ptr + victim, base + expert)
-            tl.store(slot_for_id_ptr + base + expert, victim)
-            tl.store(usage_ptr + victim, step)
-            tl.store(evict_slots_ptr + copy_count, victim)
-            tl.store(src_indices_ptr + copy_count, expert)
-            copy_count += 1
+                old_slot = tl.sum(tl.where(off_e == expert, slot, 0)).to(tl.int32)
+                has_old_slot = tl.sum((off_e == expert) & (slot >= 0)).to(tl.int32) != 0
+                if has_old_slot:
+                    tl.store(id_of_slot_ptr + old_slot, -1)
+                    tl.store(usage_ptr + old_slot, 0)
+                    tl.store(slot_for_id_ptr + base + expert, -1)
+                old_id = tl.sum(tl.where(off_c == victim, oid, 0)).to(tl.int32)
+                if old_id >= 0:
+                    tl.store(slot_for_id_ptr + old_id, -1)
+                tl.store(id_of_slot_ptr + victim, base + expert)
+                tl.store(slot_for_id_ptr + base + expert, victim)
+                tl.store(usage_ptr + victim, step)
+                tl.store(evict_slots_ptr + copy_count, victim)
+                tl.store(src_indices_ptr + copy_count, expert)
+                copy_count += 1
 
     tl.store(num_indices_ptr, copy_count)
     for i in tl.range(num_active):

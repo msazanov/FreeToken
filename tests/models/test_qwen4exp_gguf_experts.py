@@ -235,6 +235,44 @@ def test_qwen4_protected_layer_cuda_matches_cpu_qwen_sized():
         assert torch.equal(cpu.src_indices[:count], cuda.src_indices[:count].cpu())
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_qwen4_protected_layer_cuda_repeat_resident_route_has_no_copy_or_eviction():
+    """A repeated raw route must remain resident in the Triton admission kernel."""
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=1,
+        num_experts=8,
+        cache_size=8,
+        device=torch.device("cuda"),
+        quant_format="qwen4_gguf",
+        minimum_cache_size=2,
+        cache_policy="protected_layer",
+    )
+    cache.set_bank_sources(
+        {
+            name: [torch.zeros(8, 1, 1, dtype=torch.uint8)]
+            for name in ("gate", "up", "down")
+        },
+        layer_residency=["file_backed"],
+    )
+
+    raw_route = [1, 3]
+    first = torch.tensor([raw_route], dtype=torch.int32, device="cuda")
+    cache.ensure_experts(0, first)
+    torch.cuda.synchronize()
+    state = (cache.slot_for_id.clone(), cache.id_of_slot.clone())
+
+    repeated = torch.tensor([raw_route], dtype=torch.int32, device="cuda")
+    cache.ensure_experts(0, repeated)
+    torch.cuda.synchronize()
+
+    assert cache.num_indices.item() == 0
+    assert torch.equal(repeated, first)
+    assert torch.equal(cache.slot_for_id, state[0])
+    assert torch.equal(cache.id_of_slot, state[1])
+
+
 def test_qwen4_gguf_dispatch_passes_three_quant_types(monkeypatch):
     """The separate banks must reach a separate-projection GGUF GEMV path."""
     from freetoken.layers.moe import OffloadMoELayer

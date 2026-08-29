@@ -1000,6 +1000,10 @@ class Engine:
         started = torch.cuda.Event(enable_timing=True)
         ended = torch.cuda.Event(enable_timing=True)
         started.record(self.stream)
+        warmup_cache = self.moe_offload_cache
+        warmup_phase = warmup_cache._trace_phase if warmup_cache is not None else None
+        if warmup_cache is not None:
+            warmup_cache.set_trace_phase("prefill")
         try:
             for length in warmup_lens:
                 dummy_row[:length] = torch.arange(
@@ -1024,8 +1028,10 @@ class Engine:
                     self.model.forward()
         finally:
             dummy_row.fill_(dummy_slot)
-            if self.moe_offload_cache is not None:
-                self.moe_offload_cache.reset()
+            if warmup_cache is not None:
+                warmup_cache.reset()
+                if warmup_phase is not None:
+                    warmup_cache.set_trace_phase(warmup_phase)
         ended.record(self.stream)
         torch.cuda.synchronize(self.device)
         logger.info_rank0(
