@@ -445,6 +445,69 @@ static __global__ void dequantize_block_iq4_xs(const void* __restrict__ vx, dst_
   }
 }
 
+// TurboQuant TQ3_4S (GGML type 46): exact materialized dequantization.
+// The donor's integer DP4A vecdot uses approximate centroids; this reference path
+// deliberately retains the authoritative floating-point codebook.
+__constant__ static const float tq3_4s_centroids_cuda[8] = {
+    -1.996684f, -1.291398f, -0.740341f, -0.247508f,
+     0.230106f,  0.725222f,  1.277503f,  1.988943f,
+};
+
+__constant__ static const float tq3_4s_signs_cuda[32] = {
+    +1.0f, -1.0f, +1.0f, -1.0f, +1.0f, +1.0f, -1.0f, +1.0f,
+    -1.0f, -1.0f, +1.0f, -1.0f, +1.0f, +1.0f, -1.0f, +1.0f,
+    -1.0f, -1.0f, +1.0f, -1.0f, +1.0f, -1.0f, -1.0f, +1.0f,
+    -1.0f, +1.0f, +1.0f, -1.0f, +1.0f, -1.0f, -1.0f, +1.0f,
+};
+
+static __device__ __forceinline__ float tq3_4s_decode_scale_cuda(const uint8_t byte) {
+  if (byte == 0) {
+    return 0.0f;
+  }
+  const int exponent = (byte >> 5) - 9;
+  const float mantissa = 1.0f + float(byte & 31) / 32.0f;
+  return ldexpf(mantissa, exponent);
+}
+
+static __device__ __forceinline__ uint8_t tq3_4s_index_cuda(const uint8_t* packed, const int lane) {
+  switch (lane) {
+    case 0: return packed[0] & 7;
+    case 1: return (packed[0] >> 3) & 7;
+    case 2: return ((packed[0] >> 6) | (packed[1] << 2)) & 7;
+    case 3: return (packed[1] >> 1) & 7;
+    case 4: return (packed[1] >> 4) & 7;
+    case 5: return ((packed[1] >> 7) | (packed[2] << 1)) & 7;
+    case 6: return (packed[2] >> 2) & 7;
+    default: return (packed[2] >> 5) & 7;
+  }
+}
+
+template <typename dst_t>
+static __global__ void dequantize_block_tq3_4s(
+    const void* __restrict__ vx, dst_t* __restrict__ yy, const int nb) {
+  const int block = blockIdx.x;
+  if (block >= nb) {
+    return;
+  }
+
+  const int lane = threadIdx.x;
+  const int group = lane / 8;
+  const int group_lane = lane % 8;
+  const block_tq3_4s* x = static_cast<const block_tq3_4s*>(vx) + block;
+  const uint8_t index = tq3_4s_index_cuda(x->qs + group * 3, group_lane);
+  float value = tq3_4s_centroids_cuda[index] * tq3_4s_decode_scale_cuda(x->d[group]);
+
+#pragma unroll
+  for (int step = 1; step < 32; step <<= 1) {
+    const float other = __shfl_xor_sync(0xFFFFFFFFu, value, step, 32);
+    value = lane & step ? other - value : other + value;
+  }
+
+  // 1/sqrt(32), then undo the deterministic sign rotation.
+  yy[block * QK_TQ3_0 + lane] = static_cast<dst_t>(
+      value * (tq3_4s_signs_cuda[lane] * 0.17677669529663687f));
+}
+
 template <int qk, int qr, dequantize_kernel_t dequantize_kernel, typename dst_t>
 static void
 dequantize_block_cuda(const void* __restrict__ vx, dst_t* __restrict__ y, const int k, cudaStream_t stream) {
@@ -537,6 +600,12 @@ static void dequantize_row_iq4_xs_cuda(const void* vx, dst_t* y, const int k, cu
 }
 
 template <typename dst_t>
+static void dequantize_row_tq3_4s_cuda(const void* vx, dst_t* y, const int k, cudaStream_t stream) {
+  const int nb = k / QK_TQ3_0;
+  dequantize_block_tq3_4s<<<nb, 32, 0, stream>>>(vx, y, nb);
+}
+
+template <typename dst_t>
 static to_cuda_ggml_t<dst_t> ggml_get_to_cuda(int64_t type) {
   switch (type) {
     case 2:
@@ -577,6 +646,8 @@ static to_cuda_ggml_t<dst_t> ggml_get_to_cuda(int64_t type) {
       return dequantize_row_iq4_xs_cuda;
     case 29:
       return dequantize_row_iq1_m_cuda;
+    case 46:
+      return dequantize_row_tq3_4s_cuda;
     default:
       return nullptr;
   }

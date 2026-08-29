@@ -69,16 +69,17 @@ def _write_tq3_gguf(path: Path, block: bytes) -> None:
     path.write_bytes(body)
 
 
-def test_tq3_4s_type_geometry_is_metadata_only_until_cuda_lands():
+def test_tq3_4s_type_geometry_advertises_only_materialized_cuda_dequant():
     assert GGML_TQ3_4S == 46
     assert GGML_NAME[GGML_TQ3_4S] == "TQ3_4S"
     assert BLOCK_SHAPE[GGML_TQ3_4S] == (32, 16)
     assert row_bytes(32, GGML_TQ3_4S) == 16
     assert row_bytes(2048, GGML_TQ3_4S) == 1024
 
-    # Task 2 adds sizing + CPU authority only. Advertising a CUDA capability before its
-    # switch and parity test exist would turn a clear unsupported error into corruption.
-    for capability in (DEQUANT_TYPES, MMVQ_TYPES, MMQ_TYPES, MOE_VEC_TYPES, MOE_MMQ_TYPES):
+    # The exact materialized CUDA authority has landed, but no matrix or fused-MoE
+    # kernel may be advertised until its own parity gate exists.
+    assert GGML_TQ3_4S in DEQUANT_TYPES
+    for capability in (MMVQ_TYPES, MMQ_TYPES, MOE_VEC_TYPES, MOE_MMQ_TYPES):
         assert GGML_TQ3_4S not in capability
 
 

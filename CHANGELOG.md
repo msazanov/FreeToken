@@ -786,7 +786,9 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   service restart or new performance number occurred in this integration step.
 - Retained `tq4-nc` as the first TQ3-weight A/B control. A hypothetical 3-bit KV
   mode is tracked separately because it is a distinct online codec and projects
-  only about +250 slots at 122,880, versus about +514 from TQ3 weights.
+  only about +70 slots at 122,880 for the 50-byte `TURBO3_0` block, versus about
+  +514 from TQ3 weights. This corrects an earlier estimate that omitted one K/V
+  factor and overstated the KV saving by 2x.
 
 ### Added — TQ3_4S type metadata and CPU correctness authority
 
@@ -800,3 +802,19 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   17,230,725,120 TQ3 packed bytes.
 - Focused gates: 18 passed for TQ3/type/shards; corrected broad GGUF suite
   71 passed, 4 skipped. No runtime speed result was produced.
+
+### Added — exact TQ3_4S CUDA dequantization on SM75
+
+- Added the exact type-46 materialized CUDA decoder: E3M5 scales, authoritative
+  centroids, 3-bit unpack, inverse signed WHT and one-warp-per-block launch.
+- Kept the donor's approximate DP4A vecdot out of the correctness authority and
+  kept TQ3_4S absent from MMVQ/MMQ/MoE capability sets.
+- Real RTX 2070 FP32/FP16/BF16 parity matched the pure-Torch oracle bit-for-bit on
+  fixed adversarial/random blocks (`max_abs=0`, `mean_abs=0`).
+- TDD record: unsupported-type RED after native build; final CUDA GREEN `3
+  passed`; combined GGUF/SM75 gate `77 passed, 1 skipped`.
+- Fixed a previously skipped IQ4_NL PLE CUDA fixture that used `uint8` as a LUT
+  index. No real-model speed or quality result is claimed yet.
+- Luna review found no exact-kernel blocker; explicit output casting and stricter
+  exact-SM75/FP32/zero-scale/literal gates were added. Exact `getrows` is tracked
+  as a later performance path.

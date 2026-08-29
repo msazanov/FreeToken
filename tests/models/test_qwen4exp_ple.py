@@ -199,7 +199,11 @@ def test_iq4_nl_dequantizes_real_ple_geometry_on_cuda():
     for block in range(5):
         start = block * 18 + 2
         q4 = packed[:, start : start + 16]
-        expected_blocks.append(torch.cat((values[q4 & 0x0F], values[q4 >> 4]), dim=1))
+        # uint8 is a legacy boolean-mask index in PyTorch; make the intended LUT
+        # gather explicit so this CUDA gate actually reaches the kernel.
+        expected_blocks.append(
+            torch.cat((values[(q4 & 0x0F).long()], values[(q4 >> 4).long()]), dim=1)
+        )
     expected = torch.cat(expected_blocks, dim=1).to(torch.float16).cuda()
     packed = packed.cuda().contiguous()
 

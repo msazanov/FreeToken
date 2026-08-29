@@ -21,6 +21,7 @@ import pytest
 from freetoken.models.gguf.dequant import (
     BLOCK_SHAPE,
     DEQUANT_TYPES,
+    GGML_TQ3_4S,
     GGML_UNQUANTIZED,
     GGML_NAME,
     MMQ_TYPES,
@@ -130,7 +131,7 @@ def _extract_switch_cases(file_path: str, func_name: str) -> set[int]:
         content = f.read()
 
     # Find the function
-    func_pattern = rf"(?:torch::Tensor|int64_t|void)\s+{func_name}\s*\([^)]*\)\s*\{{"
+    func_pattern = rf"\b{func_name}\s*\([^)]*\)\s*\{{"
     func_match = re.search(func_pattern, content)
     if not func_match:
         return set()
@@ -242,23 +243,23 @@ def test_capability_sets_are_consistent():
     """Verify logical consistency and completeness of type-capability sets.
 
     Checks:
-    - MMVQ_TYPES == DEQUANT_TYPES (both handle all STD_K and IQ types)
+    - MMVQ_TYPES is a subset of materialized DEQUANT_TYPES
     - MMQ_TYPES == MOE_MMQ_TYPES (both handle STD_K only)
-    - MOE_VEC_TYPES == DEQUANT_TYPES (both handle all STD_K and IQ types)
+    - MOE_VEC_TYPES == MMVQ_TYPES for the currently fused formats
     - MMQ_TYPES is a strict subset of MMVQ_TYPES
     - MOE_MMQ_TYPES is a strict subset of MOE_VEC_TYPES
     - Every member of every set has a BLOCK_SHAPE entry and GGML_NAME entry
     - None of the five sets intersects GGML_UNQUANTIZED (F32, F16, BF16)
     """
-    # Check set equalities
-    assert MMVQ_TYPES == DEQUANT_TYPES, (
-        f"MMVQ_TYPES {MMVQ_TYPES} != DEQUANT_TYPES {DEQUANT_TYPES}"
-    )
+    # A new format must first land an exact materialized authority; fused matrix
+    # kernels can follow in later commits. TQ3_4S is intentionally at that stage.
+    assert MMVQ_TYPES < DEQUANT_TYPES
+    assert DEQUANT_TYPES - MMVQ_TYPES == {GGML_TQ3_4S}
     assert MMQ_TYPES == MOE_MMQ_TYPES, (
         f"MMQ_TYPES {MMQ_TYPES} != MOE_MMQ_TYPES {MOE_MMQ_TYPES}"
     )
-    assert MOE_VEC_TYPES == DEQUANT_TYPES, (
-        f"MOE_VEC_TYPES {MOE_VEC_TYPES} != DEQUANT_TYPES {DEQUANT_TYPES}"
+    assert MOE_VEC_TYPES == MMVQ_TYPES, (
+        f"MOE_VEC_TYPES {MOE_VEC_TYPES} != MMVQ_TYPES {MMVQ_TYPES}"
     )
 
     # Check subset relationships
@@ -291,7 +292,9 @@ def test_capability_sets_match_cuda_switches():
 
     This is the critical test that prevents Python tables from drifting from C source.
     """
-    kernel_path = Path(__file__).parent.parent.parent / "python" / "freetoken" / "kernel" / "csrc" / "gguf" / "gguf_kernel.cu"
+    csrc = Path(__file__).parent.parent.parent / "python" / "freetoken" / "kernel" / "csrc" / "gguf"
+    kernel_path = csrc / "gguf_kernel.cu"
+    dequant_path = csrc / "dequantize.cuh"
 
     # Extract cases for each kernel
     mmvq_cases = _extract_switch_cases(str(kernel_path), "ggml_mul_mat_vec_a8")
@@ -299,6 +302,7 @@ def test_capability_sets_match_cuda_switches():
     moe_a8_cases = _extract_switch_cases(str(kernel_path), "ggml_moe_a8")
     moe_vec_cases = _extract_switch_cases(str(kernel_path), "ggml_moe_a8_vec")
     moe_block_size_cases = _extract_switch_cases(str(kernel_path), "ggml_moe_get_block_size")
+    dequant_cases = _extract_switch_cases(str(dequant_path), "ggml_get_to_cuda")
 
     # Verify against Python sets
     assert mmvq_cases == MMVQ_TYPES, (
@@ -315,4 +319,7 @@ def test_capability_sets_match_cuda_switches():
     )
     assert moe_block_size_cases == MOE_MMQ_TYPES, (
         f"ggml_moe_get_block_size cases {moe_block_size_cases} != MOE_MMQ_TYPES {MOE_MMQ_TYPES}"
+    )
+    assert dequant_cases == DEQUANT_TYPES, (
+        f"ggml_get_to_cuda cases {dequant_cases} != DEQUANT_TYPES {DEQUANT_TYPES}"
     )

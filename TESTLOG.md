@@ -1624,12 +1624,13 @@ KV accounting for its ten full-attention layers is:
 | KV mode | Bytes/token | 122,880-token footprint | Delta vs `tq4-nc` | TQ3 slot equivalent |
 | --- | ---: | ---: | ---: | ---: |
 | `tq4-nc` | 5,200 | 609.375 MiB | control | 0 |
-| hypothetical three-bit TurboQuant KV | 2,000 | 234.375 MiB | -375 MiB | about +250 |
+| `TQ3_0` (32 values / 14 B) | 4,480 | 525 MiB | -84.375 MiB | about +42 |
+| `TURBO3_0` (128 values / 50 B) | 4,000 | 468.75 MiB | -140.625 MiB | about +70 |
 
-Projected extra TQ3 slots from KV are about 33/133/233/250 at
-16K/64K/112K/122,880. The smaller TQ3 weights project roughly +514 slots under
-the current packed-weight budget, so the weight change has about twice the
-first-order cache-capacity effect. No three-bit KV kernel, GPU result, speedup or
+The earlier 2,000-byte estimate omitted one of the K/V factors and was therefore
+exactly two times too optimistic. At 122,880 the denser Turbo3 proposal yields
+about 70 slots, while the smaller TQ3 weights project roughly +514 slots under
+the current packed-weight budget. No three-bit KV kernel, GPU result, speedup or
 quality result is claimed here.
 
 ## 2026-08-30 — TQ3_4S type-46 metadata and CPU authority (complete)
@@ -1688,3 +1689,54 @@ real sparse-header audit: 753/753 descriptors enumerated
 The warning is the pre-existing read-only NumPy memmap warning when exposing a
 zero-copy packed tensor to Torch. There is still no TQ3 CUDA result, model
 download, generation, quality score or tokens/second number.
+
+## 2026-08-30 — TQ3_4S exact CUDA materialized dequant on RTX 2070
+
+This is the second correctness gate, not a model throughput benchmark. The
+extension was compiled with `TORCH_CUDA_ARCH_LIST=7.5` and `MAX_JOBS=12` against
+the physical RTX 2070 (`compute capability 7.5`). The active model was already
+absent; `nvidia-smi` reported 9 MiB used and 7,786 MiB free before the run.
+
+The TDD history is retained exactly:
+
+```text
+RED: tests/kernels/test_gguf_tq3_4s.py -x
+     1 failed in 89.42s after native JIT compile
+     RuntimeError: ggml_dequantize: unsupported GGUF quant type 46
+
+GREEN before review strengthening: tests/kernels/test_gguf_tq3_4s.py
+       2 passed in 86.77s after the source-changing rebuild
+
+GREEN after explicit cast, exact-SM75, FP32 and zero-scale coverage:
+       3 passed in 82.88s after the final source-changing rebuild
+
+numeric audit using the cached binary:
+       FP32  equal=True, max_abs=0.0, mean_abs=0.0
+       FP16  equal=True, max_abs=0.0, mean_abs=0.0
+       BF16  equal=True, max_abs=0.0, mean_abs=0.0
+```
+
+The port uses one 32-thread warp per 32-weight block, exact E3M5 scale decoding,
+the authoritative asymmetric eight-centroid table, five shuffle-XOR WHT stages,
+`1/sqrt(32)` normalization and the fixed sign vector. The approximate integer
+DP4A codebook from the donor was deliberately excluded from this authority.
+Type 46 is advertised only in `DEQUANT_TYPES`; MMVQ, MMQ and both MoE capability
+sets still reject it.
+
+The first combined CUDA run exposed an unrelated latent test-fixture bug before
+reaching the existing IQ4_NL PLE kernel: a `uint8` LUT index was interpreted as
+a boolean mask (`IndexError`). Converting the intended index to `long` made the
+same broad command green:
+
+```text
+first combined gate: 75 passed, 1 skipped, 1 failed (test fixture LUT index)
+corrected pre-review gate: 76 passed, 1 skipped, 1 warning in 10.00s
+final post-review gate: 77 passed, 1 skipped, 1 warning in 9.92s
+```
+
+The warning remains the pre-existing zero-copy read-only mmap warning. No model
+weights were downloaded, no request was generated and no prefill/decode tok/s
+number was produced by this slice. Independent Luna review found no blocker in
+the exact kernel; it requested the now-landed explicit output cast and stronger
+SM75/FP32/zero-scale/literal coverage. Exact `getrows` remains a separate
+performance follow-up rather than part of this materialized-dequant milestone.

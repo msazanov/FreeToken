@@ -90,7 +90,7 @@ torch::Tensor ggml_dequantize(
     TORCH_CHECK(to_cuda != nullptr,
                 "ggml_dequantize: unsupported GGUF quant type ", type,
                 " (dequant kernels exist for Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q2_K-Q6_K/IQ2_XXS/"
-                "IQ2_XS/IQ3_XXS/IQ1_S/IQ4_NL/IQ3_S/IQ2_S/IQ4_XS/IQ1_M)");
+                "IQ2_XS/IQ3_XXS/IQ1_S/IQ4_NL/IQ3_S/IQ2_S/IQ4_XS/IQ1_M/TQ3_4S)");
     to_cuda((void*)W.data_ptr(), (scalar_t*)DW.data_ptr(), m * n, stream);
   });
 

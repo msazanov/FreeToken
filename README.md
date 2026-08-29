@@ -267,8 +267,9 @@ The first `TQ3_4S` weight A/B deliberately keeps the current KV format unchanged
 `TQ3_4S` model weights and a three-bit TurboQuant KV cache are different codecs:
 the former stores offline-transformed weight blocks, while KV must encode dynamic
 attention vectors online. At 122,880 tokens a hypothetical three-bit KV codec
-could save about 375 MiB versus `tq4-nc`, worth roughly 250 additional TQ3 expert
-slots; the weight port itself projects about 514 additional slots. Therefore KV
+using the denser `TURBO3_0` layout would save about 140.625 MiB versus `tq4-nc`,
+worth roughly 70 additional TQ3 expert slots; the weight port itself projects
+about 514 additional slots. Therefore KV
 is a later isolated A/B, not part of the initial weight result.
 
 The metadata/CPU gate for `TQ3_4S` is now implemented. FreeToken recognizes
@@ -276,5 +277,11 @@ GGML type 46 as `32 values / 16 bytes`, can read it even when the installed
 `gguf-py` enum is stale, and has a literal-byte pure-Torch authority for E3M5,
 3-bit centroid unpacking and inverse signed WHT. The real sparse Ornith header
 enumerated all 753 tensors, including 381 TQ3 tensors totaling
-17,230,725,120 packed bytes. CUDA capability is intentionally not advertised
-yet; this milestone proves layout and math, not GPU execution or speed.
+17,230,725,120 packed bytes.
+
+The next correctness slice is also complete: the exact materialized CUDA
+dequantizer was compiled natively for `sm_75` and exercised on the RTX 2070 in
+FP32, FP16 and BF16. Fixed random blocks matched the CPU authority bit-for-bit
+(`max_abs=0`, `mean_abs=0`); the combined GGUF/SM75 gate is `77 passed, 1
+skipped`. This only establishes the numeric GPU authority. MMVQ, fused MoE,
+real-model generation, quality and tokens/second remain unproven.
