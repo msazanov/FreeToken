@@ -1184,3 +1184,17 @@ checkpoint with 256 rather than 512 experts per layer and the same top-10
 routing.  This is a model-compression experiment, not a cache-policy result:
 the first run must retain stable global LRU and compare only after a GGUF
 metadata/type gate.  No REAP throughput or quality claim is recorded yet.
+
+## 2026-08-29 — Benchmark integrity gate: exact final-answer digest
+
+Before REAP runs, the Qwen profiling runner gained `response_sha256` in
+`79a57b8`, then the stream contract was corrected in `6dc50c5`.  The digest is
+only the UTF-8 byte sequence from streamed `delta.content`: reasoning is kept
+out so a change in hidden thinking cannot masquerade as a changed final answer.
+An SSE `error`, missing terminal `finish_reason`, or missing `[DONE]` now raises
+before an artifact is written.  Focused tests are 11 passed and an independent
+review was clean for the current one-`data:`-line FreeToken SSE endpoint.
+
+The runner intentionally does not support arbitrary multi-line SSE or include
+tool-call arguments in this text-only benchmark digest. Neither limitation
+applies to the fixed no-tools REAP request.

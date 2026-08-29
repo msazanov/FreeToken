@@ -584,3 +584,10 @@ failed and inconclusive hypotheses; do not rewrite history.
   downloaded outside `/tmp`. It will first be metadata-validated and then run
   with the stable LRU baseline. This prevents conflating REAP pruning with the
   new cache policy or with the existing Q4_K_M quantization.
+
+### Fixed — reliable benchmark response-equivalence gate
+
+- Commits `79a57b8` and `6dc50c5` add a prompt-private SHA-256 of the final
+  streamed content and reject SSE errors, incomplete streams and missing
+  terminal finish reasons before publishing an artifact. The result makes
+  REAP/LRU output comparisons meaningful without storing user text.

@@ -35,6 +35,10 @@ The next separate candidate is Qwen3.8 REAP-256 GGUF: 256 instead of 512
 experts per layer. It is being checked as a model-compression control through
 the stable LRU runtime first; no performance or quality result is claimed until
 the model's GGUF metadata passes and matched 1K/16K/64K profiles complete.
+
+Each new profile now includes a prompt-private SHA-256 of the final visible
+answer. Incomplete or error SSE streams are rejected before an artifact is
+published, so throughput comparisons cannot accidentally use a partial output.
 - **Diverse Consumer Hardware**: Scales across consumer laptops, gaming desktops, and workstation GPUs, with native support for NVIDIA RTX 30, RTX 40, and RTX 50 series GPUs.  
 
 ## RTX 2070 fork mission
