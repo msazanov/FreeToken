@@ -598,3 +598,16 @@ failed and inconclusive hypotheses; do not rewrite history.
   256-expert, top-10 layout. Its routed expert types (`Q8_0`, `IQ3_XXS`,
   `IQ4_NL`, `IQ4_XS`) are all supported by the existing GPU MoE-vector path.
   This is intentionally labelled static-only until both GGUF shards complete.
+
+### Fixed — REAP-256 PLE `IQ4_NL` loader compatibility
+
+- The GGUF PLE table's `per_layer_token_embd.weight` is `GGML_IQ4_NL`, but the
+  loader had a stale `Q5_1`-only gate. It now accepts exactly the quantized
+  types exposed by `DEQUANT_TYPES`, the same native `ggml_dequantize` dispatch
+  used by PLE forward.
+- Existing row-width, packed-byte and minimum-table-size validation remains in
+  place; unsupported/unquantized types still fail explicitly.
+- TDD result: RED `2 failed, 3 passed`; GREEN `5 passed`; relevant regression
+  suite `27 passed, 2 skipped`. No model, benchmark, download, expert, cache,
+  or runtime changes were made. Full details:
+  `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-report.md`.

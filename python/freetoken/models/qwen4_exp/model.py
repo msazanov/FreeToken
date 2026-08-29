@@ -343,7 +343,7 @@ class _HostNGramEmbedding(BaseOP):
         from freetoken.models.gguf.reader import is_gguf_path
 
         if is_gguf_path(model_path):
-            from freetoken.models.gguf.dequant import GGML_Q5_1, row_bytes
+            from freetoken.models.gguf.dequant import DEQUANT_TYPES, GGML_NAME, row_bytes
             from freetoken.models.gguf.reader import iter_gguf_tensors
 
             table = next(
@@ -353,9 +353,12 @@ class _HostNGramEmbedding(BaseOP):
             )
             if table is None:
                 raise RuntimeError(f"Qwen4-Exp GGUF {model_path}: missing PLE table")
-            if table.ggml_type != GGML_Q5_1:
+            if table.ggml_type not in DEQUANT_TYPES:
+                supported = ", ".join(GGML_NAME[ggml_type] for ggml_type in sorted(DEQUANT_TYPES))
                 raise RuntimeError(
-                    f"Qwen4-Exp GGUF PLE must be Q5_1, got type {table.ggml_type}"
+                    "Qwen4-Exp GGUF PLE requires a quantized type supported by "
+                    f"ggml_dequantize ({supported}), got "
+                    f"{GGML_NAME.get(table.ggml_type, table.ggml_type)}"
                 )
             if table.shape[1] != self.head_dim or table.row_bytes != row_bytes(
                 self.head_dim, table.ggml_type

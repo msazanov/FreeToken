@@ -1211,3 +1211,23 @@ This is a static loader/kernel compatibility result, not an integrity check or
 a successful model run: the regular GGUF reader correctly refuses the partial
 file because its tensor data is incomplete. Full shard completion and a normal
 reader metadata/type pass remain mandatory before 1K serving.
+
+## 2026-08-29 — REAP-256 PLE `IQ4_NL` compatibility fix
+
+The REAP header identifies `per_layer_token_embd.weight` as `GGML_IQ4_NL`
+(enum 20), while `_HostNGramEmbedding.load_host_weights` previously accepted
+only `Q5_1`. Native `ggml_dequantize` dispatch and `DEQUANT_TYPES` already
+cover `IQ4_NL`, and PLE forward already forwards the tensor's actual GGML type.
+
+TDD evidence:
+
+- RED: the new PLE tests failed in the old gate for `IQ4_NL` acceptance and
+  unsupported-type diagnostics (`2 failed, 3 passed`); the failures were the
+  expected Q5-only rejection and old error contract.
+- GREEN: `tests/models/test_qwen4exp_ple.py` passed `5 passed`.
+- Regression: the relevant Qwen4Exp/GGUF/PLE suite passed `27 passed, 2
+  skipped`.
+
+The fix changes only the PLE quant-type gate to use `DEQUANT_TYPES`, keeps the
+existing `row_bytes`/shape and table-size checks, and adds no model, benchmark,
+download, expert, cache, or runtime execution. No model or benchmark was run.

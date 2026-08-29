@@ -44,6 +44,14 @@ The downloading REAP checkpoint has already passed a header-only static gate:
 it is a two-shard Qwen4Exp model with 48 layers, 256 experts/layer and top-10;
 its expert quant types are covered by the fork's GPU MoE-vector kernel. Runtime
 compatibility and performance remain unclaimed until the full shards verify.
+
+The PLE loader also accepts the REAP checkpoint's `IQ4_NL`
+`per_layer_token_embd.weight`: its gate follows the exact quantized types
+handled by native `ggml_dequantize`. `Q5_1` remains covered by a regression
+test, while unsupported types are rejected and the packed row shape is still
+validated. See
+`.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-report.md` for the
+RED/GREEN record.
 - **Diverse Consumer Hardware**: Scales across consumer laptops, gaming desktops, and workstation GPUs, with native support for NVIDIA RTX 30, RTX 40, and RTX 50 series GPUs.  
 
 ## RTX 2070 fork mission
