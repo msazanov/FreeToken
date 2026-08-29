@@ -734,3 +734,39 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   `startup_error`: its child parser rejected a dash-prefixed server argument.
   The child command is now tested to bind every FreeToken server option as
   `--server-arg=<value>` and parser usage errors cannot be mislabeled timeout.
+
+### Added — Ornith quantization candidate intake for RTX 2070
+
+- Recorded a research-only, no-download candidate scan in `README.md` and
+  `TESTLOG.md`. The immediate direct GGUF tests are AtomicChat
+  `AD-Q4_K-IQ4_XS` and the Unsloth-Dynamic-style `UD-Q4_K_S`/`UD-IQ4_XS` tiers;
+  FreeToken's existing GGUF kernels cover their named `Q4_K`/`IQ4_XS` types.
+- The high-upside path is the REAP-50 source checkpoint: it reduces Ornith from
+  256 to 128 routed experts while retaining top-8 routing. It is explicitly a
+  future native-K-quant conversion and quality experiment, not a claim about
+  the published NVFP4A16 release on Turing.
+- APEX Compact is retained behind a complete GGUF-type/startup gate. TQ3 and
+  generic Qwen3.5-MoE MXFP4 GGUF variants are rejected as direct candidates:
+  their required tensor/runtime support is absent from the current FreeToken
+  path. No benchmark, model download or runtime behavior changed.
+
+### Research — TurboQuant/TQ3 FreeToken feasibility correction
+
+- Scanned current FreeToken upstream, its public issue/PR surface and sampled
+  forks. No existing `TQ3_4S` FreeToken implementation was found; upstream
+  issue #141 remains an unassigned KV-compression proposal with no linked code.
+- Distinguished three incompatible uses of the name TurboQuant: Google's
+  online vector/KV-cache method, the custom GGUF `TQ3_4S` weight format in
+  `turbo-tan/llama.cpp-tq3`, and vLLM's related HIGGS-style online weight path.
+- Exact GGUF accounting promotes the Ornith TQ3_4S release from “unsupported,
+  exclude” to “unsupported, high-priority port”: expert slots are 22.89%
+  smaller than Q4_K_M and the same packed-weight budget projects about 36%
+  more slots. This is not yet a benchmark or a quality claim.
+- Corrected the earlier AD/UD speed hypothesis. AD-Q4_K-IQ4_XS reduces each
+  expert transfer and has better publisher KLD, but its Q8 dense tensors consume
+  enough extra VRAM to project fewer cache slots. UD-Q4_K_S has no slot-stride
+  advantage because three Q6_K expert-down layers define the global stride.
+- Internet evidence argues against replacing the existing FreeToken `tq4-nc`
+  KV cache first: vLLM's merged TurboQuant study reports substantial low-bit
+  throughput costs, and an SM75 llama.cpp test also measured slower prefill and
+  decode. No runtime code, model download or service state changed.

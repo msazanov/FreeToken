@@ -215,3 +215,42 @@ prefill-chunk plots. The first forced long Ornith trace (`16,400` input +
 `4,095` generated tokens, Q4_K_M, INT8 KV, chunk `1024`) measured 99.86 prefill
 tok/s, 19.52 decode tok/s and 164.24 s TTFT; see `TESTLOG.md` for scope and
 interpretation before comparing it with short EOS-limited runs.
+
+### Candidate quantizations under investigation
+
+The production control remains the official `Q4_K_M`. A Hugging Face intake on
+2026-08-30 identified four plausible next FreeToken/Turing experiments:
+
+1. AtomicChat `AD-Q4_K-IQ4_XS` (20.13 GB) — its publisher reports a materially
+   better BF16-reference divergence than stock Q4_K_M at about 1 GB less disk
+   space. Both `Q4_K` and `IQ4_XS` have native FreeToken GGUF kernels.
+2. `UD-Q4_K_S` / `UD-IQ4_XS` from the Unsloth-Dynamic-style Ornith release —
+   per-tensor, imatrix-calibrated GGUF layouts that deliberately remove the
+   untrained MTP block. They need a live quality and throughput comparison; no
+   third-party FreeToken result is assumed.
+3. REAP-50 source weights — 128 rather than 256 routed experts while retaining
+   top-8 routing. Re-quantizing that source to a native GGUF K-quant is a
+   high-risk/high-upside cache-working-set experiment. Its published NVFP4A16
+   build is not selected directly because NVFP4 is non-native on SM75.
+4. APEX Compact (16.54 GB) — role-aware mixed precision that compresses routed
+   experts more heavily; it needs a GGUF type/startup gate before download.
+
+`TQ3_4S` is not directly loadable yet, but the exact tensor audit promoted it
+to the highest-upside **runtime-port** candidate. Its served expert slot is
+1,572,864 bytes, 22.89% below Q4_K_M, while its dense served weights are also
+smaller. Under the same packed-weight VRAM budget this projects roughly 1,943
+slots instead of the measured 1,429; that is a first-order capacity estimate,
+not a speed result. Correct execution requires the matching activation WHT,
+Lloyd-Max centroids and native SM75 `dp4a` vector-dot path from
+`turbo-tan/llama.cpp-tq3`.
+
+The follow-up header audit also changes how the direct AD/UD candidates should
+be read. Atomic AD has the strongest published same-corpus quality evidence and
+smaller expert transfers, but its Q8 non-expert weights consume about 0.94 GiB
+more than the served Q4_K_M control; at a fixed total GPU packed-weight budget
+it may therefore hold fewer, not more, expert slots. `UD-Q4_K_S` keeps the same
+maximum slot stride as Q4_K_M because three Q6_K down-projection layers set the
+global pool stride. These are quality/compatibility experiments rather than
+assumed speed wins. Qwen-GGUF MXFP4 remains unsupported by the generic loader,
+and Ornith MTP is a separate speculative-decoding project. Detailed evidence
+and test gates are in `TESTLOG.md`.

@@ -1491,3 +1491,87 @@ GPU allocation. This is kept as `startup_error` in
 metrics. The regression now requires the child command to use the unambiguous
 form `--server-arg=--flag`; the failure classifier also recognises argparse
 usage errors before looking for incidental words such as `timeout` in its help.
+
+## 2026-08-30 — Ornith 35B Hugging Face quantization intake (not benchmarked)
+
+This is an evidence-backed candidate scan, not a speed or quality result on the
+RTX 2070. The official `Q4_K_M` remains the control until each candidate passes
+the normal FreeToken startup, fixed-seed task-quality, and 16K/64K live tests.
+
+| Priority | Checkpoint / proposed path | Why it is interesting | FreeToken/Turing status |
+| ---: | --- | --- | --- |
+| 1 | `AtomicChat/...-GGUF` `AD-Q4_K-IQ4_XS` (20.13 GB) | Publisher's same-corpus llama.cpp measurement reports KLD 0.031512 / top-1 92.71%, versus stock Q4_K_M 0.047718 / 91.01%, at ~1.04 GB less disk. | Direct candidate: `Q4_K` and `IQ4_XS` are existing native GGUF kernel types. The publisher's quality numbers are not FreeToken measurements. |
+| 2 | `peculiar-ragdoll/Unsloth-Ornith-1.5-35B-A3B` `UD-Q4_K_S`, then `UD-IQ4_XS` | Imatrix-calibrated, per-tensor dynamic layouts; 20 GB and 17 GB approximate tiers. The release removes Ornith's untrained MTP block. | Direct GGUF intake candidates. Smaller files can increase host/GPU cache headroom, but `IQ4_XS` may trade that for slower dequantization; measure rather than infer. |
+| 3 | `Ttimms/...-REAP-50-bf16` -> native K-quant GGUF | Expert pruning changes 256 routed experts to 128 while retaining top-8 routing, directly reducing the cache key space and storage working set. The config has 40 layers, 128 experts and no MTP. | High-upside conversion experiment. FreeToken takes expert count from configuration, but the source must first pass loader/conversion and quality gates. Do not use the published NVFP4A16 build directly on SM75. |
+| 4 | `mudler/...-APEX-GGUF` Compact (16.54 GB) | Role-aware mixed precision gives routed experts fewer bits while protecting shared/edge layers. | Plausible only after a full GGUF type and startup gate. Its publisher explicitly provides no throughput benchmarks. |
+
+Excluded from **immediate direct-load tests**: `TQ3_4S` is a 17 GB custom
+TurboQuant GGUF requiring a new native FreeToken tensor/kernel path; the port
+audit below supersedes its original low priority. The MXFP4-MoE GGUF releases
+likewise do not map to FreeToken's generic
+Qwen3.5-MoE GGUF path (its MXFP4 implementation is GPT-OSS-specific). Ornith
+MTP bundles are not candidates: this fork drops the NextN block deliberately
+and serves text-only without speculation; the Unsloth-derived release presents
+evidence that Ornith's original MTP block is untrained.
+
+Sources: [AtomicChat AD](https://huggingface.co/AtomicChat/Ornith-1.5-35B-A3B-GGUF),
+[Unsloth-style Dynamic](https://huggingface.co/peculiar-ragdoll/Unsloth-Ornith-1.5-35B-A3B),
+[REAP-50 BF16](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-bf16),
+[APEX](https://huggingface.co/mudler/Ornith-1.5-35B-A3B-APEX-GGUF),
+and [TQ3_4S](https://huggingface.co/YTan2000/Ornith-1.5-35B-A3B-TQ3_4S).
+All numeric claims above are publisher claims only. The next controlled order is
+Atomic AD -> Unsloth UD-Q4_K_S -> Unsloth UD-IQ4_XS -> native-K REAP-50
+feasibility -> APEX Compact type/startup gate.
+
+## 2026-08-30 — TurboQuant/TQ3 exact geometry and ecosystem audit
+
+This supersedes the provisional TQ3 exclusion above. It remains unsupported by
+FreeToken today, but it is now the strongest speed-oriented port hypothesis.
+No full model was downloaded and no GPU benchmark was run in this phase.
+
+| Format | Served dense bytes | Maximum expert-slot bytes | Same packed-budget slot estimate | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| Official Q4_K_M control | 1,652,255,232 | 2,039,808 | 1,429 measured | Current control. |
+| AD-Q4_K-IQ4_XS | 2,666,629,632 | 1,703,936 (-16.47%) | ~1,115 | Better publisher quality and less H2D per miss, but Q8 dense residency can shrink the pool. |
+| UD-Q4_K_S | 2,555,013,632 | 2,039,808 (no change) | ~986 | Three Q6_K down tensors keep the global max-stride equal to control. |
+| UD-IQ4_XS | 2,555,013,632 | 1,761,280 (-13.65%) | ~1,142 | Smaller misses, but larger dense residency and no Ornith-specific quality result. |
+| TQ3_4S | 1,510,369,792 | 1,572,864 (-22.89%) | ~1,943 | Only candidate that lowers both dense residency and every served expert slot. |
+
+The estimates hold the control's packed dense-plus-expert-pool byte budget
+constant. CUDA graphs, allocator fragmentation, workspaces and KV allocation
+can reduce the achievable slot count, so only a live auto-budget run can turn
+the estimate into a result.
+
+`TQ3_4S` is GGML type 46: each 32-weight block occupies 16 bytes (four E3M5
+scales plus packed 3-bit indices). It is not a normal integer quant. The runtime
+must apply the exact randomized Walsh-Hadamard transform to activations, unpack
+the Lloyd-Max centroid indices, decode the scales, and perform the matching dot
+product. The audited llama.cpp fork has a generic SM75 MMVQ path using integer
+`dp4a`; its Blackwell-only TQ3-to-FP4 prefill path is not applicable here.
+
+Ecosystem findings:
+
+- FreeToken issue #141 proposes TurboQuant/RotorQuant/KIVI/KVQuant for KV cache,
+  but has no assignee, branch or PR. No direct FreeToken TQ3 implementation was
+  found in current upstream or the sampled public forks.
+- FreeToken's existing `tq4-nc` already uses the closely related WHT,
+  deterministic signs, Lloyd-Max centroids and packed four-bit storage. It is
+  not byte-compatible with llama.cpp `TQ3_0`, but makes a second KV backend a
+  lower-priority experiment than weight TQ3_4S.
+- vLLM merged TurboQuant KV support in PR #38479. Its later large-model study
+  found that sub-four-bit capacity came with roughly 40–52% throughput loss and
+  the merged backend excluded hybrid Mamba/GDN architectures. A separate RTX
+  2060 Mobile SM75 llama.cpp report measured TQ4 KV at -22% prefill/-15% decode
+  and TQ3 at -36%/-17%, with QJL variants crashing. These are KV-cache results,
+  not evidence against compact TQ3 model weights.
+- vLLM weight PR #39970 was closed in favor of the HIGGS/humming path; its
+  out-of-tree plugin still provides useful SM75 and sparse-MoE kernel references
+  but stores a different checkpoint layout from GGUF TQ3_4S.
+
+Primary references: [FreeToken #141](https://github.com/FlashML-org/FreeToken/issues/141),
+[vLLM #38479](https://github.com/vllm-project/vllm/pull/38479),
+[vLLM TurboQuant study](https://github.com/vllm-project/vllm-project.github.io/blob/main/_posts/2026-05-11-turboquant.md),
+[vLLM weight PR #39970](https://github.com/vllm-project/vllm/pull/39970),
+[llama.cpp feature issue #20977](https://github.com/ggml-org/llama.cpp/issues/20977),
+[TQ3 runtime fork](https://github.com/turbo-tan/llama.cpp-tq3), and
+[Ornith TQ3_4S](https://huggingface.co/YTan2000/Ornith-1.5-35B-A3B-TQ3_4S).
