@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -113,6 +114,74 @@ def test_process_counter_delta_parses_proc_records_and_preserves_missing_values(
         "major_faults": None,
         "minor_faults": None,
     }
+
+
+def test_stream_completion_hashes_text_channels_in_arrival_order(monkeypatch):
+    from benchmarks import qwen38_turing_profile as profile
+
+    events = [
+        {"choices": [{"delta": {"role": "assistant", "content": ""}}]},
+        {"choices": [{"delta": {"reasoning_content": "дум"}}]},
+        {"choices": [{"delta": {"content": "ответ"}}]},
+        {"choices": [{"delta": {"reasoning_content": "!"}}]},
+        {
+            "choices": [],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3},
+        },
+    ]
+    stream = [
+        (f"data: {json.dumps(event, ensure_ascii=False)}\n").encode("utf-8")
+        for event in events
+    ] + [b"data: [DONE]\n"]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(stream)
+
+    monkeypatch.setattr(profile.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    metrics = profile._stream_completion(
+        "http://127.0.0.1:1",
+        {"stream": True},
+        timeout_s=1.0,
+    )
+
+    assert metrics["response_sha256"] == hashlib.sha256("думответ!".encode("utf-8")).hexdigest()
+    assert metrics["prompt_tokens"] == 12
+    assert metrics["completion_tokens"] == 3
+    assert "response_text" not in metrics
+
+
+def test_result_record_promotes_digest_without_retaining_response_body(tmp_path):
+    from benchmarks.qwen38_turing_profile import make_result_record
+
+    digest = hashlib.sha256(b"fixed output").hexdigest()
+    record = make_result_record(
+        context_tokens=1024,
+        seed=20260828,
+        port=41234,
+        pid=123,
+        metrics={
+            "prompt_tokens": 12,
+            "completion_tokens": 3,
+            "response_sha256": digest,
+        },
+        process={"io_read_bytes": 0, "major_faults": 0, "minor_faults": 0},
+        gpu_samples=[],
+        server_stats={"moe": {"cache": {"policy": "protected_layer"}}},
+        artifact=tmp_path / "context-1024.json",
+    )
+
+    assert record["response_sha256"] == digest
+    assert record["server_stats"]["moe"]["cache"]["policy"] == "protected_layer"
+    assert "response_text" not in record
+    assert "prompt" not in record
 
 
 def test_child_environment_disables_parent_request_body_logging(tmp_path):

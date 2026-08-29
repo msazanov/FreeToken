@@ -9,6 +9,7 @@ other FreeToken services (including Ornith).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
@@ -188,7 +189,9 @@ class ProcessSampler:
             self._stop.wait(self.interval_s)
 
 
-def _stream_completion(origin: str, payload: dict[str, Any], timeout_s: float) -> dict[str, float | int | None]:
+def _stream_completion(
+    origin: str, payload: dict[str, Any], timeout_s: float
+) -> dict[str, float | int | str | None]:
     request = urllib.request.Request(
         f"{origin}/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -199,6 +202,7 @@ def _stream_completion(origin: str, payload: dict[str, Any], timeout_s: float) -
     first_token_at: float | None = None
     last_token_at: float | None = None
     prompt_tokens = completion_tokens = 0
+    response_digest = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
         for raw_line in response:
             line = raw_line.decode("utf-8").strip()
@@ -220,6 +224,12 @@ def _stream_completion(origin: str, payload: dict[str, Any], timeout_s: float) -
                 now = time.monotonic()
                 first_token_at = first_token_at or now
                 last_token_at = now
+            for choice in event.get("choices", []):
+                delta = choice.get("delta") or {}
+                for key in ("content", "reasoning_content"):
+                    text = delta.get(key)
+                    if isinstance(text, str) and text:
+                        response_digest.update(text.encode("utf-8"))
     finished = time.monotonic()
     ttft_s = None if first_token_at is None else first_token_at - started
     decode_window_s = None if last_token_at is None or first_token_at is None else last_token_at - first_token_at
@@ -227,6 +237,7 @@ def _stream_completion(origin: str, payload: dict[str, Any], timeout_s: float) -
         "elapsed_s": finished - started,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "response_sha256": response_digest.hexdigest(),
         "prompt_tps": None if not ttft_s else prompt_tokens / ttft_s,
         "decode_tps": None
         if not decode_window_s or completion_tokens < 2
@@ -261,6 +272,34 @@ def _server_command(args: argparse.Namespace, port: int) -> list[str]:
         "--moe-collect-stats",
         *args.server_arg,
     ]
+
+
+def make_result_record(
+    *,
+    context_tokens: int,
+    seed: int,
+    port: int,
+    pid: int,
+    metrics: dict[str, float | int | str | None],
+    process: dict[str, int | None],
+    gpu_samples: list[dict[str, float | None]],
+    server_stats: dict[str, Any],
+    artifact: Path,
+) -> dict[str, Any]:
+    """Build a prompt-private result record from aggregate stream metrics."""
+    return {
+        "schema": 1,
+        "timestamp_utc": datetime.now(UTC).isoformat(),
+        "requested_context_tokens": context_tokens,
+        "sampling": {"temperature": 0, "seed": seed},
+        "server": {"host": "127.0.0.1", "port": port, "pid": pid},
+        "metrics": metrics,
+        "response_sha256": metrics["response_sha256"],
+        "process": process,
+        "gpu_samples": gpu_samples,
+        "server_stats": server_stats,
+        "artifact": str(artifact),
+    }
 
 
 def run_context_point(args: argparse.Namespace, context_tokens: int, results_dir: Path) -> Path:
@@ -303,18 +342,17 @@ def run_context_point(args: argparse.Namespace, context_tokens: int, results_dir
         after = read_proc_counters(process.pid)
         # Terminal completion is the lifecycle boundary that publishes E1/E4.
         stats = _get_json(origin, "/v1/stats", timeout_s=15)
-        row = {
-            "schema": 1,
-            "timestamp_utc": datetime.now(UTC).isoformat(),
-            "requested_context_tokens": context_tokens,
-            "sampling": {"temperature": 0, "seed": args.seed},
-            "server": {"host": "127.0.0.1", "port": port, "pid": process.pid},
-            "metrics": metrics,
-            "process": process_counter_delta(before, after),
-            "gpu_samples": sampler.samples,
-            "server_stats": stats,
-            "artifact": str(artifact),
-        }
+        row = make_result_record(
+            context_tokens=context_tokens,
+            seed=args.seed,
+            port=port,
+            pid=process.pid,
+            metrics=metrics,
+            process=process_counter_delta(before, after),
+            gpu_samples=sampler.samples,
+            server_stats=stats,
+            artifact=artifact,
+        )
         artifact.write_text(json.dumps(row, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return artifact
     finally:
