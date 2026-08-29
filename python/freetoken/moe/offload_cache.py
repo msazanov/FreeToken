@@ -1140,6 +1140,15 @@ class OffloadMoeCache:
             raise ValueError(f"unknown trace phase {phase!r}")
         self._trace_phase = phase
 
+    def uses_protected_layer_admission(self, layer_id: int) -> bool:
+        """Whether decode admission must use the protected/transient slot geometry."""
+        return (
+            self.cache_policy == "protected_layer"
+            and self.quant_format == "qwen4_gguf"
+            and self.is_file_backed_layer(layer_id)
+            and self._trace_phase == "decode"
+        )
+
     def _trace_phase_index(self) -> int:
         return _TRACE_PHASES.index(self._trace_phase)
 

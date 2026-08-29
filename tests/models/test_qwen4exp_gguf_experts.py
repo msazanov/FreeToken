@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 
@@ -180,6 +181,58 @@ def test_qwen4_file_backed_lru_admission_avoids_shape_unrolled_flashlib_kernel(m
     assert sorted(cache.src_indices[: int(cache.num_indices.item())].tolist()) == [1, 3]
     assert (ids >= 0).all()
     assert ids[0, 0].item() == ids[0, 2].item()
+
+
+def test_qwen4_protected_layer_cuda_matches_cpu_qwen_sized():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required for protected-layer parity")
+
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    layers, experts, slots = 48, 512, 256
+
+    def make_cache(device):
+        cache = OffloadMoeCache(
+            num_layers=layers,
+            num_experts=experts,
+            cache_size=slots,
+            device=device,
+            quant_format="qwen4_gguf",
+            minimum_cache_size=10,
+            cache_policy="protected_layer",
+        )
+        sources = {
+            name: [torch.zeros(experts, 1, 1, dtype=torch.uint8) for _ in range(layers)]
+            for name in ("gate", "up", "down")
+        }
+        cache.set_bank_sources(sources, layer_residency=["file_backed"] * layers)
+        return cache
+
+    cpu = make_cache(torch.device("cpu"))
+    cuda = make_cache(torch.device("cuda"))
+    routes = [
+        (0, [511, 3, 7, 9, 11, 13, 17, 19, 23, 29]),
+        (17, [101, 103, 107, 109, 113, 127, 131, 137, 139, 149]),
+        (0, [511, 3, 7, 9, 11, 13, 17, 19, 23, 29]),
+        (47, [251, 257, 263, 269, 271, 277, 281, 283, 293, 307]),
+        (17, [101, 103, 107, 109, 113, 127, 131, 137, 139, 149]),
+    ]
+
+    for layer_id, route in routes:
+        cpu_ids = torch.tensor([route], dtype=torch.int32)
+        cuda_ids = cpu_ids.to("cuda")
+        cpu.ensure_experts(layer_id, cpu_ids)
+        cuda.ensure_experts(layer_id, cuda_ids)
+        torch.cuda.synchronize()
+
+        assert torch.equal(cpu_ids, cuda_ids.cpu())
+        assert torch.equal(cpu.slot_for_id, cuda.slot_for_id.cpu())
+        assert torch.equal(cpu.id_of_slot, cuda.id_of_slot.cpu())
+        assert torch.equal(cpu.usage, cuda.usage.cpu())
+        assert cpu.num_indices.item() == cuda.num_indices.item()
+        count = int(cpu.num_indices.item())
+        assert torch.equal(cpu.evict_slots[:count], cuda.evict_slots[:count].cpu())
+        assert torch.equal(cpu.src_indices[:count], cuda.src_indices[:count].cpu())
 
 
 def test_qwen4_gguf_dispatch_passes_three_quant_types(monkeypatch):

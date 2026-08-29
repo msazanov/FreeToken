@@ -34,6 +34,26 @@ def _make_layer_and_cache():
     return layer, cache
 
 
+def _make_qwen_protected_cpu_cache(layers, experts, slots, topk):
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=layers,
+        num_experts=experts,
+        cache_size=slots,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+        minimum_cache_size=topk,
+        cache_policy="protected_layer",
+    )
+    sources = {
+        name: [torch.zeros(experts, 1, 1, dtype=torch.uint8) for _ in range(layers)]
+        for name in ("gate", "up", "down")
+    }
+    cache.set_bank_sources(sources, layer_residency=["file_backed"] * layers)
+    return cache
+
+
 def test_dummy_expert_sources_use_moe_layer_count(monkeypatch):
     from types import SimpleNamespace
 
@@ -331,6 +351,78 @@ def test_protected_layer_validates_runtime_geometry(kwargs, message):
 
     with pytest.raises(ValueError, match=message):
         OffloadMoeCache(**params)
+
+
+def test_protected_layer_keeps_top_ranked_experts_across_other_layers():
+    cache = _make_qwen_protected_cpu_cache(layers=4, experts=8, slots=20, topk=2)
+    protected = cache.protected_slots_per_layer
+    transient_start = cache.num_layers * protected
+
+    first = torch.tensor([[7, 3]], dtype=torch.int32)
+    cache.ensure_experts(0, first)
+    assert (first >= 0).all()
+    assert int(cache.slot_for_id[0, 7]) in range(0, protected)
+    assert int(cache.slot_for_id[0, 3]) in range(transient_start, cache.cache_size)
+
+    cache.ensure_experts(1, torch.arange(8, dtype=torch.int32).view(1, -1))
+    cache.ensure_experts(2, torch.arange(8, dtype=torch.int32).view(1, -1))
+    cache.ensure_experts(3, torch.tensor([[0, 1]], dtype=torch.int32))
+    cache.ensure_experts(3, torch.tensor([[2, 3]], dtype=torch.int32))
+
+    assert int(cache.slot_for_id[0, 7]) in range(0, protected)
+    assert int(cache.id_of_slot[cache.slot_for_id[0, 7]]) == 7
+
+    repeated = torch.tensor([[7]], dtype=torch.int32)
+    cache.ensure_experts(0, repeated)
+    assert cache.num_indices.item() == 0
+    assert (repeated >= 0).all()
+
+
+def test_protected_layer_repeated_route_stays_resident():
+    cache = _make_qwen_protected_cpu_cache(layers=2, experts=8, slots=16, topk=2)
+    first = torch.tensor([[7, 3]], dtype=torch.int32)
+    cache.ensure_experts(0, first)
+    cache.ensure_experts(1, torch.tensor([[1, 2]], dtype=torch.int32))
+
+    repeated = torch.tensor([[7, 3]], dtype=torch.int32)
+    cache.ensure_experts(0, repeated)
+
+    assert cache.num_indices.item() == 0
+    assert (repeated >= 0).all()
+
+
+def test_protected_layer_prefill_keeps_dynamic_hybrid_admission(monkeypatch):
+    from freetoken.moe import offload_kernels
+
+    cache = _make_qwen_protected_cpu_cache(layers=2, experts=8, slots=16, topk=2)
+    cache.set_trace_phase("prefill")
+    calls = []
+    original = offload_kernels._ensure_experts_hybrid_cpu
+
+    def record(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(offload_kernels, "_ensure_experts_hybrid_cpu", record)
+    cache.ensure_experts(0, torch.tensor([[7, 3]], dtype=torch.int32))
+
+    assert calls == [True]
+
+
+def test_scheduler_sets_protected_trace_phase_without_collect_stats():
+    from types import SimpleNamespace
+
+    from freetoken.scheduler.scheduler import _set_moe_trace_phase
+
+    cache = _make_qwen_protected_cpu_cache(layers=2, experts=8, slots=16, topk=2)
+    config = SimpleNamespace(moe_collect_stats=False)
+    engine = SimpleNamespace(moe_offload_cache=cache)
+
+    _set_moe_trace_phase(config, engine, SimpleNamespace(is_prefill=True))
+    assert cache._trace_phase == "prefill"
+
+    _set_moe_trace_phase(config, engine, SimpleNamespace(is_prefill=False))
+    assert cache._trace_phase == "decode"
 
 
 def test_prefill_overlap_prefetch_invalidates_borrowed_unified_cache_slots():

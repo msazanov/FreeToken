@@ -67,11 +67,15 @@ def _reset_moe_stats_for_prefill(config, engine, batch) -> None:
 
 def _set_moe_trace_phase(config, engine, batch) -> None:
     """Keep E4's fixed trace split aligned with the batch about to execute."""
-    if not getattr(config, "moe_collect_stats", False):
-        return
     cache = engine.moe_offload_cache
-    if cache is not None:
-        cache.set_trace_phase("prefill" if getattr(batch, "is_prefill", False) else "decode")
+    if cache is None:
+        return
+    if not (
+        getattr(config, "moe_collect_stats", False)
+        or getattr(cache, "cache_policy", "lru") == "protected_layer"
+    ):
+        return
+    cache.set_trace_phase("prefill" if getattr(batch, "is_prefill", False) else "decode")
 
 
 def _snapshot_finished_moe_stats(config, engine, replies: List[DetokenizeMsg]) -> None:

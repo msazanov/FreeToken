@@ -25,6 +25,9 @@ def ensure_experts(cache, layer_id: int, expert_ids: torch.Tensor) -> None:
     tensor. ``out_indices`` aliases the input, preserving the in-place rewrite every
     downstream GEMM depends on.
     """
+    if cache.uses_protected_layer_admission(layer_id):
+        ensure_experts_protected_layer(cache, layer_id, expert_ids)
+        return
     if cache.is_file_backed_layer(layer_id):
         # Qwen4 GGUF routes a prefill-sized [tokens, top_k] tensor before it
         # streams selected expert rows from its mmap.  flashlib's sequential
@@ -52,6 +55,22 @@ def ensure_experts(cache, layer_id: int, expert_ids: torch.Tensor) -> None:
         stats=cache.lru_stats[layer_id] if cache.collect_stats else None,
         id_base=layer_id * cache.num_experts,
     )
+
+
+def ensure_experts_protected_layer(
+    cache, layer_id: int, expert_ids: torch.Tensor
+) -> None:
+    """Admit decode routes into this layer's protected range and shared transient range.
+
+    The unique route order is the admission order: the first ``P`` experts use the
+    layer-local protected range and the remaining active experts use the transient range.
+    Both implementations use ``(usage, slot)`` as the victim key and rewrite the route
+    tensor in place for the existing bank copy/GEMM contract.
+    """
+    if expert_ids.is_cuda:
+        _ensure_experts_protected_layer_gpu(cache, layer_id, expert_ids)
+    else:
+        _ensure_experts_protected_layer_cpu(cache, layer_id, expert_ids)
 
 
 def ensure_experts_hybrid(
@@ -201,6 +220,197 @@ def _ensure_experts_hybrid_cpu(
     for i in range(flat.numel()):
         flat[i] = int(cache.slot_for_id[layer_id, int(flat[i].item())].item())
 
+
+def _ensure_experts_protected_layer_cpu(
+    cache, layer_id: int, expert_ids: torch.Tensor
+) -> None:
+    """CPU reference for protected-layer decode admission."""
+    seen = []
+    for expert in expert_ids.view(-1).tolist():
+        if expert not in seen:
+            seen.append(expert)
+
+    cache.active_mask.zero_()
+    step = int(cache.step.item()) + 1
+    cache.step.fill_(step)
+    for expert in seen:
+        cache.active_mask[expert] = 1
+
+    protected = cache.protected_slots_per_layer
+    protected_start = layer_id * protected
+    transient_start = cache.num_layers * protected
+
+    active_ids = {layer_id * cache.num_experts + expert for expert in seen}
+    placements = []
+    missing = 0
+    for rank, expert in enumerate(seen):
+        slot = int(cache.slot_for_id[layer_id, expert].item())
+        target_start, target_end = (
+            (protected_start, protected_start + protected)
+            if rank < protected
+            else (transient_start, cache.cache_size)
+        )
+        if target_start <= slot < target_end:
+            cache.usage[slot] = step
+            continue
+
+        missing += 1
+        if slot >= 0:
+            cache.id_of_slot[slot] = -1
+            cache.usage[slot] = 0
+            cache.slot_for_id[layer_id, expert] = -1
+
+        candidates = [
+            candidate
+            for candidate in range(target_start, target_end)
+            if int(cache.id_of_slot[candidate].item()) not in active_ids
+        ]
+        victim = min(
+            candidates, key=lambda candidate: (int(cache.usage[candidate]), candidate)
+        )
+        old_id = int(cache.id_of_slot[victim].item())
+        if old_id >= 0:
+            cache.slot_for_id.view(-1)[old_id] = -1
+        flat_id = layer_id * cache.num_experts + expert
+        cache.id_of_slot[victim] = flat_id
+        cache.slot_for_id[layer_id, expert] = victim
+        cache.usage[victim] = step
+        placements.append((victim, expert))
+
+    cache.num_missing_full.fill_(missing)
+    cache.num_indices.fill_(len(placements))
+    for index, (victim, expert) in enumerate(placements):
+        cache.evict_slots[index] = victim
+        cache.src_indices[index] = expert
+
+    flat = expert_ids.view(-1)
+    for index in range(flat.numel()):
+        expert = int(flat[index].item())
+        flat[index] = cache.slot_for_id[layer_id, expert]
+
+
+def _ensure_experts_protected_layer_gpu(
+    cache, layer_id: int, expert_ids: torch.Tensor
+) -> None:
+    block_e = triton.next_power_of_2(cache.num_experts)
+    block_c = triton.next_power_of_2(cache.cache_size)
+    _ensure_experts_protected_layer_kernel[(1,)](
+        expert_ids,
+        cache.slot_for_id,
+        cache.id_of_slot,
+        cache.usage,
+        cache.step,
+        cache.active_mask,
+        cache.evict_slots,
+        cache.src_indices,
+        cache.num_indices,
+        cache.num_missing_full,
+        layer_id,
+        expert_ids.numel(),
+        cache.num_layers,
+        cache.protected_slots_per_layer,
+        cache.num_experts,
+        cache.cache_size,
+        BLOCK_E=block_e,
+        BLOCK_C=block_c,
+        num_warps=8 if block_c >= 2048 else 4,
+    )
+
+
+@triton.jit(do_not_specialize=["layer_id", "num_active"])
+def _ensure_experts_protected_layer_kernel(
+    expert_ids_ptr,
+    slot_for_id_ptr,
+    id_of_slot_ptr,
+    usage_ptr,
+    step_ptr,
+    active_mask_ptr,
+    evict_slots_ptr,
+    src_indices_ptr,
+    num_indices_ptr,
+    num_missing_full_ptr,
+    layer_id,
+    num_active,
+    num_layers,
+    protected_slots,
+    num_experts: tl.constexpr,
+    cache_size: tl.constexpr,
+    BLOCK_E: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    """Deterministic protected/transient admission for one decode route tensor."""
+    off_e = tl.arange(0, BLOCK_E)
+    e_mask = off_e < num_experts
+    active = tl.zeros((BLOCK_E,), dtype=tl.int1)
+    route_rank = tl.full((BLOCK_E,), -1, tl.int32)
+    unique_count = 0
+    for i in tl.range(num_active):
+        expert = tl.load(expert_ids_ptr + i)
+        is_expert = off_e == expert
+        seen_before = tl.sum((active & is_expert).to(tl.int32))
+        is_new = seen_before == 0
+        route_rank = tl.where(is_expert & is_new, unique_count, route_rank)
+        active = active | is_expert
+        unique_count += is_new.to(tl.int32)
+
+    tl.store(active_mask_ptr + off_e, active.to(tl.int32), mask=e_mask)
+    base = layer_id * num_experts
+    slot = tl.load(slot_for_id_ptr + base + off_e, mask=e_mask, other=-1)
+    protected_start = layer_id * protected_slots
+    transient_start = num_layers * protected_slots
+    target_is_protected = route_rank < protected_slots
+    in_protected = (slot >= protected_start) & (slot < protected_start + protected_slots)
+    in_transient = (slot >= transient_start) & (slot < cache_size)
+    in_target = active & tl.where(target_is_protected, in_protected, in_transient)
+    needs = active & ~in_target
+    tl.store(usage_ptr + slot, tl.load(step_ptr) + 1, mask=in_target)
+
+    step = tl.load(step_ptr) + 1
+    tl.store(step_ptr, step)
+    tl.store(num_missing_full_ptr, tl.sum(needs.to(tl.int64)))
+    copy_count = 0
+
+    off_c = tl.arange(0, BLOCK_C)
+    c_mask = off_c < cache_size
+    for rank in tl.range(num_active):
+        if rank < unique_count:
+            is_candidate = needs & (route_rank == rank)
+            expert = tl.argmax(tl.where(is_candidate, off_e, 0), axis=0).to(tl.int32)
+            is_protected = rank < protected_slots
+            zone_start = tl.where(is_protected, protected_start, transient_start)
+            zone_end = tl.where(is_protected, protected_start + protected_slots, cache_size)
+
+            oid = tl.load(id_of_slot_ptr + off_c, mask=c_mask, other=-1)
+            owner_active = tl.zeros((BLOCK_C,), dtype=tl.int1)
+            for i in tl.range(num_active):
+                routed = tl.load(expert_ids_ptr + i)
+                owner_active = owner_active | (oid == base + routed)
+            eligible = c_mask & (off_c >= zone_start) & (off_c < zone_end) & ~owner_active
+            usage = tl.load(
+                usage_ptr + off_c, mask=eligible, other=9223372036854775807
+            ).to(tl.int64)
+            victim = tl.argmin(usage, axis=0).to(tl.int32)
+
+            old_slot = tl.sum(tl.where(off_e == expert, slot, 0)).to(tl.int32)
+            has_old_slot = tl.sum((off_e == expert) & (slot >= 0)).to(tl.int32) != 0
+            if has_old_slot:
+                tl.store(id_of_slot_ptr + old_slot, -1)
+                tl.store(usage_ptr + old_slot, 0)
+                tl.store(slot_for_id_ptr + base + expert, -1)
+            old_id = tl.sum(tl.where(off_c == victim, oid, 0)).to(tl.int32)
+            if old_id >= 0:
+                tl.store(slot_for_id_ptr + old_id, -1)
+            tl.store(id_of_slot_ptr + victim, base + expert)
+            tl.store(slot_for_id_ptr + base + expert, victim)
+            tl.store(usage_ptr + victim, step)
+            tl.store(evict_slots_ptr + copy_count, victim)
+            tl.store(src_indices_ptr + copy_count, expert)
+            copy_count += 1
+
+    tl.store(num_indices_ptr, copy_count)
+    for i in tl.range(num_active):
+        expert = tl.load(expert_ids_ptr + i)
+        tl.store(expert_ids_ptr + i, tl.load(slot_for_id_ptr + base + expert))
 
 def _materialize_layer_gpu(cache, layer_id: int) -> None:
     block = triton.next_power_of_2(max(cache.num_experts, cache.cache_size))
