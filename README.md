@@ -190,3 +190,28 @@ learned the design and reused code from the following projects:
 ## License
 
 [Apache License 2.0](https://github.com/FlashML-org/FreeToken/blob/main/LICENSE).
+
+## RTX 2070 live benchmark ledger
+
+Every local performance attempt is retained in
+`benchmarks/results/benchmark-events.jsonl`: successful artifacts, startup
+incidents, OOMs, timeouts and manually aborted runs are all first-class events.
+The prompt-private runner stores no prompt, visible answer or reasoning text.
+For a terminal stream it records TTFT, exact final usage, a SHA-256 of visible
+content, phase-labelled one-second GPU/VRAM/power/temperature/process-I/O
+samples, and timestamped counts of SSE deltas. The latter distinguish content
+from reasoning deltas without retaining either text.
+
+Rebuild the all-results graph after a run:
+
+```bash
+PYTHONPATH=python .venv/bin/python benchmarks/benchmark_ledger.py
+PYTHONPATH=python .venv/bin/python benchmarks/render_benchmark_dashboard.py
+```
+
+The generated `benchmarks/results/benchmark-dashboard.html` contains every
+ledger event, including red failure marks, alongside the speed/context and
+prefill-chunk plots. The first forced long Ornith trace (`16,400` input +
+`4,095` generated tokens, Q4_K_M, INT8 KV, chunk `1024`) measured 99.86 prefill
+tok/s, 19.52 decode tok/s and 164.24 s TTFT; see `TESTLOG.md` for scope and
+interpretation before comparing it with short EOS-limited runs.

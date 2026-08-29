@@ -1443,3 +1443,39 @@ not a benchmark: it stopped before model loading with `ModuleNotFoundError:
 benchmarks` after the new registry import. The direct-script entrypoint regression
 was added first (RED), then the repository root was added to `sys.path` for that
 mode (GREEN, 15 benchmark tests passed). No runtime metric was published for r1.
+
+## 2026-08-29 — Ornith 35B Q4_K_M live 16K + forced 4K decode trace (complete)
+
+Purpose: collect a real time series through both the long-prompt prefill and a
+long, fixed-size decode; this is not a quality benchmark. The runner used the
+same RTX 2070 Turing profile as the 16K chunk control: INT8 KV, 122,880 token
+allocation, auto 1,429-slot MoE cache, offload/serial experts, Triton attention,
+one request and `--max-prefill-length 1024`. The user prompt had 16,400 actual
+tokens. `--ignore-eos --decode-tokens 4096` forced the server to reach its length
+boundary (4,095 final completion tokens), so that normal early EOS could not
+hide decode behaviour.
+
+| Metric | Live result |
+| --- | ---: |
+| TTFT / end-to-end prefill | 164.24 s / 99.856 tok/s |
+| Decode | 19.522 tok/s |
+| Wall time | 373.95 s |
+| GPU sampled mean / peak VRAM | 96.37% / 7,090 MiB |
+| Peak temperature | 80 C |
+| One-second samples: prefill / decode | 159 / 203 |
+| Timestamped SSE-delta points | 128 |
+| Process physical reads / major faults | 124.11 MiB / 22,031 |
+
+The raw artifact contains 362 phase-labelled samples and contains neither the
+prompt nor generated/reasoning text: `benchmarks/results/ornith35-q4km-live-16k-p1024-r2/context-16384.json`.
+The first systemd unit attempt is also retained in the ledger as a
+`startup_error`: its relative runner path resolved under `/home/random`, so it
+exited before loading the model or touching the GPU. The retry uses an absolute
+runner path and is the only performance result in this section.
+
+Interpretation: compared with the earlier short, EOS-limited `p1024` result
+(97.834 / 21.481 tok/s), long prefill is consistent but whole-window decode is
+about 9.1% lower. That is expected for a 16K -> 20.5K sequence, and this one
+measurement alone does not isolate context growth from reasoning/parser mode or
+page-cache state. The trace now makes a controlled p1280/p1536/... sweep
+meaningful: compare like-for-like forced outputs, not short terminal answers.

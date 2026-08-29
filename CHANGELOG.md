@@ -713,3 +713,20 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   on `sys.path`, so its new `benchmarks.speed_registry` import failed before
   model load. A RED entrypoint regression now reproduces the exact invocation;
   the minimal root-path fix makes it pass. Relevant benchmark suite: 15 passed.
+
+### Added — exhaustive prompt-private live benchmark telemetry
+
+- `benchmarks/qwen38_turing_profile.py` now records phase-labelled one-second
+  GPU utilization/VRAM/power/temperature plus process RSS, physical reads and
+  page faults. It records TTFT and a timestamped SSE-delta progress trace for
+  long decode without retaining prompt, visible answer, or reasoning text.
+- `--ignore-eos` and `--trace-stride-events` make forced long generation a
+  deliberate benchmark mode; exact final token usage remains the speed source,
+  while the delta trace is only a timeline (not an assumed token count).
+- `benchmarks/benchmark_ledger.py` is the append-only all-attempt ledger;
+  `benchmarks/ornith_prefill_sweep.py` probes increasing chunk sizes and stops
+  at the first capacity failure by default; `render_benchmark_dashboard.py`
+  regenerates a single offline graph/table from all success and failure events.
+- Backfill imported 21 historical raw artifacts. The first new forced live run
+  added the successful p1024 16K/4K trace and its preceding path-only startup
+  failure, so neither is silently lost.

@@ -55,7 +55,9 @@ def parse_context_points(value: str) -> tuple[int, ...]:
     return tuple(points)
 
 
-def parse_proc_counters(io_record: str, stat_record: str) -> dict[str, int | None]:
+def parse_proc_counters(
+    io_record: str, stat_record: str, status_record: str = ""
+) -> dict[str, int | None]:
     """Read only the process counters needed for a result record."""
     io_values: dict[str, int] = {}
     for line in io_record.splitlines():
@@ -71,10 +73,19 @@ def parse_proc_counters(io_record: str, stat_record: str) -> dict[str, int | Non
     fields = stat_record[closing + 1 :].split() if closing >= 0 else []
     minor_faults = _int_at(fields, 7)
     major_faults = _int_at(fields, 9)
+    rss_kib: int | None = None
+    for line in status_record.splitlines():
+        key, separator, value = line.partition(":")
+        if key == "VmRSS" and separator:
+            try:
+                rss_kib = int(value.strip().split()[0])
+            except (IndexError, ValueError):
+                pass
     return {
         "io_read_bytes": io_values.get("read_bytes"),
         "major_faults": major_faults,
         "minor_faults": minor_faults,
+        "rss_kib": rss_kib,
     }
 
 
@@ -96,6 +107,7 @@ def read_proc_counters(pid: int) -> dict[str, int | None] | None:
         return parse_proc_counters(
             Path(f"/proc/{pid}/io").read_text(encoding="utf-8"),
             Path(f"/proc/{pid}/stat").read_text(encoding="utf-8"),
+            Path(f"/proc/{pid}/status").read_text(encoding="utf-8"),
         )
     except (OSError, ValueError):
         return None
@@ -172,28 +184,43 @@ def _wait_for_server(origin: str, process: subprocess.Popen[bytes], timeout_s: f
     raise TimeoutError(f"Qwen did not become ready at {origin}")
 
 
+def parse_gpu_sample(sample: str) -> dict[str, float | None]:
+    """Parse one nvidia-smi CSV line without tying tests to a GPU driver."""
+    util, memory, power, temperature = (item.strip() for item in sample.split(","))
+    return {
+        "utilization_percent": float(util),
+        "memory_used_mib": float(memory),
+        "power_w": float(power),
+        "temperature_c": float(temperature),
+    }
+
+
 def _sample_gpu() -> dict[str, float | None]:
     try:
         output = subprocess.check_output(
             [
                 "nvidia-smi",
-                "--query-gpu=utilization.gpu,memory.used",
+                "--query-gpu=utilization.gpu,memory.used,power.draw,temperature.gpu",
                 "--format=csv,noheader,nounits",
             ],
             text=True,
             timeout=5,
         ).strip()
-        util, memory = (item.strip() for item in output.splitlines()[0].split(","))
-        return {"utilization_percent": float(util), "memory_used_mib": float(memory)}
+        return parse_gpu_sample(output.splitlines()[0])
     except (OSError, subprocess.SubprocessError, ValueError, IndexError):
-        return {"utilization_percent": None, "memory_used_mib": None}
+        return {
+            "utilization_percent": None,
+            "memory_used_mib": None,
+            "power_w": None,
+            "temperature_c": None,
+        }
 
 
 class ProcessSampler:
     def __init__(self, pid: int, interval_s: float = 1.0) -> None:
         self.pid = pid
         self.interval_s = interval_s
-        self.samples: list[dict[str, float | None]] = []
+        self.samples: list[dict[str, Any]] = []
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -206,13 +233,35 @@ class ProcessSampler:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            self.samples.append({"monotonic_s": time.monotonic(), **_sample_gpu()})
+            process = read_proc_counters(self.pid) or {}
+            self.samples.append({"monotonic_s": time.monotonic(), **_sample_gpu(), **process})
             self._stop.wait(self.interval_s)
 
 
+def phase_samples(
+    samples: list[dict[str, Any]], *, request_started_at: float, first_token_at: float | None
+) -> list[dict[str, Any]]:
+    """Associate system samples with prefill/decode without retaining request data."""
+    trace: list[dict[str, Any]] = []
+    for sample in samples:
+        timestamp = sample.get("monotonic_s")
+        if not isinstance(timestamp, (int, float)):
+            continue
+        trace.append(
+            {
+                **{key: value for key, value in sample.items() if key != "monotonic_s"},
+                "elapsed_s": max(0.0, float(timestamp) - request_started_at),
+                "phase": "prefill" if first_token_at is None or timestamp <= first_token_at else "decode",
+            }
+        )
+    return trace
+
+
 def _stream_completion(
-    origin: str, payload: dict[str, Any], timeout_s: float
-) -> dict[str, float | int | str | None]:
+    origin: str, payload: dict[str, Any], timeout_s: float, trace_stride_events: int = 32
+) -> dict[str, Any]:
+    if trace_stride_events <= 0:
+        raise ValueError("trace_stride_events must be positive")
     request = urllib.request.Request(
         f"{origin}/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -224,6 +273,8 @@ def _stream_completion(
     last_token_at: float | None = None
     prompt_tokens = completion_tokens = 0
     response_digest = hashlib.sha256()
+    generation_events: list[dict[str, Any]] = []
+    delta_events = content_delta_events = reasoning_delta_events = 0
     saw_terminal_finish = False
     saw_done = False
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
@@ -248,15 +299,30 @@ def _stream_completion(
             usage = event.get("usage") or {}
             prompt_tokens = int(usage.get("prompt_tokens") or prompt_tokens)
             completion_tokens = int(usage.get("completion_tokens") or completion_tokens)
-            if any(
-                isinstance((choice.get("delta") or {}).get(key), str)
-                and (choice.get("delta") or {}).get(key)
-                for choice in event.get("choices", [])
-                for key in ("content", "reasoning_content")
-            ):
+            nonempty_content = 0
+            nonempty_reasoning = 0
+            for choice in event.get("choices", []):
+                delta = choice.get("delta") or {}
+                nonempty_content += int(isinstance(delta.get("content"), str) and bool(delta.get("content")))
+                nonempty_reasoning += int(
+                    isinstance(delta.get("reasoning_content"), str) and bool(delta.get("reasoning_content"))
+                )
+            if nonempty_content or nonempty_reasoning:
                 now = time.monotonic()
                 first_token_at = first_token_at or now
                 last_token_at = now
+                delta_events += nonempty_content + nonempty_reasoning
+                content_delta_events += nonempty_content
+                reasoning_delta_events += nonempty_reasoning
+                if delta_events % trace_stride_events == 0:
+                    generation_events.append(
+                        {
+                            "elapsed_s": now - started,
+                            "delta_events": delta_events,
+                            "content_delta_events": content_delta_events,
+                            "reasoning_delta_events": reasoning_delta_events,
+                        }
+                    )
             for choice in event.get("choices", []):
                 delta = choice.get("delta") or {}
                 if choice.get("finish_reason") is not None:
@@ -271,11 +337,24 @@ def _stream_completion(
     finished = time.monotonic()
     ttft_s = None if first_token_at is None else first_token_at - started
     decode_window_s = None if last_token_at is None or first_token_at is None else last_token_at - first_token_at
+    if delta_events:
+        terminal_event: dict[str, Any] = {
+            "elapsed_s": finished - started,
+            "delta_events": delta_events,
+            "content_delta_events": content_delta_events,
+            "reasoning_delta_events": reasoning_delta_events,
+            "completion_tokens": completion_tokens,
+            "terminal": True,
+        }
+        if not generation_events or generation_events[-1] != terminal_event:
+            generation_events.append(terminal_event)
     return {
         "elapsed_s": finished - started,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "response_sha256": response_digest.hexdigest(),
+        "first_token_elapsed_s": ttft_s,
+        "generation_events": generation_events,
         "prompt_tps": None if not ttft_s else prompt_tokens / ttft_s,
         "decode_tps": None
         if not decode_window_s or completion_tokens < 2
@@ -318,9 +397,9 @@ def make_result_record(
     seed: int,
     port: int,
     pid: int,
-    metrics: dict[str, float | int | str | None],
+    metrics: dict[str, Any],
     process: dict[str, int | None],
-    gpu_samples: list[dict[str, float | None]],
+    gpu_samples: list[dict[str, Any]],
     server_stats: dict[str, Any],
     artifact: Path,
 ) -> dict[str, Any]:
@@ -335,6 +414,11 @@ def make_result_record(
         "response_sha256": metrics["response_sha256"],
         "process": process,
         "gpu_samples": gpu_samples,
+        "live_trace": {
+            "schema": 1,
+            "phase_samples": metrics.get("phase_samples") or [],
+            "generation_events": metrics.get("generation_events") or [],
+        },
         "server_stats": server_stats,
         "artifact": str(artifact),
     }
@@ -361,6 +445,7 @@ def run_context_point(args: argparse.Namespace, context_tokens: int, results_dir
         before = read_proc_counters(process.pid)
         sampler.start()
         try:
+            request_started_at = time.monotonic()
             metrics = _stream_completion(
                 origin,
                 {
@@ -372,11 +457,24 @@ def run_context_point(args: argparse.Namespace, context_tokens: int, results_dir
                     "temperature": 0,
                     "seed": args.seed,
                     "reasoning_effort": "none",
+                    "ignore_eos": args.ignore_eos,
                 },
                 args.request_timeout_s,
+                args.trace_stride_events,
             )
         finally:
             sampler.stop()
+        first_token_elapsed = metrics.get("first_token_elapsed_s")
+        first_token_at = (
+            request_started_at + float(first_token_elapsed)
+            if isinstance(first_token_elapsed, (int, float))
+            else None
+        )
+        metrics["phase_samples"] = phase_samples(
+            sampler.samples,
+            request_started_at=request_started_at,
+            first_token_at=first_token_at,
+        )
         after = read_proc_counters(process.pid)
         # Terminal completion is the lifecycle boundary that publishes E1/E4.
         stats = _get_json(origin, "/v1/stats", timeout_s=15)
@@ -420,6 +518,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model-name", default="qwen38-turing-profile")
     parser.add_argument("--contexts", default="1k,16k,64k,112k")
     parser.add_argument("--decode-tokens", type=int, default=256)
+    parser.add_argument("--ignore-eos", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--seed", type=int, default=20260828)
     parser.add_argument("--port", type=int)
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
@@ -436,6 +535,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--startup-timeout-s", type=float, default=900.0)
     parser.add_argument("--request-timeout-s", type=float, default=7200.0)
     parser.add_argument("--sample-interval-s", type=float, default=1.0)
+    parser.add_argument("--trace-stride-events", type=int, default=32)
     return parser.parse_args(argv)
 
 

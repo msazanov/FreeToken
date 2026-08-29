@@ -116,6 +116,24 @@ def test_process_counter_delta_parses_proc_records_and_preserves_missing_values(
     }
 
 
+def test_proc_and_gpu_samples_include_rss_io_power_and_temperature():
+    from benchmarks.qwen38_turing_profile import parse_gpu_sample, parse_proc_counters
+
+    counters = parse_proc_counters(
+        "read_bytes: 4096\n",
+        "123 (freetoken) R 0 0 0 0 0 0 15 0 10 0 0\n",
+        "Name:\tfreetoken\nVmRSS:\t123456 kB\n",
+    )
+
+    assert counters["rss_kib"] == 123456
+    assert parse_gpu_sample("97, 7048, 84.50, 86") == {
+        "utilization_percent": 97.0,
+        "memory_used_mib": 7048.0,
+        "power_w": 84.5,
+        "temperature_c": 86.0,
+    }
+
+
 def test_stream_completion_hashes_final_content_only_and_ignores_reasoning(monkeypatch):
     from benchmarks import qwen38_turing_profile as profile
 
@@ -157,6 +175,86 @@ def test_stream_completion_hashes_final_content_only_and_ignores_reasoning(monke
     assert metrics["prompt_tokens"] == 12
     assert metrics["completion_tokens"] == 3
     assert "response_text" not in metrics
+
+
+def test_stream_completion_keeps_timed_delta_counts_without_content(monkeypatch):
+    """A long run records progress, but never the prompt, answer, or reasoning."""
+    from benchmarks import qwen38_turing_profile as profile
+
+    events = [
+        {"choices": [{"delta": {"reasoning_content": "private chain"}}]},
+        {"choices": [{"delta": {"content": "private answer"}}]},
+        {"choices": [{"delta": {"content": "more private answer"}}]},
+        {"choices": [{"delta": {}, "finish_reason": "length"}]},
+        {"choices": [], "usage": {"prompt_tokens": 16, "completion_tokens": 3}},
+    ]
+    stream = [
+        (f"data: {json.dumps(event)}\n").encode("utf-8") for event in events
+    ] + [b"data: [DONE]\n"]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(stream)
+
+    ticks = iter((100.0, 101.0, 102.0, 103.0, 104.0, 105.0))
+    monkeypatch.setattr(profile.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+    monkeypatch.setattr(profile.time, "monotonic", lambda: next(ticks))
+
+    metrics = profile._stream_completion(
+        "http://127.0.0.1:1", {"stream": True}, timeout_s=1.0, trace_stride_events=2
+    )
+
+    assert metrics["first_token_elapsed_s"] == 1.0
+    assert metrics["generation_events"] == [
+        {
+            "elapsed_s": 2.0,
+            "delta_events": 2,
+            "content_delta_events": 1,
+            "reasoning_delta_events": 1,
+        },
+        {
+            "elapsed_s": 4.0,
+            "delta_events": 3,
+            "content_delta_events": 2,
+            "reasoning_delta_events": 1,
+            "completion_tokens": 3,
+            "terminal": True,
+        },
+    ]
+    assert "private" not in json.dumps(metrics, ensure_ascii=False)
+
+
+def test_phase_samples_mark_prefill_and_decode_without_clock_leakage():
+    from benchmarks.qwen38_turing_profile import phase_samples
+
+    annotated = phase_samples(
+        [
+            {"monotonic_s": 9.0, "utilization_percent": 10.0},
+            {"monotonic_s": 11.5, "utilization_percent": 99.0},
+        ],
+        request_started_at=10.0,
+        first_token_at=11.0,
+    )
+
+    assert annotated == [
+        {"elapsed_s": 0.0, "phase": "prefill", "utilization_percent": 10.0},
+        {"elapsed_s": 1.5, "phase": "decode", "utilization_percent": 99.0},
+    ]
+
+
+def test_parse_args_exposes_forced_generation_and_trace_controls():
+    from benchmarks.qwen38_turing_profile import parse_args
+
+    args = parse_args(["--model-path", "/models/test.gguf", "--ignore-eos", "--trace-stride-events", "64"])
+
+    assert args.ignore_eos is True
+    assert args.trace_stride_events == 64
 
 
 def test_stream_completion_raises_on_sse_error(monkeypatch):
