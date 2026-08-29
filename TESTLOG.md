@@ -1231,3 +1231,29 @@ TDD evidence:
 The fix changes only the PLE quant-type gate to use `DEQUANT_TYPES`, keeps the
 existing `row_bytes`/shape and table-size checks, and adds no model, benchmark,
 download, expert, cache, or runtime execution. No model or benchmark was run.
+
+## 2026-08-29 — IQ4_NL PLE geometry invariant
+
+The follow-up to `e2f0659` closes the Important review gap in commit
+`f98eaef`.  `ggml_dequantize` rounds `k` up to complete 256-value blocks and
+the IQ4_NL kernel writes every value in those blocks.  The loader now rejects
+an IQ4_NL PLE configuration when `ple_embed_dim` is not divisible by 256,
+before calling the lower-level `row_bytes` assertion.
+
+The acceptance fixture uses the real Qwen geometry: 16 n-gram heads, 2,560
+embedding values, 160 values per head, and a packed `(16, 160)` table with 90
+bytes per IQ4_NL row.  The invalid fixture uses `ple_embed_dim=2400` and
+asserts a clear loader error mentioning the value and divisor.
+
+TDD evidence:
+
+- RED: `1 failed, 1 passed, 1 skipped`; the invalid case hit the old
+  `row_bytes(150, IQ4_NL)` assertion instead of the intended loader error.
+- GREEN: the focused PLE file passed `6 passed, 1 skipped`.
+- Regression: the Qwen4Exp/GGUF/PLE suite passed `28 passed, 3 skipped`.
+- The CUDA-gated test uses 16×160 packed IQ4_NL data and a deterministic nibble
+  reference.  It skipped cleanly because the current environment has no
+  usable NVIDIA driver (`torch.cuda.is_available() == false`); no CUDA result
+  is claimed here.
+
+Raw TDD details: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task-ple-iq4nl-geometry-report.md`.

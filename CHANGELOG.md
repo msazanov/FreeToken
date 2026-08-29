@@ -611,3 +611,20 @@ failed and inconclusive hypotheses; do not rewrite history.
   suite `27 passed, 2 skipped`. No model, benchmark, download, expert, cache,
   or runtime changes were made. Full details:
   `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-report.md`.
+
+### Fixed — enforce real `IQ4_NL` PLE block geometry
+
+- Commit `f98eaef` closes the remaining Important review gap after the REAP
+  `IQ4_NL` type-gate change.  Because the native dequantizer rounds flattened
+  input to complete 256-value blocks, the loader now rejects IQ4_NL PLE when
+  `ple_embed_dim` is not divisible by 256 and reports the unsafe value clearly.
+- The acceptance regression uses Qwen's real 16-head/2,560-value geometry:
+  160 values per head, table shape `(16, 160)`, and 90 packed bytes per row.
+  A CUDA-gated test checks 16×160 native dequantization against a deterministic
+  IQ4_NL nibble reference.
+- TDD result: RED `1 failed, 1 passed, 1 skipped`; GREEN `6 passed, 1 skipped`;
+  relevant Qwen4Exp/GGUF/PLE suite `28 passed, 3 skipped`. CUDA was unavailable
+  in this environment, so no live-kernel result is claimed. No model,
+  benchmark, download, cache, or runtime execution was performed.
+
+Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task-ple-iq4nl-geometry-report.md`.
