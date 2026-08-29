@@ -69,6 +69,7 @@ def test_classify_failure_distinguishes_oom_from_startup_error():
 
     assert classify_failure("RuntimeError: CUDA out of memory") == "oom"
     assert classify_failure("ModuleNotFoundError: benchmarks") == "startup_error"
+    assert classify_failure("usage: runner --startup-timeout-s 900\nargument --server-arg: expected one argument") == "startup_error"
 
 
 def test_parse_chunk_values_requires_ascending_unique_positive_values():

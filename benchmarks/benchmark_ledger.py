@@ -97,6 +97,13 @@ def make_failure_event(
 
 def classify_failure(text: str) -> str:
     lower = text.lower()
+    if (
+        "usage:" in lower
+        or "expected one argument" in lower
+        or "modulenotfounderror" in lower
+        or "can't open file" in lower
+    ):
+        return "startup_error"
     if "out of memory" in lower or "cuda oom" in lower:
         return "oom"
     if "timed out" in lower or "timeout" in lower:

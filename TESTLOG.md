@@ -1479,3 +1479,15 @@ about 9.1% lower. That is expected for a 16K -> 20.5K sequence, and this one
 measurement alone does not isolate context growth from reasoning/parser mode or
 page-cache state. The trace now makes a controlled p1280/p1536/... sweep
 meaningful: compare like-for-like forced outputs, not short terminal answers.
+
+## 2026-08-29 — Ornith live prefill sweep first launch (runner incident)
+
+The initial `1280,1536,1792,2048,2560,3072,4096` sweep did **not** load the
+model. Its generated child command passed values beginning with `--` as a
+separate argument after `--server-arg`; argparse therefore rejected it before
+GPU allocation. This is kept as `startup_error` in
+`benchmark-events.jsonl` and in
+`ornith35-live-prefill-sweep-16k-4k/summary.json`, with zero performance
+metrics. The regression now requires the child command to use the unambiguous
+form `--server-arg=--flag`; the failure classifier also recognises argparse
+usage errors before looking for incidental words such as `timeout` in its help.

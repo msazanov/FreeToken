@@ -730,3 +730,7 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
 - Backfill imported 21 historical raw artifacts. The first new forced live run
   added the successful p1024 16K/4K trace and its preceding path-only startup
   failure, so neither is silently lost.
+- The first auto-sweep invocation also remains in the ledger as a zero-GPU
+  `startup_error`: its child parser rejected a dash-prefixed server argument.
+  The child command is now tested to bind every FreeToken server option as
+  `--server-arg=<value>` and parser usage errors cannot be mislabeled timeout.

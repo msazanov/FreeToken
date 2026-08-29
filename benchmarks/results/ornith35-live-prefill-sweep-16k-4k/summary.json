@@ -1,0 +1,20 @@
+{
+  "context_tokens": 16384,
+  "events": [
+    {
+      "error": "usage: qwen38_turing_profile.py [-h] --model-path MODEL_PATH\n                                [--model-name MODEL_NAME]\n                                [--contexts CONTEXTS]\n                                [--decode-tokens DECODE_TOKENS]\n                                [--ignore-eos | --no-ignore-eos] [--seed SEED]\n                                [--port PORT] [--python PYTHON]\n                                [--repo-root REPO_ROOT] [--run-name RUN_NAME]\n                                [--speed-registry SPEED_REGISTRY]\n                                [--quantization QUANTIZATION]\n                                [--runtime-profile RUNTIME_PROFILE]\n                                [--server-arg SERVER_ARG]\n                                [--startup-timeout-s STARTUP_TIMEOUT_S]\n                                [--request-timeout-s REQUEST_TIMEOUT_S]\n                                [--sample-interval-s SAMPLE_INTERVAL_S]\n                                [--trace-stride-events TRACE_STRIDE_EVENTS]\nqwen38_turing_profile.py: error: argument --server-arg: expected one argument\n",
+      "event_id": "attempt:ornith35-live-prefill-sweep-16k-4k-p1280",
+      "model": "Ornith 1.5 35b",
+      "parameters": {
+        "max_prefill_length": 1280
+      },
+      "requested_context_tokens": 16384,
+      "status": "startup_error",
+      "stderr_log": "/home/random/dev/qwen/freetoken/benchmarks/results/ornith35-live-prefill-sweep-16k-4k/p1280.runner.stderr.log",
+      "stdout_log": "/home/random/dev/qwen/freetoken/benchmarks/results/ornith35-live-prefill-sweep-16k-4k/p1280.runner.stdout.log",
+      "timestamp_utc": "2026-08-29T19:58:39.387431+00:00"
+    }
+  ],
+  "model": "Ornith 1.5 35b",
+  "schema": 1
+}

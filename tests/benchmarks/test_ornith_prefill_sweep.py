@@ -48,3 +48,13 @@ def test_sweep_forwards_forced_long_decode_and_keeps_artifact_identity(tmp_path,
     assert event["event_id"].startswith("artifact:")
     assert event["attempt_id"] == "live-p1024"
     assert event["parameters"]["max_prefill_length"] == 1024
+
+
+def test_sweep_server_args_keep_dash_prefixed_values_bound_to_server_arg():
+    from benchmarks.ornith_prefill_sweep import _ornith_server_args
+
+    values = _ornith_server_args(1280)
+
+    assert "--server-arg=--served-model-name" in values
+    assert "--server-arg=--max-prefill-length" in values
+    assert "--server-arg=1280" in values

@@ -41,10 +41,7 @@ def _ornith_server_args(chunk: int) -> list[str]:
         "--enable-cache-report", None, "--attention-backend", "triton",
         "--kv-cache-dtype", "int8",
     ]
-    result: list[str] = []
-    for value in pairs:
-        result.extend(["--server-arg", value] if value is not None else [])
-    return result
+    return [f"--server-arg={value}" for value in pairs if value is not None]
 
 
 def run_sweep(args: argparse.Namespace) -> Path:
