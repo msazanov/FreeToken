@@ -622,9 +622,14 @@ failed and inconclusive hypotheses; do not rewrite history.
   160 values per head, table shape `(16, 160)`, and 90 packed bytes per row.
   A CUDA-gated test checks 16×160 native dequantization against a deterministic
   IQ4_NL nibble reference.
-- TDD result: RED `1 failed, 1 passed, 1 skipped`; GREEN `6 passed, 1 skipped`;
-  relevant Qwen4Exp/GGUF/PLE suite `28 passed, 3 skipped`. CUDA was unavailable
-  in this environment, so no live-kernel result is claimed. No model,
-  benchmark, download, cache, or runtime execution was performed.
+- Independent review then found that the original fixture compressed the same
+  16 heads into the wrong n-gram layout. It now uses Qwen's exact
+  `ngram_size=3`, `heads_per_ngram=8` configuration and covers the full host
+  path: n-gram IDs → `index_select` → dequant dispatch → `(tokens, 2560)` view.
+  The negative case now has a valid 32-value/18-byte IQ4_NL row and isolates the
+  unsafe aggregate embedding dimension.
+- Current relevant Qwen4Exp/GGUF/PLE suite: `11 passed, 1 skipped`. CUDA was
+  unavailable in this environment, so no live-kernel result is claimed. No
+  model, benchmark, download, cache, or runtime execution was performed.
 
 Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task-ple-iq4nl-geometry-report.md`.

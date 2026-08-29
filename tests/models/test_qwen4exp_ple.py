@@ -42,12 +42,15 @@ def _ple_embedding():
 def _real_geometry_ple_embedding(*, ple_embed_dim: int = 2560):
     from freetoken.models.qwen4_exp.model import _HostNGramEmbedding
 
-    heads_per_ngram = 16
-    ngram_heads = 16  # (ngram_size - 1) * heads_per_ngram for ngram_size=2
+    # This is the production Qwen3.8 Flash Next layout: two n-gram groups
+    # (2-gram and 3-gram), each with eight heads.
+    ngram_size = 3
+    heads_per_ngram = 8
+    ngram_heads = 16  # (ngram_size - 1) * heads_per_ngram
     embedding = _HostNGramEmbedding(
         SimpleNamespace(
             qwen4_args=SimpleNamespace(
-                ngram_size=2,
+                ngram_size=ngram_size,
                 heads_per_ngram=heads_per_ngram,
                 ple_embed_dim=ple_embed_dim,
                 eos_token_id=0,
@@ -56,7 +59,7 @@ def _real_geometry_ple_embedding(*, ple_embed_dim: int = 2560):
         ),
         layer_id=0,
     )
-    embedding.layer_multipliers.copy_(torch.tensor([1, 1]))
+    embedding.layer_multipliers.copy_(torch.tensor([1, 1, 1]))
     embedding.ngram_heads_vocab_sizes.copy_(torch.ones(ngram_heads, dtype=torch.long))
     embedding.ngram_heads_offsets.copy_(torch.arange(ngram_heads, dtype=torch.long))
     return embedding
@@ -97,14 +100,56 @@ def test_qwen4_ple_accepts_iq4_nl_table(monkeypatch):
     assert embedding._gguf_table.shape == (16, 90)
 
 
+def test_qwen4_ple_forward_uses_actual_ngram_layout(monkeypatch):
+    from freetoken.kernel import gguf as gguf_kernel
+    from freetoken.models.gguf.dequant import GGML_IQ4_NL
+    from freetoken.models.qwen4_exp import model as qwen4_model
+
+    table = _PleTensor(GGML_IQ4_NL, (16, 160), 90)
+    table._packed[:, 0] = torch.arange(16, dtype=torch.uint8)
+    embedding = _load_ple_tensor(monkeypatch, table, _real_geometry_ple_embedding())
+    request = SimpleNamespace(
+        input_ids=torch.tensor([7, 11]),
+        cached_len=0,
+        device_len=2,
+        extend_len=2,
+    )
+    batch = SimpleNamespace(
+        is_decode=False,
+        reqs=[request],
+        input_ids=request.input_ids,
+    )
+    monkeypatch.setattr(qwen4_model, "get_global_ctx", lambda: SimpleNamespace(batch=batch))
+    calls = []
+
+    def fake_dequantize(rows, ggml_type, row_count, width, dtype):
+        calls.append((rows.clone(), ggml_type, row_count, width, dtype))
+        return rows[:, :1].to(dtype).expand(-1, width).contiguous()
+
+    monkeypatch.setattr(gguf_kernel, "ggml_dequantize", fake_dequantize)
+
+    result = embedding.forward(torch.device("cpu"), torch.float16)
+
+    assert result.shape == (2, 2560)
+    assert result.dtype == torch.float16
+    assert len(calls) == 1
+    rows, ggml_type, row_count, width, dtype = calls[0]
+    assert (ggml_type, row_count, width, dtype) == (GGML_IQ4_NL, 32, 160, torch.float16)
+    assert torch.equal(rows[:, 0], torch.arange(16, dtype=torch.uint8).repeat(2))
+    assert torch.equal(result[0].view(16, 160)[:, 0], torch.arange(16, dtype=torch.float16))
+    assert torch.equal(result[1].view(16, 160)[:, 0], torch.arange(16, dtype=torch.float16))
+
+
 def test_qwen4_ple_rejects_iq4_nl_non_block_aligned_embedding_dim(monkeypatch):
     from freetoken.models.gguf.dequant import GGML_IQ4_NL
 
-    with pytest.raises(RuntimeError, match=r"IQ4_NL PLE.*2400.*256"):
+    # The row is valid IQ4_NL (32 values, 18 bytes); only the aggregate
+    # embedding is unsafe because the CUDA kernel emits complete 256-value
+    # blocks before the eventual view into embedding_dim.
+    with pytest.raises(RuntimeError, match=r"IQ4_NL PLE.*32.*256"):
         _load_ple_tensor(
             monkeypatch,
-            _PleTensor(GGML_IQ4_NL, (16, 150), 90),
-            _real_geometry_ple_embedding(ple_embed_dim=2400),
+            _PleTensor(GGML_IQ4_NL, (1, 32), 18),
         )
 
 

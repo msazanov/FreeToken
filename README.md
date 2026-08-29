@@ -55,9 +55,11 @@ RED/GREEN record.
 
 The follow-up geometry gate is also recorded: for `IQ4_NL`, the loader rejects
 `ple_embed_dim` values that are not divisible by 256, matching the native
-dequantizer's complete-block writes. The real Qwen fixture is 16 heads × 160
-values (`ple_embed_dim=2560`) with 90 packed bytes per row, and its CUDA gate
-uses a deterministic dequantization reference. The gate passed its CPU tests;
+dequantizer's complete-block writes. The fixture now matches Qwen's exact
+`ngram_size=3`, `heads_per_ngram=8` layout (16 total heads × 160 values,
+`ple_embed_dim=2560`) with 90 packed bytes per row, and drives the complete
+host PLE route through n-gram IDs, row selection, dequantization and reshape.
+The CUDA gate uses a deterministic dequantization reference. CPU tests passed;
 the CUDA test was cleanly skipped where no NVIDIA driver was available. See
 `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task-ple-iq4nl-geometry-report.md`.
 - **Diverse Consumer Hardware**: Scales across consumer laptops, gaming desktops, and workstation GPUs, with native support for NVIDIA RTX 30, RTX 40, and RTX 50 series GPUs.  
