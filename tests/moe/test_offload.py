@@ -259,12 +259,60 @@ def test_protected_layer_rejects_non_qwen_layout():
         OffloadMoeCache(1, 4, 16, torch.device("cpu"), cache_policy="protected_layer")
 
 
+def test_protected_layer_smaller_cache_uses_reserved_transient_slots():
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=48,
+        num_experts=512,
+        cache_size=240,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+        minimum_cache_size=10,
+        cache_policy="protected_layer",
+    )
+
+    assert cache.protected_slots_per_layer == 4
+    assert cache.transient_slots == 48
+    assert cache.cache_policy_geometry()["protected_slot_count"] == 192
+
+
+def test_protected_layer_rebuild_refreshes_smaller_geometry():
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=48,
+        num_experts=512,
+        cache_size=256,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+        minimum_cache_size=10,
+        cache_policy="protected_layer",
+    )
+    cache.set_bank_sources({
+        name: [torch.zeros(512, 1, 1) for _ in range(48)]
+        for name in ("gate", "up", "down")
+    })
+
+    cache.rebuild(240)
+
+    assert cache.protected_slots_per_layer == 4
+    assert cache.transient_slots == 48
+    assert cache.cache_policy_geometry()["protected_slot_count"] == 192
+
+
+def test_protected_layer_rejects_unknown_policy_with_value_error():
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    with pytest.raises(ValueError, match="cache_policy"):
+        OffloadMoeCache(1, 4, 16, torch.device("cpu"), cache_policy="unknown")
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
         ({"decode_target": "hybrid"}, "GPU decode"),
         ({"max_running_req": 2}, "max_running_req"),
-        ({"cache_size": 17, "minimum_cache_size": 5}, "transient"),
     ],
 )
 def test_protected_layer_validates_runtime_geometry(kwargs, message):

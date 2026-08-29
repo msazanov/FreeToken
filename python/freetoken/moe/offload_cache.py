@@ -238,7 +238,11 @@ class OffloadMoeCache:
 
     def __post_init__(self) -> None:
         policy_ids = {"lru": 0, "protected_layer": 1}
-        assert self.cache_policy in policy_ids
+        if self.cache_policy not in policy_ids:
+            raise ValueError(
+                f"unknown cache_policy {self.cache_policy!r}; "
+                f"expected one of {sorted(policy_ids)}"
+            )
         assert self.decode_target in ("gpu", "cpu", "hybrid"), self.decode_target
         assert self.quant_format in _BANK_SCHEMAS, f"unknown quant_format {self.quant_format!r}"
         self.protected_slots_per_layer, self.transient_slots = self._slot_geometry(
@@ -402,7 +406,9 @@ class OffloadMoeCache:
 
     def _slot_geometry(self, cache_size: int) -> tuple[int, int]:
         protected = (
-            cache_size // self.num_layers if self.cache_policy == "protected_layer" else 0
+            max(1, (cache_size - 16) // self.num_layers)
+            if self.cache_policy == "protected_layer"
+            else 0
         )
         return protected, cache_size - self.num_layers * protected
 
