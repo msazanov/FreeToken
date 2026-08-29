@@ -203,15 +203,27 @@ def _stream_completion(
     last_token_at: float | None = None
     prompt_tokens = completion_tokens = 0
     response_digest = hashlib.sha256()
+    saw_terminal_finish = False
+    saw_done = False
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
         for raw_line in response:
             line = raw_line.decode("utf-8").strip()
             if not line.startswith("data:"):
                 continue
             body = line[5:].strip()
-            if not body or body == "[DONE]":
+            if not body:
                 continue
+            if body == "[DONE]":
+                saw_done = True
+                break
             event = json.loads(body)
+            if "error" in event:
+                error = event["error"]
+                if isinstance(error, dict):
+                    message = error.get("message") or "unknown SSE error"
+                else:
+                    message = str(error)
+                raise RuntimeError(f"SSE error: {message}")
             usage = event.get("usage") or {}
             prompt_tokens = int(usage.get("prompt_tokens") or prompt_tokens)
             completion_tokens = int(usage.get("completion_tokens") or completion_tokens)
@@ -226,10 +238,15 @@ def _stream_completion(
                 last_token_at = now
             for choice in event.get("choices", []):
                 delta = choice.get("delta") or {}
-                for key in ("content", "reasoning_content"):
-                    text = delta.get(key)
-                    if isinstance(text, str) and text:
-                        response_digest.update(text.encode("utf-8"))
+                if choice.get("finish_reason") is not None:
+                    saw_terminal_finish = True
+                text = delta.get("content")
+                if isinstance(text, str) and text:
+                    response_digest.update(text.encode("utf-8"))
+    if not saw_done:
+        raise RuntimeError("SSE stream ended before [DONE]")
+    if not saw_terminal_finish:
+        raise RuntimeError("SSE stream ended without terminal finish_reason")
     finished = time.monotonic()
     ttft_s = None if first_token_at is None else first_token_at - started
     decode_window_s = None if last_token_at is None or first_token_at is None else last_token_at - first_token_at

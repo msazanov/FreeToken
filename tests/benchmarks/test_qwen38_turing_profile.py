@@ -116,7 +116,7 @@ def test_process_counter_delta_parses_proc_records_and_preserves_missing_values(
     }
 
 
-def test_stream_completion_hashes_text_channels_in_arrival_order(monkeypatch):
+def test_stream_completion_hashes_final_content_only_and_ignores_reasoning(monkeypatch):
     from benchmarks import qwen38_turing_profile as profile
 
     events = [
@@ -124,6 +124,7 @@ def test_stream_completion_hashes_text_channels_in_arrival_order(monkeypatch):
         {"choices": [{"delta": {"reasoning_content": "дум"}}]},
         {"choices": [{"delta": {"content": "ответ"}}]},
         {"choices": [{"delta": {"reasoning_content": "!"}}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
         {
             "choices": [],
             "usage": {"prompt_tokens": 12, "completion_tokens": 3},
@@ -152,10 +153,82 @@ def test_stream_completion_hashes_text_channels_in_arrival_order(monkeypatch):
         timeout_s=1.0,
     )
 
-    assert metrics["response_sha256"] == hashlib.sha256("думответ!".encode("utf-8")).hexdigest()
+    assert metrics["response_sha256"] == hashlib.sha256("ответ".encode("utf-8")).hexdigest()
     assert metrics["prompt_tokens"] == 12
     assert metrics["completion_tokens"] == 3
     assert "response_text" not in metrics
+
+
+def test_stream_completion_raises_on_sse_error(monkeypatch):
+    from benchmarks import qwen38_turing_profile as profile
+
+    stream = [
+        b'data: {"choices":[{"delta":{"content":"partial"}}]}\n',
+        b'data: {"error":{"message":"generation failed","code":"backend_error"}}\n',
+        b"data: [DONE]\n",
+    ]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(stream)
+
+    monkeypatch.setattr(profile.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    with pytest.raises(RuntimeError, match="generation failed"):
+        profile._stream_completion("http://127.0.0.1:1", {"stream": True}, timeout_s=1.0)
+
+
+def test_stream_completion_raises_when_done_sentinel_is_missing(monkeypatch):
+    from benchmarks import qwen38_turing_profile as profile
+
+    stream = [
+        b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"stop"}]}\n',
+    ]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(stream)
+
+    monkeypatch.setattr(profile.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    with pytest.raises(RuntimeError, match=r"\[DONE\]"):
+        profile._stream_completion("http://127.0.0.1:1", {"stream": True}, timeout_s=1.0)
+
+
+def test_stream_completion_raises_when_terminal_finish_reason_is_missing(monkeypatch):
+    from benchmarks import qwen38_turing_profile as profile
+
+    stream = [
+        b'data: {"choices":[{"delta":{"content":"partial"}}]}\n',
+        b"data: [DONE]\n",
+    ]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter(stream)
+
+    monkeypatch.setattr(profile.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    with pytest.raises(RuntimeError, match="terminal finish_reason"):
+        profile._stream_completion("http://127.0.0.1:1", {"stream": True}, timeout_s=1.0)
 
 
 def test_result_record_promotes_digest_without_retaining_response_body(tmp_path):
