@@ -29,3 +29,19 @@ python benchmarks/bench_offload_cache_copy.py
 
 For host RAM vs PCIe bandwidth and the offload/hybrid backend pick, use `ft bench bw`
 instead — it writes the JSON profile the engine reads.
+
+**`tq3_4s_kernel_bench.py`** — target-SM75 batch-one microbenchmark for the
+packed Ornith TQ3_4S expert MMVQ kernel. It retains all CUDA-event samples for
+the real 512x2048 gate/up and 2048x512 down matrices, compares numerical error
+against exact FP32 CPU materialization, and times the exact CUDA
+dequantize-plus-MM fallback. These are kernel milliseconds, not model tok/s.
+
+```bash
+MAX_JOBS=12 PYTHONPATH=python:. python benchmarks/tq3_4s_kernel_bench.py \
+  --output benchmarks/results/ornith35-tq3-sm75-kernel/task4-mmvq.json
+```
+
+**`fit_tq3_4s_dp4a.py`** — CPU-only exhaustive reconstruction of the eight
+signed int8 levels and shared scale used by the SM75 DP4A approximation. It
+derives Gaussian Lloyd-Max bin masses from the authoritative centroids and
+enumerates every reachable rounded table in the declared scale interval.

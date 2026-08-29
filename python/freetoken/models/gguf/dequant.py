@@ -117,7 +117,7 @@ MMVQ_TYPES = frozenset({
     GGML_Q4_0, GGML_Q4_1, GGML_Q5_0, GGML_Q5_1, GGML_Q8_0,
     GGML_Q2_K, GGML_Q3_K, GGML_Q4_K, GGML_Q5_K, GGML_Q6_K,
     GGML_IQ2_XXS, GGML_IQ2_XS, GGML_IQ3_XXS, GGML_IQ1_S, GGML_IQ4_NL,
-    GGML_IQ3_S, GGML_IQ2_S, GGML_IQ4_XS, GGML_IQ1_M,
+    GGML_IQ3_S, GGML_IQ2_S, GGML_IQ4_XS, GGML_IQ1_M, GGML_TQ3_4S,
 })
 
 # Mirrors switch (type) in ggml_mul_mat_a8 (gguf_kernel.cu:219)

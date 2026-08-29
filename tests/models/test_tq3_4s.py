@@ -69,17 +69,18 @@ def _write_tq3_gguf(path: Path, block: bytes) -> None:
     path.write_bytes(body)
 
 
-def test_tq3_4s_type_geometry_advertises_only_materialized_cuda_dequant():
+def test_tq3_4s_type_geometry_advertises_dequant_and_dense_mmvq_only():
     assert GGML_TQ3_4S == 46
     assert GGML_NAME[GGML_TQ3_4S] == "TQ3_4S"
     assert BLOCK_SHAPE[GGML_TQ3_4S] == (32, 16)
     assert row_bytes(32, GGML_TQ3_4S) == 16
     assert row_bytes(2048, GGML_TQ3_4S) == 1024
 
-    # The exact materialized CUDA authority has landed, but no matrix or fused-MoE
-    # kernel may be advertised until its own parity gate exists.
+    # Exact materialized CUDA and dense small-batch MMVQ have parity gates. MMQ
+    # and fused-MoE remain unavailable until their own staged tests land.
     assert GGML_TQ3_4S in DEQUANT_TYPES
-    for capability in (MMVQ_TYPES, MMQ_TYPES, MOE_VEC_TYPES, MOE_MMQ_TYPES):
+    assert GGML_TQ3_4S in MMVQ_TYPES
+    for capability in (MMQ_TYPES, MOE_VEC_TYPES, MOE_MMQ_TYPES):
         assert GGML_TQ3_4S not in capability
 
 
@@ -152,6 +153,28 @@ def test_centroid_four_discriminator_rejects_the_fast_approximate_codebook():
     expected = torch.zeros(32, dtype=torch.float32)
     expected[0] = math.sqrt(32.0) * TQ3_CENTROIDS[4] / 64.0
     torch.testing.assert_close(dequant_tq3_4s(raw, torch.float32), expected, rtol=2e-6, atol=2e-7)
+
+
+def test_sm75_dp4a_levels_are_fitted_to_the_authoritative_tq3_4s_codebook():
+    donor = torch.tensor([-127, -79, -45, -14, 14, 45, 79, 127], dtype=torch.float64)
+    donor *= 2.1519 / 127.0
+    fitted = torch.tensor([-113, -73, -42, -14, 13, 41, 72, 112], dtype=torch.float64)
+    fitted *= 0.017704291602768495
+    exact = torch.tensor(TQ3_CENTROIDS, dtype=torch.float64)
+
+    donor_rmse = torch.sqrt(torch.mean((donor - exact) ** 2))
+    fitted_rmse = torch.sqrt(torch.mean((fitted - exact) ** 2))
+    assert fitted_rmse.item() < 0.003
+    assert donor_rmse.item() / fitted_rmse.item() > 20
+    assert torch.max(torch.abs(fitted - exact)).item() < 0.007
+
+    source = (
+        Path(__file__).parents[2]
+        / "python/freetoken/kernel/csrc/gguf/vecdotq.cuh"
+    ).read_text()
+    assert "TQ3_4S_LEVELS_LO 0xF2D6B78F" in source
+    assert "TQ3_4S_LEVELS_HI 0x7048290D" in source
+    assert "TQ3_4S_DP4A_SCALE 0.017704291602768495f" in source
 
 
 def test_blocks_are_independent_and_output_dtype_is_honored():

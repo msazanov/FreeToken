@@ -2035,3 +2035,74 @@ vec_dot_iq4_xs_q8_1(const void* __restrict__ vbq, const block_q8_1* __restrict__
   return d * (sumi1 + sumi2);
 #endif
 }
+
+// TQ3_4S decode MMVQ: the exact Lloyd-Max weights are represented by nearby
+// int8 levels so Turing can consume four products per __dp4a instruction. The
+// approximation is isolated here and measured against exact materialization.
+// The donor reused its symmetric TQ3_0 levels, yielding ~6.7% relative-L2 on
+// the exact asymmetric TQ3_4S codebook. These int8 levels and the least-squares
+// scale target the actual Lloyd-Max centroids while preserving the same PRMT +
+// DP4A instruction path (weighted centroid RMSE 0.00231 vs donor 0.05937).
+#define TQ3_4S_LEVELS_LO 0xF2D6B78Fu  // bytes {-113, -73, -42, -14}
+#define TQ3_4S_LEVELS_HI 0x7048290Du  // bytes {  13,  41,  72, 112}
+#define TQ3_4S_DP4A_SCALE 0.017704291602768495f
+#define VDR_TQ3_4S_Q8_1_MMVQ 8
+
+static __device__ __forceinline__ float tq3_4s_mmvq_scale(const uint8_t byte) {
+  if (byte == 0) {
+    return 0.0f;
+  }
+  const uint32_t bits =
+      ((uint32_t(byte >> 5) + 118u) << 23) | (uint32_t(byte & 31u) << 18);
+  return __uint_as_float(bits);
+}
+
+static __device__ __forceinline__ float tq3_4s_dot_subgroup_q8_1(
+    const uint32_t packed,
+    const block_q8_1* __restrict__ activation,
+    const int subgroup) {
+  const uint32_t select_low =
+      (packed & 7) | ((packed << 1) & 0x70) | ((packed << 2) & 0x700) |
+      ((packed << 3) & 0x7000);
+  const uint32_t select_high =
+      ((packed >> 12) & 7) | ((packed >> 11) & 0x70) |
+      ((packed >> 10) & 0x700) | ((packed >> 9) & 0x7000);
+  const int weight_low = __byte_perm(TQ3_4S_LEVELS_LO, TQ3_4S_LEVELS_HI, select_low);
+  const int weight_high = __byte_perm(TQ3_4S_LEVELS_LO, TQ3_4S_LEVELS_HI, select_high);
+
+  const int offset = subgroup * 8;
+  const int activation_low = *reinterpret_cast<const int*>(&activation->qs[offset]);
+  const int activation_high = *reinterpret_cast<const int*>(&activation->qs[offset + 4]);
+  int sum = __dp4a(weight_low, activation_low, 0);
+  sum = __dp4a(weight_high, activation_high, sum);
+  return float(sum);
+}
+
+static __device__ __forceinline__ float vec_dot_tq3_4s_q8_1(
+    const void* __restrict__ vbq,
+    const block_q8_1* __restrict__ activation,
+    const int& iqs) {
+#if defined __CUDA_ARCH__ && __CUDA_ARCH__ >= 610 || defined USE_ROCM || defined USE_MUSA
+  const block_tq3_4s* block = static_cast<const block_tq3_4s*>(vbq);
+  const uint4 packed_block = *reinterpret_cast<const uint4*>(block);
+  const int first_group = iqs / 4;  // iqs is 0 or 8, selecting groups {0,1} or {2,3}
+  const bool high_half = first_group != 0;
+
+  const uint32_t packed0 = __funnelshift_r(
+      high_half ? packed_block.z : packed_block.y,
+      high_half ? packed_block.w : packed_block.z,
+      high_half ? 16 : 0) & 0xFFFFFF;
+  const uint32_t packed1 = __funnelshift_r(
+      high_half ? packed_block.w : packed_block.y,
+      high_half ? packed_block.w : packed_block.z,
+      high_half ? 8 : 24) & 0xFFFFFF;
+
+  const float scale0 = tq3_4s_mmvq_scale((packed_block.x >> (8 * first_group)) & 0xFF);
+  const float scale1 = tq3_4s_mmvq_scale((packed_block.x >> (8 * first_group + 8)) & 0xFF);
+  const float activation_scale = __low2float(activation->ds);
+  const float codebook_scale = TQ3_4S_DP4A_SCALE * activation_scale;
+  const float sum = tq3_4s_dot_subgroup_q8_1(packed0, activation, first_group) * scale0 +
+                    tq3_4s_dot_subgroup_q8_1(packed1, activation, first_group + 1) * scale1;
+  return sum * codebook_scale;
+#endif
+}

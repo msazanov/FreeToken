@@ -1,6 +1,7 @@
 // Adatped from
 // https://github.com/vllm-project/vllm/blob/755ed7b05be4743237d3339c4ff8c22bcaae04f4/csrc/quantization/gguf/gguf_kernel.cu
 #include <c10/cuda/CUDAGuard.h>
+#include <cstdint>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <torch/all.h>
@@ -19,7 +20,7 @@
 // clang-format off
 
 // Q8 gemv
-template <typename scalar_t>
+template <typename scalar_t, bool tq3_rotate>
 static __global__ void
 quantize_q8_1(const scalar_t* __restrict__ x, void* __restrict__ vy, const int kx, const int kx_padded) {
   const auto ix = blockDim.x * blockIdx.x + threadIdx.x;
@@ -34,7 +35,18 @@ quantize_q8_1(const scalar_t* __restrict__ x, void* __restrict__ vy, const int k
   const int ib = i_padded / QK8_1;   // block index
   const int iqs = i_padded % QK8_1;  // quant index
 
-  const float xi = ix < kx ? static_cast<float>(x[iy * kx + ix]) : 0.0f;
+  float xi = ix < kx ? static_cast<float>(x[iy * kx + ix]) : 0.0f;
+  if constexpr (tq3_rotate) {
+    // TQ3_4S stores W * R^-1.  Rotate each 32-value activation group with the
+    // matching signed normalized WHT so dot(W_rotated, R*x) == dot(W, x).
+    float value = xi * tq3_4s_signs_cuda[iqs];
+#pragma unroll
+    for (int step = 1; step < QK8_1; step <<= 1) {
+      const float other = SGLANG_SHFL_XOR_SYNC_WIDTH(uint32_t(-1), value, step, 32);
+      value = iqs & step ? other - value : other + value;
+    }
+    xi = value * 0.17677669529663687f;
+  }
   float amax = fabsf(xi);
   float sum = xi;
 
@@ -58,7 +70,13 @@ quantize_q8_1(const scalar_t* __restrict__ x, void* __restrict__ vy, const int k
 }
 
 template <typename scalar_t>
-static void quantize_row_q8_1_cuda(const scalar_t* x, void* vy, const int kx, const int ky, cudaStream_t stream) {
+static void quantize_row_q8_1_cuda(
+    const scalar_t* x,
+    void* vy,
+    const int kx,
+    const int ky,
+    cudaStream_t stream,
+    const bool tq3_rotate = false) {
   const int64_t kx_padded = (kx + 512 - 1) / 512 * 512;
   const int block_num_x = (kx_padded + CUDA_QUANTIZE_BLOCK_SIZE - 1) / CUDA_QUANTIZE_BLOCK_SIZE;
   constexpr int MAX_BLOCK_SIZE = 65535;
@@ -66,8 +84,13 @@ static void quantize_row_q8_1_cuda(const scalar_t* x, void* vy, const int kx, co
     const int num_blocks_y = std::min(ky, off + MAX_BLOCK_SIZE) - off;
     const dim3 num_blocks(block_num_x, num_blocks_y, 1);
     const dim3 block_size(CUDA_DEQUANTIZE_BLOCK_SIZE, 1, 1);
-    quantize_q8_1<<<num_blocks, block_size, 0, stream>>>(
-        &x[off * kx], (int32_t*)vy + off * (kx_padded / 32 * 9), kx, kx_padded);
+    if (tq3_rotate) {
+      quantize_q8_1<scalar_t, true><<<num_blocks, block_size, 0, stream>>>(
+          &x[off * kx], (int32_t*)vy + off * (kx_padded / 32 * 9), kx, kx_padded);
+    } else {
+      quantize_q8_1<scalar_t, false><<<num_blocks, block_size, 0, stream>>>(
+          &x[off * kx], (int32_t*)vy + off * (kx_padded / 32 * 9), kx, kx_padded);
+    }
   }
 }
 
@@ -102,8 +125,24 @@ torch::Tensor ggml_mul_mat_vec_a8(
     torch::Tensor X,  // input
     int64_t type,
     int64_t row) {
+  TORCH_CHECK(X.dim() == 2, "ggml_mul_mat_vec_a8: input must be a 2D tensor");
   int col = X.sizes()[1];
   int vecs = X.sizes()[0];
+  if (type == 46) {
+    TORCH_CHECK(col % QK_TQ3_0 == 0,
+                "ggml_mul_mat_vec_a8: TQ3_4S input columns must be a multiple of 32, got ", col);
+    TORCH_CHECK(W.scalar_type() == torch::kUInt8,
+                "ggml_mul_mat_vec_a8: TQ3_4S weight must use packed uint8 storage");
+    TORCH_CHECK(W.device() == X.device(),
+                "ggml_mul_mat_vec_a8: TQ3_4S weight and input must share a device");
+    TORCH_CHECK(W.is_contiguous() && X.is_contiguous(),
+                "ggml_mul_mat_vec_a8: TQ3_4S weight and input must be contiguous");
+    TORCH_CHECK(W.dim() == 2 && W.size(0) >= row && W.size(1) == col / 2,
+                "ggml_mul_mat_vec_a8: TQ3_4S weight must have shape [at least ", row,
+                ", ", col / 2, " packed bytes]");
+    TORCH_CHECK((reinterpret_cast<uintptr_t>(W.data_ptr()) & 0xFu) == 0,
+                "ggml_mul_mat_vec_a8: TQ3_4S weight must be 16-byte aligned");
+  }
   const int padded = (col + 512 - 1) / 512 * 512;
   const at::cuda::OptionalCUDAGuard device_guard(device_of(X));
   auto options = torch::TensorOptions().dtype(X.dtype()).device(W.device());
@@ -112,7 +151,8 @@ torch::Tensor ggml_mul_mat_vec_a8(
   options = torch::TensorOptions().dtype(torch::kInt32).device(W.device());
   at::Tensor quant_X = torch::empty({vecs, padded / 32 * 9}, options);
   DISPATCH_FLOAT_TYPES(X.scalar_type(), "ggml_mul_mat_vec_a8", [&] {
-    quantize_row_q8_1_cuda<scalar_t>((scalar_t*)X.data_ptr(), (void*)quant_X.data_ptr(), col, vecs, stream);
+    quantize_row_q8_1_cuda<scalar_t>(
+        (scalar_t*)X.data_ptr(), (void*)quant_X.data_ptr(), col, vecs, stream, type == 46);
     switch (type) {
       case 2:
         mul_mat_vec_q4_0_q8_1_cuda<scalar_t>(
@@ -190,10 +230,14 @@ torch::Tensor ggml_mul_mat_vec_a8(
         mul_mat_vec_iq1_m_q8_1_cuda<scalar_t>(
             (void*)W.data_ptr(), (void*)quant_X.data_ptr(), (scalar_t*)Y.data_ptr(), col, row, vecs, stream);
         break;
+      case 46:
+        mul_mat_vec_tq3_4s_q8_1_cuda<scalar_t>(
+            (void*)W.data_ptr(), (void*)quant_X.data_ptr(), (scalar_t*)Y.data_ptr(), col, row, vecs, stream);
+        break;
       default:
         TORCH_CHECK(false, "ggml_mul_mat_vec_a8: unsupported GGUF quant type ", type,
                     " (MMVQ kernels exist for Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q2_K-Q6_K/IQ2_XXS/IQ2_XS/"
-                    "IQ3_XXS/IQ1_S/IQ4_NL/IQ3_S/IQ2_S/IQ4_XS/IQ1_M)");
+                    "IQ3_XXS/IQ1_S/IQ4_NL/IQ3_S/IQ2_S/IQ4_XS/IQ1_M/TQ3_4S)");
     }
   });
   return Y;

@@ -1740,3 +1740,89 @@ number was produced by this slice. Independent Luna review found no blocker in
 the exact kernel; it requested the now-landed explicit output cast and stronger
 SM75/FP32/zero-scale/literal coverage. Exact `getrows` remains a separate
 performance follow-up rather than part of this materialized-dequant milestone.
+
+## 2026-08-30 — TQ3_4S transformed dense MMVQ on RTX 2070
+
+This is a packed-kernel correctness and latency gate, not an end-to-end model
+benchmark. No checkpoint was downloaded, no server was started, and no tok/s or
+model-quality number is inferred from these measurements.
+
+The first TDD run failed as intended because `ggml_mul_mat_vec_a8` rejected GGUF
+type 46. After porting the donor's activation WHT and PRMT+DP4A vector path, both
+FP16/BF16 matrix tests passed, but the numeric audit rejected the donor codebook
+as unnecessarily inaccurate:
+
+```text
+RED: 1 failed, 3 deselected in 5.82s
+     ggml_mul_mat_vec_a8: unsupported GGUF quant type 46
+first donor GREEN: 2 passed, 3 deselected in 82.23s (native rebuild included)
+donor FP16: cosine 0.999824, relative L2 0.067808
+donor BF16: cosine 0.999842, relative L2 0.067207
+missing-WHT negative control: relative L2 about 1.368
+```
+
+Error decomposition on the same 64x512 synthetic matrix showed that Q8_1
+activation quantization alone contributed only 0.00513 relative L2, while the
+donor's reused symmetric levels contributed 0.06736. A GitHub/web/fork scan
+found no newer corrected TQ3_4S DP4A table; donor local and `origin/main` were
+both `47635d7032aad54e4c5034d7380316830246b8c6` and still used
+`[-127,-79,-45,-14,14,45,79,127] * 2.1519/127`.
+
+Fitting one common scale plus eight signed int8 values to the authoritative
+asymmetric Lloyd-Max centroids produced
+`[-113,-73,-42,-14,13,41,72,112] * 0.017704291602768495`. Weighted centroid
+RMSE fell from 0.0593675 to 0.00230535 (25.8x), with maximum centroid error
+0.0060624. This changes constants only: the kernel still executes the same two
+PRMT lookups and DP4A operations per subgroup.
+
+The post-fit synthetic SM75 result was:
+
+| dtype | cosine | relative L2 | max abs | missing-WHT L2 | separation |
+|---|---:|---:|---:|---:|---:|
+| FP16 | 0.9999852 | 0.005425 | 0.04832 | 1.32549 | 244.35x |
+| BF16 | 0.9999843 | 0.005623 | 0.06086 | 1.32563 | 235.75x |
+
+The reproducible hardware benchmark then used both real Ornith expert matrix
+geometries, batch size one, four deterministic seeds derived from `20260831`,
+20 warmups and 100 individually recorded CUDA-event samples per implementation.
+The exact control includes both materialization and `torch.mm` on every sample.
+
+| matrix | dtype | packed p50 / mean / p95 ms | exact p50 ms | p50 speedup | exact-FP32 relative L2 |
+|---|---:|---:|---:|---:|---:|
+| gate/up 512x2048 | FP16 | 0.025872 / 0.028377 / 0.049742 | 0.137312 | 5.307x | 0.006052 |
+| gate/up 512x2048 | BF16 | 0.025136 / 0.026409 / 0.034365 | 0.137616 | 5.475x | 0.005802 |
+| down 2048x512 | FP16 | 0.025472 / 0.026832 / 0.033040 | 0.139152 | 5.463x | 0.006147 |
+| down 2048x512 | BF16 | 0.025040 / 0.027171 / 0.032584 | 0.139088 | 5.555x | 0.005549 |
+
+All four paths have a wider p95 tail than their medians; the immutable raw arrays
+preserve that variance rather than reporting only the best sample. The canonical
+v3 procedure alternates packed and fallback order, reversing which runs first on
+every sample, and refuses success below cosine 0.9999 or above relative L2 0.01.
+Artifact (800 timing values, GPU/thermal/Git provenance and SHA-256 for the
+benchmark plus every kernel source):
+`benchmarks/results/ornith35-tq3-sm75-kernel-task4-fitted-v3/tq3-mmvq.json`.
+Its status is `success` and all four quality gates passed.
+
+The sequential-order v1 and v2 artifacts remain immutable evidence as well. V1
+measured 5.85-6.15x but lacked hashes for the then-untracked benchmark source;
+v2 added those hashes and measured 5.70-5.74x. The lower, methodologically safer
+v3 range of 5.31-5.55x is the reported result. The fitted table is independently
+reproduced by `benchmarks/fit_tq3_4s_dp4a.py`; exhaustive breakpoint enumeration
+evaluated 420 reachable rounded tables. Its immutable v3 `codebook-fit.json`
+records the Gaussian bin probabilities, levels, scale, packed hex and error.
+
+Independent Luna review found no Task-4 blocker and confirmed WHT order,
+subgroup extraction, PRMT selectors, packed constants and SM75 instruction
+support. Its actionable findings were implemented before this canonical run:
+the public TQ3 MMVQ API now rejects partial 32-value blocks, non-contiguous
+tensors, non-uint8 packed storage and misaligned weights; parity now covers FP32
+and exactly-zero E3M5 scales. Final TQ3 CUDA file: `7 passed in 82.74s`, including
+the source-changing rebuild. The final expanded Task-4 gate was `59 passed, 1
+warning in 8.60s`; the warning is the already-recorded read-only NumPy mmap
+warning, not a TQ3 numeric failure.
+
+The result proves only that packed dense MMVQ is both numerically controlled and
+about six times faster than repeatedly materializing the same half-megabyte
+expert matrix. It does not yet prove the fused top-k MoE path, expert-slot
+addressing, prefill dispatch, cache-hit improvement, real generation quality or
+model throughput. KV remains fixed at `tq4-nc` for the weight A/B.

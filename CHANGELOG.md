@@ -818,3 +818,33 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
 - Luna review found no exact-kernel blocker; explicit output casting and stricter
   exact-SM75/FP32/zero-scale/literal gates were added. Exact `getrows` is tracked
   as a later performance path.
+
+### Added — transformed TQ3_4S dense MMVQ on SM75
+
+- Added source-type-aware signed normalized WHT in Q8_1 activation quantization
+  and a packed PRMT+DP4A type-46 MMVQ path for batch-one/small-batch decode.
+- Preserved the exact materialized decoder as the correctness authority. A
+  missing-WHT negative control is over 100x worse than the fitted kernel, so a
+  metadata-only or untransformed dispatch cannot silently pass.
+- Audited the donor's symmetric DP4A levels before accepting them: they produced
+  about 6.7% relative L2 error because TQ3_4S uses an asymmetric Lloyd-Max
+  codebook. Refit a common scale and eight int8 levels to those exact centroids,
+  reducing weighted centroid RMSE from 0.05937 to 0.00231 with the same PRMT and
+  DP4A instruction count.
+- Added a reproducible SM75 benchmark that retains every CUDA-event sample plus
+  source/GPU/seed/thermal provenance. The final source-hashed run alternates
+  packed/fallback order and enforces cosine/relative-L2 gates. Across the two
+  real Ornith expert matrix shapes and FP16/BF16 it measured
+  0.02504-0.02587 ms p50 versus 0.13731-0.13915 ms for exact
+  materialize-plus-MM, a 5.31-5.55x kernel speedup. Earlier sequential-order
+  5.70-6.15x runs remain preserved as intermediate artifacts.
+- Real-shape relative L2 against the exact FP32 CPU authority was 0.55-0.61%.
+  This is explicitly not a full-model tok/s, cache-hit, quality, fused-MoE or
+  prefill result; TQ3_4S remains absent from those capability sets for now.
+- Added an offline exhaustive fitter that derives Gaussian Lloyd-Max bin weights,
+  enumerates 420 reachable int8 tables and reproduces the checked-in levels,
+  scale, packed hex words and 0.002305 weighted RMSE.
+- Added TQ3-specific API guards for 32-column block geometry, contiguous input,
+  packed-uint8 storage and 16-byte weight alignment. Extended MMVQ parity to
+  FP32 and zero-scale blocks after independent Luna review. Final expanded
+  Task-4 gate: 59 passed with one pre-existing read-only mmap warning.

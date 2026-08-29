@@ -243,24 +243,20 @@ def test_capability_sets_are_consistent():
     """Verify logical consistency and completeness of type-capability sets.
 
     Checks:
-    - MMVQ_TYPES is a subset of materialized DEQUANT_TYPES
+    - MMVQ_TYPES == DEQUANT_TYPES after exact dequant and dense MMVQ land
     - MMQ_TYPES == MOE_MMQ_TYPES (both handle STD_K only)
-    - MOE_VEC_TYPES == MMVQ_TYPES for the currently fused formats
+    - MOE_VEC_TYPES is a subset until TQ3 fused-MoE lands
     - MMQ_TYPES is a strict subset of MMVQ_TYPES
     - MOE_MMQ_TYPES is a strict subset of MOE_VEC_TYPES
     - Every member of every set has a BLOCK_SHAPE entry and GGML_NAME entry
     - None of the five sets intersects GGML_UNQUANTIZED (F32, F16, BF16)
     """
-    # A new format must first land an exact materialized authority; fused matrix
-    # kernels can follow in later commits. TQ3_4S is intentionally at that stage.
-    assert MMVQ_TYPES < DEQUANT_TYPES
-    assert DEQUANT_TYPES - MMVQ_TYPES == {GGML_TQ3_4S}
+    assert MMVQ_TYPES == DEQUANT_TYPES
     assert MMQ_TYPES == MOE_MMQ_TYPES, (
         f"MMQ_TYPES {MMQ_TYPES} != MOE_MMQ_TYPES {MOE_MMQ_TYPES}"
     )
-    assert MOE_VEC_TYPES == MMVQ_TYPES, (
-        f"MOE_VEC_TYPES {MOE_VEC_TYPES} != MMVQ_TYPES {MMVQ_TYPES}"
-    )
+    assert MOE_VEC_TYPES < MMVQ_TYPES
+    assert MMVQ_TYPES - MOE_VEC_TYPES == {GGML_TQ3_4S}
 
     # Check subset relationships
     assert MMQ_TYPES < MMVQ_TYPES, (

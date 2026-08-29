@@ -67,6 +67,7 @@ typedef struct {
 
 // TurboQuant type 46: four E3M5 scales and 32 packed 3-bit centroid indexes.
 #define QK_TQ3_0 32
+#define QI_TQ3_4S 16
 typedef struct {
   uint8_t d[4];
   uint8_t qs[QK_TQ3_0 * 3 / 8];

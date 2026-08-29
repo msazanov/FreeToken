@@ -285,3 +285,32 @@ FP32, FP16 and BF16. Fixed random blocks matched the CPU authority bit-for-bit
 (`max_abs=0`, `mean_abs=0`); the combined GGUF/SM75 gate is `77 passed, 1
 skipped`. This only establishes the numeric GPU authority. MMVQ, fused MoE,
 real-model generation, quality and tokens/second remain unproven.
+
+The following dense batch-one MMVQ slice is now measured on the same RTX 2070.
+Type 46 rotates each activation block with the matching signed normalized WHT,
+quantizes it to Q8_1, then uses Turing-native `dp4a` directly against the packed
+weights. The donor fork's reused symmetric levels produced about 6.7% relative
+L2 error against the exact asymmetric TQ3_4S centroids. A least-squares-fitted
+int8 table reduced real expert-matrix relative L2 to 0.55-0.61% without adding
+instructions to the PRMT+DP4A path.
+
+| Real Ornith matrix | dtype | packed MMVQ p50 | exact dequant + MM p50 | kernel speedup | relative L2 |
+|---|---:|---:|---:|---:|---:|
+| gate/up 512x2048 | FP16 | 0.025872 ms | 0.137312 ms | 5.307x | 0.605% |
+| gate/up 512x2048 | BF16 | 0.025136 ms | 0.137616 ms | 5.475x | 0.580% |
+| down 2048x512 | FP16 | 0.025472 ms | 0.139152 ms | 5.463x | 0.615% |
+| down 2048x512 | BF16 | 0.025040 ms | 0.139088 ms | 5.555x | 0.555% |
+
+All 800 ordered timing samples and content hashes for every benchmark/kernel
+source are in
+`benchmarks/results/ornith35-tq3-sm75-kernel-task4-fitted-v3/tq3-mmvq.json`.
+The canonical run alternates fast and fallback order on every sample and carries
+an executable quality gate. The earlier v1 (5.85-6.15x) and v2 (5.70-5.74x)
+runs are retained as intermediate artifacts rather than overwritten. The fitted
+constants are independently reproducible from `fit_tq3_4s_dp4a.py` and its v3
+JSON result.
+This is not yet an Ornith tok/s result: fused selected-expert MoE, large-batch
+prefill, real checkpoint loading, routing/cache behavior and model quality are
+still separate gates. The KV control therefore remains `tq4-nc`; changing it at
+the same time would hide whether any later end-to-end gain came from weights or
+KV storage.
