@@ -270,3 +270,11 @@ attention vectors online. At 122,880 tokens a hypothetical three-bit KV codec
 could save about 375 MiB versus `tq4-nc`, worth roughly 250 additional TQ3 expert
 slots; the weight port itself projects about 514 additional slots. Therefore KV
 is a later isolated A/B, not part of the initial weight result.
+
+The metadata/CPU gate for `TQ3_4S` is now implemented. FreeToken recognizes
+GGML type 46 as `32 values / 16 bytes`, can read it even when the installed
+`gguf-py` enum is stale, and has a literal-byte pure-Torch authority for E3M5,
+3-bit centroid unpacking and inverse signed WHT. The real sparse Ornith header
+enumerated all 753 tensors, including 381 TQ3 tensors totaling
+17,230,725,120 packed bytes. CUDA capability is intentionally not advertised
+yet; this milestone proves layout and math, not GPU execution or speed.

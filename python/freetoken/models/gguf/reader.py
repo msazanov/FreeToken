@@ -49,6 +49,95 @@ from typing import Any, Iterator
 import numpy as np
 import torch
 
+from .dequant import BLOCK_SHAPE, GGML_NAME
+
+
+@functools.cache
+def _compat_reader_class():
+    """A gguf-py reader that accepts FreeToken-known types newer than its enum.
+
+    gguf-py currently rejects raw type 46 while parsing the tensor table, before
+    FreeToken can apply its own geometry.  Keep the compatibility seam here rather
+    than mutating the dependency's global IntEnum and quant-size dictionaries.
+    """
+    import gguf
+    from gguf.gguf_reader import ReaderTensor
+
+    class FreeTokenGGUFReader(gguf.GGUFReader):
+        def _build_tensors(self, start_offs, fields) -> None:
+            tensors = []
+            tensor_names = set()
+            enum = gguf.GGMLQuantizationType
+
+            for field in fields:
+                _name_len, name_data, _n_dims, dims, raw_dtype, offset_tensor = field.parts
+                tensor_name = str(bytes(name_data), encoding="utf-8")
+                if tensor_name in tensor_names:
+                    raise ValueError(f"Found duplicated tensor with name {tensor_name}")
+                tensor_names.add(tensor_name)
+
+                raw_type = int(raw_dtype[0])
+                try:
+                    ggml_type = enum(raw_type)
+                except ValueError:
+                    if raw_type not in BLOCK_SHAPE:
+                        raise ValueError(
+                            f"GGUF tensor {tensor_name!r} uses unknown GGML type {raw_type}"
+                        ) from None
+                    ggml_type = raw_type
+                if raw_type in BLOCK_SHAPE:
+                    block_size, type_size = BLOCK_SHAPE[raw_type]
+                else:
+                    block_size, type_size = gguf.GGML_QUANT_SIZES[ggml_type]
+
+                n_elems = int(np.prod(dims))
+                np_dims = tuple(reversed(dims.tolist()))
+                if np_dims[-1] % block_size:
+                    type_name = GGML_NAME.get(raw_type, getattr(ggml_type, "name", raw_type))
+                    raise ValueError(
+                        f"Quantized tensor row size ({np_dims[-1]}) is not a multiple "
+                        f"of {type_name} block size ({block_size})"
+                    )
+                n_bytes = n_elems * type_size // block_size
+                data_offs = int(start_offs + offset_tensor[0])
+
+                typed_dtypes = {
+                    getattr(enum, "F16", None): np.float16,
+                    getattr(enum, "F32", None): np.float32,
+                    getattr(enum, "F64", None): np.float64,
+                    getattr(enum, "I8", None): np.int8,
+                    getattr(enum, "I16", None): np.int16,
+                    getattr(enum, "I32", None): np.int32,
+                    getattr(enum, "I64", None): np.int64,
+                }
+                item_type = typed_dtypes.get(ggml_type)
+                if item_type is not None:
+                    item_count = n_elems
+                else:
+                    item_count = n_bytes
+                    item_type = np.uint8
+                    np_dims = (*np_dims[:-1], np_dims[-1] // block_size * type_size)
+
+                tensors.append(
+                    ReaderTensor(
+                        name=tensor_name,
+                        tensor_type=ggml_type,
+                        shape=dims,
+                        n_elements=n_elems,
+                        n_bytes=n_bytes,
+                        data_offset=data_offs,
+                        data=self._get(data_offs, item_type, item_count).reshape(np_dims),
+                        field=field,
+                    )
+                )
+            self.tensors = tensors
+
+    return FreeTokenGGUFReader
+
+
+def _open_gguf_reader(path: str):
+    return _compat_reader_class()(path)
+
 
 def gguf_shards(path: str) -> list[str]:
     r"""Return the ordered list of shard paths given any shard's path (or a plain .gguf).
@@ -217,9 +306,7 @@ def write_metadata_gguf(source_gguf: str, dest_path: str) -> None:
     Validates by re-parsing: the copy must list zero tensors and expose the identical KV
     key set (the KV *bytes* are copied verbatim, so identical keys imply identical values).
     """
-    import gguf
-
-    reader = gguf.GGUFReader(source_gguf)
+    reader = _open_gguf_reader(source_gguf)
     assert reader.tensors, f"{source_gguf}: no tensors to bound the KV section"
     # The first tensor-info record starts exactly where the KV section ends (GGUF places no
     # padding between KV and tensor infos; padding is only before the tensor *data*).
@@ -240,7 +327,7 @@ def write_metadata_gguf(source_gguf: str, dest_path: str) -> None:
         f.write(buf)
     os.replace(tmp, dest_path)
 
-    check = gguf.GGUFReader(dest_path)
+    check = _open_gguf_reader(dest_path)
     assert not check.tensors, "metadata gguf still lists tensors after patch"
     src_keys = {k for k in reader.fields if not k.startswith("GGUF.")}
     dst_keys = {k for k in check.fields if not k.startswith("GGUF.")}
@@ -280,9 +367,7 @@ def _reader(model_path: str):
       1. All shards 1..N are present and complete (no missing indices).
       2. The summed tensor count across all shards matches split.tensors.count (if present).
     """
-    import gguf
-
-    reader = gguf.GGUFReader(model_path)
+    reader = _open_gguf_reader(model_path)
 
     # Check if this is shard 1 of a multi-shard set
     split_count = _field_value(reader, "split.count")
@@ -303,7 +388,7 @@ def _reader(model_path: str):
             if split_tensors_count is not None:
                 total_tensor_count = 0
                 for shard_path in shards:
-                    shard_reader = gguf.GGUFReader(shard_path)
+                    shard_reader = _open_gguf_reader(shard_path)
                     total_tensor_count += len(shard_reader.tensors)
 
                 if total_tensor_count != split_tensors_count:
@@ -370,12 +455,16 @@ def iter_gguf_tensors(model_path: str) -> Iterator[GgufTensor]:
         for t in reader.tensors:
             ne = [int(s) for s in t.shape]  # ggml order, fastest dim first
             torch_shape = tuple(reversed(ne))
-            block, type_size = gguf.GGML_QUANT_SIZES[t.tensor_type]
+            raw_type = int(t.tensor_type)
+            try:
+                block, type_size = BLOCK_SHAPE[raw_type]
+            except KeyError:
+                block, type_size = gguf.GGML_QUANT_SIZES[t.tensor_type]
             n_fast = ne[0]
             if n_fast % block != 0:
                 raise ValueError(
                     f"{t.name}: fastest dim {n_fast} not a multiple of block {block} "
-                    f"for {t.tensor_type.name}"
+                    f"for {GGML_NAME.get(raw_type, getattr(t.tensor_type, 'name', raw_type))}"
                 )
             row_bytes = n_fast // block * type_size
             rows = int(np.prod(ne[1:])) if len(ne) > 1 else 1

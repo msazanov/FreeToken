@@ -62,6 +62,7 @@ def _parse_ggml_common_h() -> dict[str, int]:
         "QK8_0": 32,
         "QK8_1": 32,
         "QK4_NL": 32,
+        "QK_TQ3_0": 32,
     }
 
     sizes = {}
@@ -193,6 +194,7 @@ def test_block_shape_matches_ggml_common():
         "iq2_s": (22, 82),
         "iq4_xs": (23, 136),
         "iq1_m": (29, 56),
+        "tq3_4s": (46, 16),
     }
 
     for struct_name, (ggml_type, expected_bytes) in type_mappings.items():

@@ -1631,3 +1631,60 @@ Projected extra TQ3 slots from KV are about 33/133/233/250 at
 the current packed-weight budget, so the weight change has about twice the
 first-order cache-capacity effect. No three-bit KV kernel, GPU result, speedup or
 quality result is claimed here.
+
+## 2026-08-30 — TQ3_4S type-46 metadata and CPU authority (complete)
+
+This slice adds no CUDA dispatch and does not touch the running model service.
+It establishes the byte/layout and mathematical authority needed before a GPU
+kernel can be trusted:
+
+- `GGML_TQ3_4S = 46`, `BLOCK_SHAPE[46] = (32, 16)` and the corresponding
+  16-byte C struct (`4` E3M5 scale bytes + `12` packed-index bytes).
+- Exact literal E3M5 values from `0x00` through `0xff`.
+- Four independently packed 8-value groups using the authoritative Lloyd-Max
+  centroids and fixed 32-sign pattern.
+- Normalized inverse WHT output checked against literal expected values.
+- A discriminator for centroid index 4 catches the fork's faster approximate
+  integer-dot codebook (`+0.230106` is required by the CPU authority).
+- Multi-block independence, exact zero-scale behavior and BF16 output casting.
+
+The installed `gguf-py` has no `TQ3_4S` enum or quant-size entry. FreeToken now
+uses a local subclass at the reader seam: known local geometries are accepted
+without mutating the dependency's global enum/dictionaries; genuinely unknown
+types still fail with the tensor name and raw type. A hand-written one-tensor
+GGUF proves this path.
+
+The real sparse header at
+`/home/random/dev/qwen/turboquant/headers/ornith-tq3-sparse.gguf` was then
+enumerated through the normal FreeToken reader:
+
+| Field | Result |
+| --- | ---: |
+| Architecture | `qwen35moe` |
+| All tensor descriptors | 753 |
+| TQ3_4S tensors | 381 |
+| TQ3_4S packed bytes | 17,230,725,120 |
+| Other types | F32 370, Q4_K 1, Q6_K 1 |
+
+The first TQ3 test run was deliberately RED at import because type 46 did not
+exist. After implementation, five tests passed and the reader assertion failed
+only because the test used the nonexistent `.raw` property instead of the
+established `.packed()` API; correcting the test made all six pass. Extending
+the independent C-header parser then produced a second RED (`4 != 16`) until
+`QK_TQ3_0=32` was added to that parser's macro table.
+
+Verification history retained exactly:
+
+```text
+tests/models/test_tq3_4s.py (initial): collection ImportError — expected RED
+tests/models/test_tq3_4s.py (first implementation): 5 passed, 1 failed (test API typo)
+test_block_shape_matches_ggml_common (new mapping): 1 failed, parsed 4 vs 16 — expected RED
+TQ3/type-table/shard gate: 18 passed, 1 warning
+first broad GGUF command: 0 tests (referenced nonexistent test_gguf_reader.py)
+corrected broad GGUF command: 71 passed, 4 skipped, 1 warning
+real sparse-header audit: 753/753 descriptors enumerated
+```
+
+The warning is the pre-existing read-only NumPy memmap warning when exposing a
+zero-copy packed tensor to Torch. There is still no TQ3 CUDA result, model
+download, generation, quality score or tokens/second number.

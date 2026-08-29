@@ -65,6 +65,14 @@ typedef struct {
   int8_t qs[QK8_0];  // quants
 } block_q8_1;
 
+// TurboQuant type 46: four E3M5 scales and 32 packed 3-bit centroid indexes.
+#define QK_TQ3_0 32
+typedef struct {
+  uint8_t d[4];
+  uint8_t qs[QK_TQ3_0 * 3 / 8];
+} block_tq3_4s;
+static_assert(sizeof(block_tq3_4s) == 16, "wrong TQ3_4S block size");
+
 #define QR2_K 4
 #define QI2_K (QK_K / (4 * QR2_K))
 typedef struct {

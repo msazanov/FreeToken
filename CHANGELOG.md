@@ -787,3 +787,16 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
 - Retained `tq4-nc` as the first TQ3-weight A/B control. A hypothetical 3-bit KV
   mode is tracked separately because it is a distinct online codec and projects
   only about +250 slots at 122,880, versus about +514 from TQ3 weights.
+
+### Added — TQ3_4S type metadata and CPU correctness authority
+
+- Added GGML type 46 geometry and the exact 16-byte `block_tq3_4s` C contract.
+- Added literal-tested E3M5 scale decoding, 3-bit centroid unpacking and inverse
+  signed WHT in pure Torch. Type 46 remains absent from every CUDA capability
+  set until the corresponding switch and SM75 parity tests land.
+- Added a local GGUF reader compatibility seam for types newer than installed
+  `gguf-py`, without monkeypatching its global enum or size dictionary.
+- Reconciled the real Ornith sparse header: 753 tensors read, 381 TQ3 tensors,
+  17,230,725,120 TQ3 packed bytes.
+- Focused gates: 18 passed for TQ3/type/shards; corrected broad GGUF suite
+  71 passed, 4 skipped. No runtime speed result was produced.

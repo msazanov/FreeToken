@@ -9,11 +9,11 @@ This module serves two purposes:
 
 2. **Pure-torch reference dequantizers** (CPU/test path): The :func:`dequantize` function
    and helper ``dequant_*`` routines materialize F32/F16 tensors at load (norms, scales,
-   router) and cross-check CUDA kernels in tests. These implement only Q4_0 and Q6_K;
-   the missing types are handled by the CUDA kernels in production.
+   router) and cross-check CUDA kernels in tests. TQ3_4S is included as a correctness
+   authority; most packed formats remain CUDA-only in production.
 
-``BLOCK_SHAPE`` covers all 21 types (F32, F16, BF16, STD_K, IQ); ``dequantize()`` and
-``_DEQUANT`` cover Q4_0 and Q6_K only.
+``BLOCK_SHAPE`` covers the in-tree GGUF types plus TQ3_4S; ``dequantize()`` and
+``_DEQUANT`` include a deliberately slow exact TQ3_4S oracle for CUDA parity tests.
 
 Each ``dequant_*`` takes raw little-endian bytes as a ``uint8`` tensor whose final axis
 spans whole blocks, and returns values in *storage order* (ggml's fastest axis first);
@@ -47,6 +47,7 @@ GGML_IQ2_S = 22
 GGML_IQ4_XS = 23
 GGML_IQ1_M = 29
 GGML_BF16 = 30
+GGML_TQ3_4S = 46
 
 # (block numel, bytes per block) per ggml type. Derived from block structs in
 # python/freetoken/kernel/csrc/gguf/ggml-common.h (lines 18-192).
@@ -73,6 +74,7 @@ BLOCK_SHAPE: dict[int, tuple[int, int]] = {
     GGML_IQ4_XS: (256, 136),
     GGML_IQ1_M: (256, 56),
     GGML_BF16: (1, 2),
+    GGML_TQ3_4S: (32, 16),
 }
 
 GGML_NAME = {
@@ -98,6 +100,7 @@ GGML_NAME = {
     GGML_IQ4_XS: "IQ4_XS",
     GGML_IQ1_M: "IQ1_M",
     GGML_BF16: "BF16",
+    GGML_TQ3_4S: "TQ3_4S",
 }
 
 # CUDA kernel dispatch: which types each C function handles.
@@ -212,14 +215,77 @@ def dequant_q6_k(raw: torch.Tensor, out_dtype: torch.dtype) -> torch.Tensor:
     return y.reshape(-1).to(out_dtype)
 
 
+_TQ3_CENTROIDS = (
+    -1.996684,
+    -1.291398,
+    -0.740341,
+    -0.247508,
+    0.230106,
+    0.725222,
+    1.277503,
+    1.988943,
+)
+_TQ3_SIGNS = (
+    +1, -1, +1, -1, +1, +1, -1, +1,
+    -1, -1, +1, -1, +1, +1, -1, +1,
+    -1, -1, +1, -1, +1, -1, -1, +1,
+    -1, +1, +1, -1, +1, -1, -1, +1,
+)
+
+
+def decode_tq3_e3m5(encoded: torch.Tensor) -> torch.Tensor:
+    """Decode TQ3's unsigned E3M5 scales to float32.
+
+    Zero is reserved for an exact zero scale.  Every other byte encodes
+    ``2**((byte >> 5) - 9) * (1 + (byte & 31)/32)``.
+    """
+    byte = encoded.to(torch.int32)
+    exponent = (byte >> 5) - 9
+    mantissa = 1.0 + (byte & 31).to(torch.float32) / 32.0
+    decoded = torch.ldexp(mantissa, exponent)
+    return torch.where(byte == 0, torch.zeros_like(decoded), decoded)
+
+
+def _tq3_inverse_signed_wht(rotated: torch.Tensor) -> torch.Tensor:
+    """Inverse normalized 32-point WHT followed by the fixed TurboQuant signs."""
+    out = rotated.to(torch.float32)
+    num_blocks = out.shape[0]
+    for step in (1, 2, 4, 8, 16):
+        pairs = out.reshape(num_blocks, -1, 2 * step)
+        left = pairs[..., :step]
+        right = pairs[..., step:]
+        out = torch.cat((left + right, left - right), dim=-1).reshape(num_blocks, 32)
+    signs = torch.tensor(_TQ3_SIGNS, dtype=torch.float32, device=out.device)
+    return out * signs * (1.0 / 32.0**0.5)
+
+
+def dequant_tq3_4s(raw: torch.Tensor, out_dtype: torch.dtype) -> torch.Tensor:
+    """Exact CPU authority for type-46 TQ3_4S blocks.
+
+    A 16-byte block contains four E3M5 scales and four little-endian 24-bit groups
+    of eight 3-bit centroid indices.  Values are reconstructed in transformed space,
+    then returned to storage order by the normalized inverse signed WHT.
+    """
+    raw = raw.reshape(-1, 16)
+    scales = decode_tq3_e3m5(raw[:, :4])
+    packed_bytes = raw[:, 4:].reshape(-1, 4, 3).to(torch.int32)
+    packed = packed_bytes[..., 0] | (packed_bytes[..., 1] << 8) | (packed_bytes[..., 2] << 16)
+    shifts = (torch.arange(8, device=raw.device, dtype=torch.int32) * 3).view(1, 1, 8)
+    indices = (packed.unsqueeze(-1) >> shifts) & 7
+    codebook = torch.tensor(_TQ3_CENTROIDS, dtype=torch.float32, device=raw.device)
+    rotated = codebook[indices.to(torch.long)] * scales.unsqueeze(-1)
+    return _tq3_inverse_signed_wht(rotated.reshape(-1, 32)).reshape(-1).to(out_dtype)
+
+
 _DEQUANT = {
     GGML_Q4_0: dequant_q4_0,
     GGML_Q6_K: dequant_q6_k,
+    GGML_TQ3_4S: dequant_tq3_4s,
 }
 
 
 def dequantize(raw: torch.Tensor, ggml_type: int, out_dtype: torch.dtype) -> torch.Tensor:
-    """Dequantize ``raw`` (uint8) in pure torch (Q4_0, Q6_K, F32/F16/BF16 only).
+    """Dequantize ``raw`` (uint8) in pure torch, including the TQ3_4S authority.
 
     This is the CPU reference path for loading norms and scales. The packed GPU path
     (GGUFLinear, GGUFEmbedding, expert banks) dequantizes all 21 types via CUDA kernels;
@@ -235,7 +301,7 @@ def dequantize(raw: torch.Tensor, ggml_type: int, out_dtype: torch.dtype) -> tor
     if fn is None:
         raise NotImplementedError(
             f"pure-torch dequant for ggml type {GGML_NAME.get(ggml_type, ggml_type)} "
-            f"not implemented (only Q4_0 and Q6_K supported in CPU path; "
+            f"not implemented (only Q4_0, Q6_K and TQ3_4S supported in CPU path; "
             f"other types use CUDA kernels via GGUFLinear)"
         )
     return fn(raw, out_dtype)
@@ -264,6 +330,7 @@ __all__ = [
     "GGML_IQ4_XS",
     "GGML_IQ1_M",
     "GGML_BF16",
+    "GGML_TQ3_4S",
     "GGML_NAME",
     "BLOCK_SHAPE",
     "DEQUANT_TYPES",
@@ -275,5 +342,7 @@ __all__ = [
     "row_bytes",
     "dequant_q4_0",
     "dequant_q6_k",
+    "decode_tq3_e3m5",
+    "dequant_tq3_4s",
     "dequantize",
 ]
