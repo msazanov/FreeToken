@@ -343,7 +343,12 @@ class _HostNGramEmbedding(BaseOP):
         from freetoken.models.gguf.reader import is_gguf_path
 
         if is_gguf_path(model_path):
-            from freetoken.models.gguf.dequant import DEQUANT_TYPES, GGML_NAME, row_bytes
+            from freetoken.models.gguf.dequant import (
+                DEQUANT_TYPES,
+                GGML_IQ4_NL,
+                GGML_NAME,
+                row_bytes,
+            )
             from freetoken.models.gguf.reader import iter_gguf_tensors
 
             table = next(
@@ -359,6 +364,12 @@ class _HostNGramEmbedding(BaseOP):
                     "Qwen4-Exp GGUF PLE requires a quantized type supported by "
                     f"ggml_dequantize ({supported}), got "
                     f"{GGML_NAME.get(table.ggml_type, table.ggml_type)}"
+                )
+            if table.ggml_type == GGML_IQ4_NL and self.embedding_dim % 256:
+                raise RuntimeError(
+                    "Qwen4-Exp GGUF IQ4_NL PLE requires "
+                    f"ple_embed_dim={self.embedding_dim} to be divisible by 256 "
+                    "because ggml_dequantize emits complete 256-value blocks"
                 )
             if table.shape[1] != self.head_dim or table.row_bytes != row_bytes(
                 self.head_dim, table.ggml_type
