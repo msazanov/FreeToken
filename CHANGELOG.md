@@ -591,3 +591,10 @@ failed and inconclusive hypotheses; do not rewrite history.
   streamed content and reject SSE errors, incomplete streams and missing
   terminal finish reasons before publishing an artifact. The result makes
   REAP/LRU output comparisons meaningful without storing user text.
+
+### Verified — REAP-256 static Qwen4Exp compatibility
+
+- The first downloading shard already proves the expected `qwen4exp` 48-layer,
+  256-expert, top-10 layout. Its routed expert types (`Q8_0`, `IQ3_XXS`,
+  `IQ4_NL`, `IQ4_XS`) are all supported by the existing GPU MoE-vector path.
+  This is intentionally labelled static-only until both GGUF shards complete.

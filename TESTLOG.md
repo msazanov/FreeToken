@@ -1198,3 +1198,16 @@ review was clean for the current one-`data:`-line FreeToken SSE endpoint.
 The runner intentionally does not support arbitrary multi-line SSE or include
 tool-call arguments in this text-only benchmark digest. Neither limitation
 applies to the fixed no-tools REAP request.
+
+## 2026-08-29 — REAP-256 partial-shard metadata gate (static GO)
+
+While the two-file download is still incomplete, a header-only GGUF parse of
+the already present first shard confirmed `general.architecture=qwen4exp`, 48
+layers, 256 experts per layer, top-10 routing and a two-shard/1,224-tensor
+layout. The routed banks visible in this shard use only `Q8_0`, `IQ3_XXS`,
+`IQ4_NL` and `IQ4_XS`; each is in this fork's GPU `MOE_VEC_TYPES` dispatch.
+
+This is a static loader/kernel compatibility result, not an integrity check or
+a successful model run: the regular GGUF reader correctly refuses the partial
+file because its tensor data is incomplete. Full shard completion and a normal
+reader metadata/type pass remain mandatory before 1K serving.

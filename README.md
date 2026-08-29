@@ -39,6 +39,11 @@ the model's GGUF metadata passes and matched 1K/16K/64K profiles complete.
 Each new profile now includes a prompt-private SHA-256 of the final visible
 answer. Incomplete or error SSE streams are rejected before an artifact is
 published, so throughput comparisons cannot accidentally use a partial output.
+
+The downloading REAP checkpoint has already passed a header-only static gate:
+it is a two-shard Qwen4Exp model with 48 layers, 256 experts/layer and top-10;
+its expert quant types are covered by the fork's GPU MoE-vector kernel. Runtime
+compatibility and performance remain unclaimed until the full shards verify.
 - **Diverse Consumer Hardware**: Scales across consumer laptops, gaming desktops, and workstation GPUs, with native support for NVIDIA RTX 30, RTX 40, and RTX 50 series GPUs.  
 
 ## RTX 2070 fork mission
