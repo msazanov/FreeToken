@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Iterator
 
 import torch
@@ -231,12 +231,19 @@ class OffloadMoeCache:
     # pcie_bw / cpu_bw ratio so the PCIe fetch and the CPU overflow GEMV take equal
     # time (perfect overlap): fetched : cpu = pcie : cpu - pcie.
     hybrid_fetch_fraction: float = 0.0
+    # Protected-layer residency is currently restricted to single-request GPU decode.
+    max_running_req: int = 1
+    protected_slots_per_layer: int = field(init=False)
+    transient_slots: int = field(init=False)
 
     def __post_init__(self) -> None:
-        policy_ids = {"lru": 0}
+        policy_ids = {"lru": 0, "protected_layer": 1}
         assert self.cache_policy in policy_ids
         assert self.decode_target in ("gpu", "cpu", "hybrid"), self.decode_target
         assert self.quant_format in _BANK_SCHEMAS, f"unknown quant_format {self.quant_format!r}"
+        self.protected_slots_per_layer, self.transient_slots = self._slot_geometry(
+            self.cache_size
+        )
         # Attached by the engine for decode_target == "cpu" (CpuMoeExecutor); None
         # for the GPU decode path.
         self.cpu_executor = None
@@ -392,6 +399,21 @@ class OffloadMoeCache:
         self._batch_memcpy = None
         self.prefill_hit_rows = 0
         self.prefill_total_rows = 0
+
+    def _slot_geometry(self, cache_size: int) -> tuple[int, int]:
+        protected = (
+            cache_size // self.num_layers if self.cache_policy == "protected_layer" else 0
+        )
+        return protected, cache_size - self.num_layers * protected
+
+    def cache_policy_geometry(self) -> dict[str, int | str]:
+        """Return scalar slot geometry for terminal cache telemetry."""
+        return {
+            "policy": self.cache_policy,
+            "protected_slots_per_layer": self.protected_slots_per_layer,
+            "protected_slot_count": self.num_layers * self.protected_slots_per_layer,
+            "transient_slots": self.transient_slots,
+        }
 
     def set_bank_sources(
         self,
@@ -555,9 +577,36 @@ class OffloadMoeCache:
         pre-teardown check, so an invalid target rejects with the old cache intact
         (no destructive free first).
         """
+        if self.cache_policy == "protected_layer":
+            if self.quant_format != "qwen4_gguf":
+                raise ValueError(
+                    "protected_layer cache policy requires the qwen4_gguf layout"
+                )
+            if self.decode_target != "gpu":
+                raise ValueError(
+                    "protected_layer cache policy requires GPU decode "
+                    "(decode_target='gpu')"
+                )
+            if self.max_running_req != 1:
+                raise ValueError(
+                    "protected_layer cache policy requires max_running_req=1"
+                )
+
         required = self.num_experts if self.minimum_cache_size is None else self.minimum_cache_size
         if cache_size < required:
             raise ValueError(f"cache_size {cache_size} < required slots {required}")
+        protected, transient = self._slot_geometry(cache_size)
+        if self.cache_policy == "protected_layer":
+            required_transient = (
+                self.num_experts
+                if self.minimum_cache_size is None
+                else self.minimum_cache_size
+            )
+            if protected < 1 or transient < required_transient:
+                raise ValueError(
+                    "protected_layer cache policy has insufficient transient capacity: "
+                    f"need {required_transient} slots, got {transient}"
+                )
         if self.quant_format == "nvfp4_marlin" and cache_size > MARLIN_MAX_CACHE_SIZE:
             raise ValueError(
                 f"moe_cache_size={cache_size} exceeds the marlin backend's slot limit of "
@@ -589,6 +638,7 @@ class OffloadMoeCache:
         self.banks = []
         self.bank_caches = {}
         self.cache_size = cache_size
+        self.protected_slots_per_layer, self.transient_slots = self._slot_geometry(cache_size)
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
             torch.cuda.empty_cache()
@@ -1197,6 +1247,7 @@ class OffloadMoeCache:
                 "num_layers": self.num_layers,
                 "num_experts": self.num_experts,
                 "cache_size": self.cache_size,
+                **self.cache_policy_geometry(),
             },
         }
 

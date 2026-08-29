@@ -3,12 +3,48 @@ from __future__ import annotations
 import torch
 import pytest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from freetoken.engine.engine import _configure_moe_telemetry, _adjust_config
 from freetoken.engine.config import EngineConfig
 from freetoken.distributed import DistributedInfo
 from freetoken.layers.moe import OffloadMoELayer
 from freetoken.moe.offload_cache import OffloadMoeCache
+
+
+def test_parser_accepts_protected_layer_policy():
+    from freetoken.server.args import parse_args
+
+    class _Config:
+        def to_dict(self):
+            return {"architectures": ["LlamaForCausalLM"], "torch_dtype": "bfloat16"}
+
+    with patch("freetoken.utils.cached_load_hf_config", lambda _path: _Config()):
+        args, _ = parse_args(
+            ["--model", "/models/anon", "--moe-cache-policy", "protected_layer"]
+        )
+
+    assert args.moe_cache_policy == "protected_layer"
+
+
+def test_terminal_telemetry_contains_only_scalar_protected_layer_geometry():
+    cache = OffloadMoeCache(
+        num_layers=48,
+        num_experts=512,
+        cache_size=256,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+        minimum_cache_size=10,
+        cache_policy="protected_layer",
+    )
+
+    geometry = cache.telemetry_snapshot()["cache"]
+
+    assert geometry["policy"] == "protected_layer"
+    assert geometry["protected_slots_per_layer"] == 5
+    assert geometry["protected_slot_count"] == 240
+    assert geometry["transient_slots"] == 16
+    assert all(isinstance(value, (int, str)) for value in geometry.values())
 
 
 def test_reset_stats_clears_routing_frequency_and_snapshot_labels_stationary_top_c():

@@ -547,7 +547,7 @@ def parse_args(
     parser.add_argument(
         "--moe-cache-policy",
         default=ServerArgs.moe_cache_policy,
-        choices=["lru"],
+        choices=["lru", "protected_layer"],
         help="The unified MoE cache eviction policy.",
     )
 

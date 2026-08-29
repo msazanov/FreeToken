@@ -647,6 +647,7 @@ class Engine:
                 cache_size=config.moe_cache_size,
                 device=self.device,
                 cache_policy=config.moe_cache_policy,
+                max_running_req=config.max_running_req,
                 prefill_overlap=config.moe_prefill_overlap,
                 prefill_hit_d2d=config.moe_prefill_hit_d2d,
                 quant_format=banks.quant_format,

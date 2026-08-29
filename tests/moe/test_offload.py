@@ -234,6 +234,57 @@ def test_offload_moe_cache_marlin_rejects_slot_count_beyond_kernel_limit():
         )
 
 
+def test_protected_layer_geometry_uses_all_256_slots():
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    cache = OffloadMoeCache(
+        num_layers=48,
+        num_experts=512,
+        cache_size=256,
+        device=torch.device("cpu"),
+        quant_format="qwen4_gguf",
+        minimum_cache_size=10,
+        cache_policy="protected_layer",
+    )
+
+    assert cache.protected_slots_per_layer == 5
+    assert cache.transient_slots == 16
+    assert cache.cache_policy_geometry()["protected_slot_count"] == 240
+
+
+def test_protected_layer_rejects_non_qwen_layout():
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    with pytest.raises(ValueError, match="qwen4_gguf"):
+        OffloadMoeCache(1, 4, 16, torch.device("cpu"), cache_policy="protected_layer")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"decode_target": "hybrid"}, "GPU decode"),
+        ({"max_running_req": 2}, "max_running_req"),
+        ({"cache_size": 17, "minimum_cache_size": 5}, "transient"),
+    ],
+)
+def test_protected_layer_validates_runtime_geometry(kwargs, message):
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    params = {
+        "num_layers": 4,
+        "num_experts": 8,
+        "cache_size": 20,
+        "device": torch.device("cpu"),
+        "quant_format": "qwen4_gguf",
+        "minimum_cache_size": 5,
+        "cache_policy": "protected_layer",
+    }
+    params.update(kwargs)
+
+    with pytest.raises(ValueError, match=message):
+        OffloadMoeCache(**params)
+
+
 def test_prefill_overlap_prefetch_invalidates_borrowed_unified_cache_slots():
     from freetoken.moe.offload_cache import OffloadMoeCache
 
