@@ -40,10 +40,20 @@ Each new profile now includes a prompt-private SHA-256 of the final visible
 answer. Incomplete or error SSE streams are rejected before an artifact is
 published, so throughput comparisons cannot accidentally use a partial output.
 
-The downloading REAP checkpoint has already passed a header-only static gate:
+The REAP checkpoint first passed a header-only static gate:
 it is a two-shard Qwen4Exp model with 48 layers, 256 experts/layer and top-10;
 its expert quant types are covered by the fork's GPU MoE-vector kernel. Runtime
-compatibility and performance remain unclaimed until the full shards verify.
+compatibility and performance were deliberately left unclaimed until the full
+shards verified and a fixed-seed live control completed.
+
+That verification and the first live control are now complete: the REAP-256
+checkpoint finished the isolated fixed-seed 1K FreeToken run on the RTX 2070
+with stable global LRU.  Its end-to-end prefill/decode were 14.63 / 2.175 tok/s
+versus 12.10 / 1.834 tok/s for the Q4_K_M control.  This is a speed observation,
+not a quality verdict and not yet a long-context result: the 16K and 64K
+controls remain required.  Decode still had zero L1 hits, so pruning does not
+by itself solve global cache thrash; the complete artifact is
+`benchmarks/results/qwen38-reap256-1k-lru/context-1024.json`.
 
 The PLE loader also accepts the REAP checkpoint's `IQ4_NL`
 `per_layer_token_embd.weight`: its gate follows the exact quantized types

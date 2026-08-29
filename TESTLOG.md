@@ -1264,3 +1264,41 @@ TDD evidence:
   is claimed here.
 
 Raw TDD details: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task-ple-iq4nl-geometry-report.md`.
+
+## 2026-08-29 — Qwen3.8 REAP-256 1K stable-LRU control (complete)
+
+The two `AnonimousA/Qwen3.8-Flash-Next-REAP-256-duo-GGUF` files first passed
+`hf cache verify` with `checked=2`; absence of the deliberately excluded
+README/LICENSE files was reported only as a warning. The normal FreeToken GGUF
+reader then validated both shards, 1,224 tensors, `qwen4exp`, 48 layers, 256
+experts/layer, top-10 routing, IQ4_NL PLE `(320001536, 160)`/90 bytes per row,
+and GPU-dispatch support for every routed expert type.
+
+The live control deliberately changed only the checkpoint from the Q4_K_M
+baseline: BF16 activations, `tq4-nc`, page size 4, 16 MiB QSA workspace,
+16,384-token KV capacity, 256 global LRU slots, offload backend, naive cache,
+one request, 1,024-token prefill chunks, temperature 0 and seed `20260828`.
+The response completed the SSE terminal contract and emitted a prompt-private
+final-content digest.
+
+| metric | REAP-256 Q3_K_XL | Q4_K_M control | change |
+| --- | ---: | ---: | ---: |
+| prompt / output tokens | 1,036 / 254 | 1,036 / 255 | — |
+| end-to-end wall time | 187.14 s | 224.11 s | -16.5% |
+| end-to-end prompt throughput | 14.630 tok/s | 12.101 tok/s | +20.9% |
+| end-to-end decode throughput | 2.175 tok/s | 1.834 tok/s | +18.6% |
+| sampled GPU util., mean / peak | 32.17% / 57% | 28.33% / 61% | +3.84 pp / -4 pp |
+| peak sampled VRAM | 7,404 MiB | 7,392 MiB | +12 MiB |
+| process physical reads | 11.15 MiB | 17.87 MiB | -37.6% |
+| decode L1 hits / misses | 0 / 121,920 | 0 / 122,400 | unchanged thrash |
+| decode H2D copy volume | 276.94 GB | 252.24 GB | +9.8% |
+
+The live scheduler's stable decode lines rose from 2.20 to 2.34 tok/s after
+the one-time transition. The runner's 2.175 tok/s remains the comparison value
+because it includes every generated token. REAP's improvement is real for this
+control but is not yet attributed to NVMe avoidance or cache hits: global LRU
+still evicts every decode route and H2D volume is higher. The required next
+measurements are the same 16K and 64K controls.
+
+Raw reproducible artifact and stdout/stderr:
+`benchmarks/results/qwen38-reap256-1k-lru/context-1024.json`.

@@ -633,3 +633,19 @@ failed and inconclusive hypotheses; do not rewrite history.
   model, benchmark, download, cache, or runtime execution was performed.
 
 Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task-ple-iq4nl-geometry-report.md`.
+
+### Verified — REAP-256 1K stable-LRU control
+
+- Both downloaded GGUF shards passed `hf cache verify` (`checked=2`), then the
+  normal FreeToken reader enumerated all 1,224 tensors and confirmed Qwen4Exp,
+  48 layers, 256 experts/layer, top-10 routing and the IQ4_NL PLE table.
+- On the exact Q4_K_M 1K control geometry (BF16 activations, `tq4-nc`, page 4,
+  16 MiB QSA workspace, 16,384 KV tokens, 256 global LRU slots, offload,
+  naive cache, one request and seed `20260828`), REAP completed a terminal
+  streaming request: 1,036 prompt and 254 output tokens in 187.14 s. Its
+  end-to-end prefill/decode were 14.63 / 2.175 tok/s, versus 12.10 / 1.834
+  tok/s for Q4_K_M. The final-content SHA-256 is stored only in the artifact.
+- The result does **not** establish a quality comparison or a cache fix. Decode
+  remained `0 / 121,920` L1 hits/misses and copied 276.94 GB host-to-device,
+  versus Q4_K_M's 252.24 GB; the smaller on-disk model is therefore not proof
+  of a smaller decode working set. 16K and 64K are still required.
