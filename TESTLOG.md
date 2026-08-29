@@ -1341,3 +1341,49 @@ is actually higher. The required next matched measurement is 64K.
 
 Raw reproducible artifact and sibling stdout/stderr:
 `benchmarks/results/qwen38-reap256-16k-lru/context-16384.json`.
+
+## 2026-08-29 — Qwen3.8 REAP-256 64K stable-LRU control (complete)
+
+The final matched REAP control uses exactly the 64K Q4_K_M control geometry:
+BF16 activations, `tq4-nc` KV, page size 4, 16 MiB QSA workspace, 73,728-token
+allocation ceiling, 256 global LRU slots, offload backend, naive request cache,
+one request, 1,024-token prefill chunks, temperature 0 and seed `20260828`.
+The only benchmarked variable is the REAP-256 UD-Q3_K_XL GGUF checkpoint.
+
+| metric | REAP-256 Q3_K_XL | Q4_K_M control | change |
+| --- | ---: | ---: | ---: |
+| prompt / output tokens | 65,548 / 254 | 65,548 / 255 | — |
+| end-to-end wall time | 1,838.30 s | 1,874.98 s | -2.0% |
+| end-to-end prompt throughput | 38.229 tok/s | 38.162 tok/s | +0.2% |
+| end-to-end decode throughput | 2.046 tok/s | 1.614 tok/s | +26.7% |
+| TTFT | 1,712.98 s | 1,716.12 s | -0.2% |
+| sampled GPU util., mean / peak | 89.10% / 98% | 84.75% / 98% | +4.35 pp / 0 pp |
+| peak sampled VRAM | 7,782 MiB | 7,774 MiB | +8 MiB |
+| process physical reads | 48.73 MiB | 12.02 MiB | +305.4% |
+| decode L1 hits / misses | 0 / 121,920 | 0 / 122,400 | unchanged thrash |
+| decode H2D copy volume | 276.94 GB | 252.24 GB | +9.8% |
+| prefill L1 hits / misses | 2,861,171 / 93,410 | 3,031,138 / 100,809 | — |
+
+The scheduler prefill began with a 8.93 tok/s cold block, climbed to about
+40.8 tok/s, then declined smoothly to 37.36 tok/s at the final full block as
+the QSA context grew. Its first decode report was a transition-only 0.02 tok/s;
+the following reports were 2.03, 2.09, 2.18, 2.09 and 2.13 tok/s. The runner's
+2.046 end-to-end decode value remains the comparison value because it includes
+every generated token.
+
+This completes the requested matched 1K/16K/64K REAP speed series. The result
+is deliberately narrow: REAP's decode advantage repeated at all three context
+sizes, while global LRU still misses every decode route. The 48.73 MiB process
+read delta is not evidence of an NVMe regression or improvement on its own;
+Linux page-cache state differs between warm controls. Decode H2D movement is
+higher for REAP, so neither cache reuse nor transfer volume explains the speed
+gain yet. A future protected-layer-cache A/B must hold the checkpoint fixed.
+
+The first 64K unit attempt is retained as a configuration incident, not a
+benchmark: it had no explicit `WorkingDirectory`, so Python looked for
+`/home/random/benchmarks/qwen38_turing_profile.py` and exited before model
+loading. The successful `qwen38-reap256-64k-lru-r1` unit adds only
+`--working-directory=/home/random/dev/qwen/freetoken`.
+
+Raw reproducible artifact and sibling stdout/stderr:
+`benchmarks/results/qwen38-reap256-64k-lru/context-65536.json`.

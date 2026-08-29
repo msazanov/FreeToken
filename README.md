@@ -32,9 +32,9 @@ than exposing a fresh-NVMe bottleneck. See [TESTLOG.md](TESTLOG.md) for raw
 artifacts and failures retained as evidence.
 
 The separate Qwen3.8 REAP-256 GGUF candidate has 256 instead of 512 experts per
-layer. It is being checked as a model-compression control through the stable
-LRU runtime first; the matched 1K and 16K profiles are complete, while the 64K
-profile remains required before making a long-context or quality conclusion.
+layer. Its matched 1K/16K/64K stable-LRU speed controls are complete. They show
+a repeated decode-speed advantage, but are not a quality comparison and do not
+show a decode-cache hit: a cache-policy A/B remains a separate experiment.
 
 Each new profile now includes a prompt-private SHA-256 of the final visible
 answer. Incomplete or error SSE streams are rejected before an artifact is
@@ -62,6 +62,14 @@ qualified: REAP's decode trace is still `0 / 121,920` L1 hits/misses and its
 H2D volume is larger (276.94 GB vs 252.24 GB). It is a stable-LRU model control,
 not proof that the cache problem has been solved. The raw artifact is
 `benchmarks/results/qwen38-reap256-16k-lru/context-16384.json`.
+
+The final matched 64K control completed 65,548 input and 254 generated tokens
+in 1,838.30 s: 38.229 prefill tok/s and 2.046 end-to-end decode tok/s. Compared
+with Q4_K_M's 1,874.98 s, 38.162 and 1.614, that is -2.0% wall time, +0.2%
+prefill and +26.7% decode. Decode remains a complete global-LRU miss (`0 /
+121,920` hits/misses) and REAP read more physical bytes in this run; the result
+does not diagnose an NVMe improvement. Artifact:
+`benchmarks/results/qwen38-reap256-64k-lru/context-65536.json`.
 
 The PLE loader also accepts the REAP checkpoint's `IQ4_NL`
 `per_layer_token_embd.weight`: its gate follows the exact quantized types

@@ -663,3 +663,15 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   complete immutable artifact is
   `benchmarks/results/qwen38-reap256-16k-lru/context-16384.json`; 64K remains
   the last matched control.
+
+### Verified — REAP-256 64K stable-LRU control
+
+- The final matched control completed 65,548 prompt and 254 output tokens in
+  1,838.30 s at 38.229 end-to-end prefill tok/s and 2.046 decode tok/s. Against
+  Q4_K_M's 1,874.98 s / 38.162 / 1.614, this is -2.0% wall time, +0.2% prefill
+  and +26.7% decode. The repeated decode advantage is now measured at 1K, 16K
+  and 64K with the same seed and LRU configuration.
+- It is still not cache attribution: decode is `0 / 121,920` L1 hits/misses,
+  H2D is 276.94 GB versus the control's 252.24 GB, and this REAP run reported
+  48.73 MiB physical reads versus 12.02 MiB. The immutable raw artifact is
+  `benchmarks/results/qwen38-reap256-64k-lru/context-65536.json`.
