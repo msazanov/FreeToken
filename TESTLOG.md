@@ -1417,3 +1417,29 @@ the rate is calculated from its actual terminal stream. The 64K Ornith request
 ran for 1,235.97 s. This is a cold-prefix result (not a radix-cache hit) and
 must not be used to predict the high-cache-hit DeepSeek Harness path. All six
 points are indexed in `benchmarks/results/model-context-speed.jsonl`.
+
+## 2026-08-29 — Ornith 16K prefill chunk 640 versus 1024 (complete)
+
+This isolates the scheduler chunk parameter on Ornith Q4_K_M. Both terminal
+runs use the same 16,400-token fixed prompt, requested seed `20260828`,
+temperature `0`, 122,880-token INT8 KV, 1,429-slot auto MoE cache, offload,
+serial expert loading and one request. The only requested runtime change is
+`--max-prefill-length`.
+
+| Chunk | Prompt / output | Wall | Prefill | Decode | Sampled peak VRAM | Raw artifact |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 640 | 16,400 / 127 | 184.82 s | 91.753 tok/s | 20.996 tok/s | 7,048 MiB | `ornith35-q4km-r3/context-16384.json` |
+| 1024 | 16,400 / 108 | 172.74 s | 97.834 tok/s | 21.481 tok/s | 7,088 MiB | `ornith35-q4km-16k-p1024-r2/context-16384.json` |
+
+The 1024 point completed without OOM, with +6.63% prefill, +2.31% decode and
+-6.54% wall time. It is therefore the better tested chunk candidate for 16K.
+The two terminal outputs have different EOS lengths despite the same requested
+seed, so the decode rate is an end-to-end throughput observation rather than a
+bit-identical response equivalence result. Both raw artifacts are in the central
+`model-context-speed.jsonl` registry; the 1024 row records revision `1f59131`.
+
+The first `ornith35-q4km-16k-p1024-r1` unit is retained as a runner incident,
+not a benchmark: it stopped before model loading with `ModuleNotFoundError:
+benchmarks` after the new registry import. The direct-script entrypoint regression
+was added first (RED), then the repository root was added to `sys.path` for that
+mode (GREEN, 15 benchmark tests passed). No runtime metric was published for r1.

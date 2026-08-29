@@ -692,3 +692,24 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   53.448 prefill tok/s. It is retained as a conservative baseline; a dedicated
   640-versus-1024 measurement is still required before changing production
   chunking.
+
+### Verified — Ornith 16K prefill chunk 1024
+
+- The requested one-variable 16K A/B is complete. With the same 16,400-token
+  prompt and model/KV/MoE geometry, increasing `--max-prefill-length` from 640
+  to 1024 completed without OOM and used only 40 MiB more sampled VRAM.
+- End-to-end prefill/decode improved from 91.753/20.996 to 97.834/21.481 tok/s
+  (+6.63%/+2.31%); wall time improved from 184.82 to 172.74 s (-6.54%). The
+  immutable artifact and auto-added central-registry row are
+  `benchmarks/results/ornith35-q4km-16k-p1024-r2/context-16384.json`.
+- The terminal response length changed from 127 to 108 tokens even with the
+  same requested seed, so this is deliberately recorded as a throughput/capacity
+  result, not exact response-equivalence proof.
+
+### Fixed — direct benchmark runner after registry integration
+
+- The first 1024 A/B attempt exposed that direct execution of
+  `python benchmarks/qwen38_turing_profile.py` did not put the repository root
+  on `sys.path`, so its new `benchmarks.speed_registry` import failed before
+  model load. A RED entrypoint regression now reproduces the exact invocation;
+  the minimal root-path fix makes it pass. Relevant benchmark suite: 15 passed.

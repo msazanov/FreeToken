@@ -92,9 +92,11 @@ chat template also give a slightly different actual prompt length.
 | 16K | 36.72 / 2.10 tok/s | 91.75 / 21.00 tok/s | 10.0× |
 | 64K | 38.23 / 2.05 tok/s | 53.45 / 13.59 tok/s | 6.6× |
 
-The Ornith 64K `640`-token chunk result is an intentionally conservative baseline,
-not a claim that 640 is optimal. A separate 640-versus-1024 test is required
-before changing the deployed profile. Raw artifacts:
+At 16K, the direct chunk A/B has now completed: `1024` measured 97.83 prefill
+tok/s and 21.48 decode tok/s, versus 91.75 / 21.00 with `640` (+6.6% / +2.3%),
+with only about 40 MiB more sampled VRAM. The terminal output lengths differed
+(108 versus 127), so this is a throughput/capacity result, not exact-output
+equivalence. Raw artifacts:
 `benchmarks/results/ornith35-q4km-r2/context-1024.json` and
 `benchmarks/results/ornith35-q4km-r3/context-{16384,65536}.json`.
 
