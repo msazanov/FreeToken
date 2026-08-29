@@ -21,3 +21,5 @@ def test_dashboard_keeps_every_success_and_failure_from_ledger(tmp_path):
     assert "attempt:b" in page
     assert "max_prefill_length" in page
     assert "CUDA out of memory" in page
+    assert "Live prefill sweep" in page
+    assert "Recommended next check" in page

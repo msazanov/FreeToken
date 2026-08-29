@@ -60,7 +60,7 @@ def normalize_artifact(artifact: Path) -> dict[str, Any]:
         "requested_context_tokens": record.get("requested_context_tokens"),
         "actual_context_tokens": _first(metrics, "prompt_tokens", "context_tokens"),
         "completion_tokens": metrics.get("completion_tokens"),
-        "ttft_s": metrics.get("ttft_s"),
+        "ttft_s": _first(metrics, "ttft_s", "first_token_elapsed_s"),
         "prefill_tps": _first(metrics, "prompt_tps", "prefill_tps_estimate"),
         "decode_tps": metrics.get("decode_tps"),
         "elapsed_s": _first(metrics, "elapsed_s", "wall_s"),

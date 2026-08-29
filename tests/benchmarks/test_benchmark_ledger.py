@@ -36,6 +36,28 @@ def test_normalize_legacy_artifact_keeps_speed_without_response_text(tmp_path):
     assert "response_text" not in json.dumps(event)
 
 
+def test_normalize_live_artifact_promotes_first_token_elapsed_as_ttft(tmp_path):
+    from benchmarks.benchmark_ledger import normalize_artifact
+
+    artifact = tmp_path / "context-16384.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "requested_context_tokens": 16_384,
+                "metrics": {
+                    "prompt_tokens": 16_400,
+                    "first_token_elapsed_s": 148.35,
+                    "prompt_tps": 110.55,
+                    "decode_tps": 19.66,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert normalize_artifact(artifact)["ttft_s"] == 148.35
+
+
 def test_append_event_preserves_success_and_failure_once(tmp_path):
     from benchmarks.benchmark_ledger import append_event, make_failure_event
 
