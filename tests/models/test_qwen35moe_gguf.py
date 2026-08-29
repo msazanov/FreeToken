@@ -30,6 +30,47 @@ from freetoken.models.gguf.dequant import (
 from freetoken.models.qwen3_5_moe.gguf import gguf_name_to_freetoken
 
 
+def test_ornith_gguf_gdn_uses_the_upstream_silu_gate():
+    """The string gate contract must match qwen3_5_moe.config after the upstream merge."""
+    from freetoken.models.gguf.config import GgufConfigShim
+    from freetoken.models.qwen3_5_moe.gguf import parse_gguf_config
+
+    shim = GgufConfigShim(
+        architectures=["Qwen35MoeGGUFForCausalLM"],
+        model_path="/models/Ornith-1.5-35B-A3B-Q4_K_M.gguf",
+        model_type="qwen35moe",
+        vocab_size=151936,
+        tie_word_embeddings=False,
+        metadata={
+            "qwen35moe.block_count": 41,
+            "qwen35moe.nextn_predict_layers": 1,
+            "qwen35moe.embedding_length": 2048,
+            "qwen35moe.context_length": 262144,
+            "qwen35moe.attention.head_count": 16,
+            "qwen35moe.attention.head_count_kv": 2,
+            "qwen35moe.attention.key_length": 256,
+            "qwen35moe.attention.layer_norm_rms_epsilon": 1e-6,
+            "qwen35moe.rope.freq_base": 10_000_000.0,
+            "qwen35moe.rope.dimension_count": 128,
+            "qwen35moe.expert_count": 256,
+            "qwen35moe.expert_used_count": 8,
+            "qwen35moe.expert_feed_forward_length": 512,
+            "qwen35moe.expert_shared_feed_forward_length": 512,
+            "qwen35moe.ssm.conv_kernel": 4,
+            "qwen35moe.ssm.state_size": 128,
+            "qwen35moe.ssm.group_count": 16,
+            "qwen35moe.ssm.time_step_rank": 32,
+            "qwen35moe.ssm.inner_size": 4096,
+            "qwen35moe.full_attention_interval": 4,
+        },
+    )
+
+    config = parse_gguf_config(shim)
+
+    assert config.norm_topk_prob is True
+    assert config.linear_attention_group().output_gate == "silu"
+
+
 def test_layer_expert_types_preserve_official_q4_k_m_mixed_down(monkeypatch):
     """A Q4_K_M down bank that changes type by layer remains representable.
 

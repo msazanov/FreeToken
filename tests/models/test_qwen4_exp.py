@@ -48,6 +48,7 @@ def test_qwen4_text_config_builds_qsa_and_linear_groups(monkeypatch):
         ngram_size=3,
         heads_per_ngram=8,
         ngram_vocab_size_base=20_000_000,
+        make_ngram_vocab_size_divisible_by=1,
         split_ngram_parts=128,
         output_gate_type="sigmoid",
         hidden_act="silu",
@@ -75,8 +76,8 @@ def test_qwen4_text_config_builds_qsa_and_linear_groups(monkeypatch):
     assert config.attn_type_for_layer(3).value == "qsa"
     assert config.num_experts_per_tok == 10
     assert config.qwen4_args.ple_layer_ids == (1,)
-    assert config.requires_naive_cache
-    assert not config.supports_cuda_graph
+    assert not config.requires_naive_cache
+    assert config.supports_cuda_graph
 
     from freetoken.distributed.info import set_tp_info, try_get_tp_info
     from freetoken.models.qwen4_exp import Qwen4ExpForCausalLM
@@ -87,43 +88,6 @@ def test_qwen4_text_config_builds_qsa_and_linear_groups(monkeypatch):
     assert model.model.layers.op_list[1].ple is not None
     assert "model.layers.1.ple.ple_embedding.layer_multipliers" in model.state_dict()
     assert not hasattr(model, "visual")
-
-    from dataclasses import replace
-
-    from freetoken.layers.gguf import GGUFEmbedding, GGUFLinear
-    from freetoken.models.gguf.dequant import GGML_BF16, GGML_Q8_0
-    from freetoken.models.qwen4_exp import gguf
-
-    quant_types = {
-        (-1, name): GGML_Q8_0
-        for name in (
-            "token_embd.weight", "output.weight", "output_hc_down.weight",
-            "output_hc_up.weight", "output_hc_inject.weight",
-        )
-    }
-    for layer_id in range(config.num_layers):
-        for name in (
-            "hc_attn_down.weight", "hc_attn_up.weight", "hc_attn_inject.weight",
-            "hc_ffn_down.weight", "hc_ffn_up.weight", "hc_ffn_inject.weight",
-            "ffn_gate_shexp.weight", "ffn_up_shexp.weight", "ffn_down_shexp.weight",
-        ):
-            quant_types[(layer_id, name)] = GGML_Q8_0
-    for layer_id in (0, 1, 2):
-        for name in ("attn_qkv.weight", "attn_gate.weight", "ssm_beta.weight", "ssm_alpha.weight"):
-            quant_types[(layer_id, name)] = GGML_Q8_0
-    for name in ("attn_q.weight", "attn_k.weight", "attn_v.weight", "attn_output.weight"):
-        quant_types[(3, name)] = GGML_Q8_0
-    for name in ("indexer.q_proj.weight", "indexer.k_proj.weight"):
-        quant_types[(3, name)] = GGML_BF16
-    for name in ("ple_key.weight", "ple_value.weight"):
-        quant_types[(1, name)] = GGML_Q8_0
-    monkeypatch.setattr(gguf, "_scan_quant_types", lambda _path: quant_types)
-
-    gguf_model = Qwen4ExpForCausalLM(replace(config, gguf_model_path="/fixture.gguf"))
-    assert isinstance(gguf_model.model.embed_tokens, GGUFEmbedding)
-    assert isinstance(gguf_model.model.layers.op_list[3].self_attn.o_proj, GGUFLinear)
-    assert isinstance(gguf_model.model.layers.op_list[1].ple.key_proj, GGUFLinear)
-
 
 def test_qwen4_mrope_can_supply_positions_to_shared_qwen35_projection():
     from freetoken.models.qwen3_5_moe.attention import Qwen3_5Attention
@@ -184,7 +148,7 @@ def test_qwen4_text_decoder_class_is_importable_without_vision():
 
 
 def test_qwen4_ple_hash_uses_uint64_overflow_and_excludes_current_eos_from_reset():
-    from freetoken.models.qwen4_exp.model import build_ngram_ids
+    from freetoken.models.qwen4_exp.gguf_model import build_ngram_ids
 
     eos = 99
     tokens = torch.tensor([5, eos, 7, 8])

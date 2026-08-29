@@ -40,7 +40,11 @@ def spec_kv_bytes_per_token(spec, config) -> int:
     x layers, plus the bf16 DSA index-key slab when the spec carries indexer dims. Pure
     per-spec arithmetic -- pool families compose it over THEIR OWN groups; no family
     branching here. (2 bytes/elem == the torch.bfloat16 dsa_pool.DSAKVCache._alloc
-    hardcodes; keep the two in lockstep if the slab dtype ever changes.)"""
+    hardcodes; keep the two in lockstep if the slab dtype ever changes.)
+
+    ``index_ratio`` > 1 stores one index key per token group, not per token; fixed
+    pending/scratch rows are priced by the owning QSA pool.
+    """
     kv_vector_bytes = kv_cache_storage_bytes_per_vector(
         spec.head_dim,
         value_dtype_bytes=config.dtype.itemsize,
@@ -52,7 +56,7 @@ def spec_kv_bytes_per_token(spec, config) -> int:
         * div_even(spec.num_kv_heads, config.tp_info.size, allow_replicate=True)
         * spec.num_layers
     )
-    return per_token + spec.index_head_dim * spec.num_index_layers * 2
+    return per_token + spec.index_head_dim * spec.num_index_layers * 2 // spec.index_ratio
 
 
 class BaseKVCachePool(ABC):

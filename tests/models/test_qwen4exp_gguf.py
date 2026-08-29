@@ -61,13 +61,16 @@ def test_qwen4exp_gguf_parses_actual_qsa_gdn_and_ple_geometry():
     assert config.model_type == "qwen4exp"
     assert config.num_layers == 48
     assert config.num_experts_per_tok == 10
+    assert config.norm_topk_prob is True
     assert config.qwen4_args.output_gate_type == "sigmoid"
     assert config.qwen4_args.ple_layer_ids == (1,)  # GGUF ids are already zero-based.
     assert config.qwen4_args.mrope_section == (11, 11, 10)
     assert config.qwen4_args.indexer_budget == 2048
     qsa_group = next(group for group in config.attention_groups if group.name == "qsa")
     assert qsa_group.layer_ids == tuple(range(3, 48, 4))
-    assert config.linear_attention_group().layer_ids == tuple(
+    linear_group = config.linear_attention_group()
+    assert linear_group.output_gate == "sigmoid"
+    assert linear_group.layer_ids == tuple(
         layer for layer in range(48) if layer % 4 != 3
     )
     assert config.requires_naive_cache and not config.supports_cuda_graph
@@ -82,6 +85,7 @@ def test_qwen4exp_gguf_is_registered_with_the_native_weight_iterator():
 
     assert registry_key == "Qwen4ExpGGUFForCausalLM"
     assert spec.module == "freetoken.models.qwen4_exp"
+    assert spec.model_cls == "Qwen4ExpGGUFForCausalLM"
     assert spec.iter_weights == "iter_gguf_weights"
 
 

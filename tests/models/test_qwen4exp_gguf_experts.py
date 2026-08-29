@@ -81,7 +81,7 @@ def test_qwen4_gguf_provider_marks_three_file_backed_banks(monkeypatch):
         lambda *_a, **_k: {"gate": [GGML_IQ2_S], "up": [GGML_IQ2_S], "down": [GGML_IQ4_NL]},
     )
     config = SimpleNamespace(
-        architectures=["Qwen4ExpForCausalLM"], num_layers=1, num_experts=2
+        architectures=["Qwen4ExpGGUFForCausalLM"], num_layers=1, num_experts=2
     )
 
     banks = _gguf_banks("fixture.gguf", config, torch.device("cpu"), torch.bfloat16, False)

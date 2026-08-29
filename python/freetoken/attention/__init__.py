@@ -33,10 +33,6 @@ class BackendInfo:
     # Whether forward() honors a per-call AttentionSpec (window/sm_scale/sinks).
     # Non-consumers raise on a non-None spec instead of silently dropping it.
     consumes_attn_spec: bool = False
-    # Whether this backend coexists with hybrid-linear (GDN/mamba) models. The
-    # linear layers bypass the backend entirely, but a backend whose metadata or
-    # graph machinery assumes layer 0 is an attention layer can opt out here.
-    hybrid_linear_ok: bool = True
 
 
 SUPPORTED_ATTENTION_BACKENDS = Registry[BackendCreator]("Attention Backend")
@@ -134,12 +130,27 @@ def create_m3_sparse_backend(config: ModelConfig):
 
 @SUPPORTED_ATTENTION_BACKENDS.register(
     "qsa",
-    BackendInfo(supported_types=frozenset({AttnType.QSA})),
+    BackendInfo(supported_types=frozenset({AttnType.QSA_TOKEN})),
 )
 def create_qsa_backend(config: ModelConfig):
     from .qsa import QSAAttnBackend
 
     return QSAAttnBackend(config)
+
+
+@SUPPORTED_ATTENTION_BACKENDS.register(
+    "qsa_sparse",
+    BackendInfo(
+        supported_types=frozenset({AttnType.QSA}),
+        # 64-token pages: a 4-token compress group never straddles a page, so the
+        # compressed row of a group is page_base // 4 + block-in-page.
+        page_sizes=(64,),
+    ),
+)
+def create_qsa_sparse_backend(config: ModelConfig):
+    from .qsa_sparse import QSASparseAttnBackend
+
+    return QSASparseAttnBackend(config)
 
 
 def attention_backend_info(name: str) -> BackendInfo:

@@ -170,7 +170,7 @@ def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
                     key_head_dim=state_size,
                     value_head_dim=state_size,
                     conv_kernel_dim=conv_kernel,
-                    output_gate=True,
+                    output_gate="silu",
                 ),
             ),
             key=lambda g: g.layer_ids[0] if g.layer_ids else 1 << 30,

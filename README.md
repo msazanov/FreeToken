@@ -254,3 +254,19 @@ global pool stride. These are quality/compatibility experiments rather than
 assumed speed wins. Qwen-GGUF MXFP4 remains unsupported by the generic loader,
 and Ornith MTP is a separate speculative-decoding project. Detailed evidence
 and test gates are in `TESTLOG.md`.
+
+Before the type-46 port, this branch also absorbed FreeToken upstream through
+`58f4b9e` (including the official Qwen3.8 runtime) while preserving the existing
+GGUF/Turing implementation as a separate compatibility path. The combined CPU
+gate is `245 passed, 139 skipped`; the merge fixed two silent GGUF parity bugs:
+Qwen3.8 now renormalizes its selected top-10 expert weights and the GDN output
+gates use the upstream string contracts (`sigmoid` for Qwen3.8, `silu` for
+Ornith/Qwen3.5).
+
+The first `TQ3_4S` weight A/B deliberately keeps the current KV format unchanged.
+`TQ3_4S` model weights and a three-bit TurboQuant KV cache are different codecs:
+the former stores offline-transformed weight blocks, while KV must encode dynamic
+attention vectors online. At 122,880 tokens a hypothetical three-bit KV codec
+could save about 375 MiB versus `tq4-nc`, worth roughly 250 additional TQ3 expert
+slots; the weight port itself projects about 514 additional slots. Therefore KV
+is a later isolated A/B, not part of the initial weight result.

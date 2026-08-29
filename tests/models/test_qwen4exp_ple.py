@@ -19,7 +19,7 @@ class _PleTensor:
 
 
 def _ple_embedding():
-    from freetoken.models.qwen4_exp.model import _HostNGramEmbedding
+    from freetoken.models.qwen4_exp.gguf_model import _HostNGramEmbedding
 
     embedding = _HostNGramEmbedding(
         SimpleNamespace(
@@ -40,7 +40,7 @@ def _ple_embedding():
 
 
 def _real_geometry_ple_embedding(*, ple_embed_dim: int = 2560):
-    from freetoken.models.qwen4_exp.model import _HostNGramEmbedding
+    from freetoken.models.qwen4_exp.gguf_model import _HostNGramEmbedding
 
     # This is the production Qwen3.8 Flash Next layout: two n-gram groups
     # (2-gram and 3-gram), each with eight heads.
@@ -103,7 +103,7 @@ def test_qwen4_ple_accepts_iq4_nl_table(monkeypatch):
 def test_qwen4_ple_forward_uses_actual_ngram_layout(monkeypatch):
     from freetoken.kernel import gguf as gguf_kernel
     from freetoken.models.gguf.dequant import GGML_IQ4_NL
-    from freetoken.models.qwen4_exp import model as qwen4_model
+    from freetoken.models.qwen4_exp import gguf_model as qwen4_model
 
     table = _PleTensor(GGML_IQ4_NL, (16, 160), 90)
     table._packed[:, 0] = torch.arange(16, dtype=torch.uint8)

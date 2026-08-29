@@ -51,8 +51,8 @@ def test_qwen4_qsa_group_emits_compressed_index_cache_spec():
 
     spec = config.kv_cache_group_specs()[0]
 
-    assert config.attn_type_for_layer(3) is AttnType.QSA
-    assert spec.attn_type is AttnType.QSA
+    assert config.attn_type_for_layer(3) is AttnType.QSA_TOKEN
+    assert spec.attn_type is AttnType.QSA_TOKEN
     assert spec.index_num_kv_heads == 1
     assert spec.index_compress_ratio == 4
     assert spec.index_token_budget == 2048

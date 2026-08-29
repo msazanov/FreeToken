@@ -150,7 +150,7 @@ def qsa_tq4_sparse_gqa(
 
 class QSAAttnBackend(BaseAttnBackend):
     def __init__(self, config: ModelConfig) -> None:
-        from freetoken.kvcache.qsa_pool import QSAKVCache
+        from freetoken.kvcache.qsa_legacy_pool import QSAKVCache
 
         self.config = config
         self.args = config.qwen4_args

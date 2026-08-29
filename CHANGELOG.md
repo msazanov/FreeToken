@@ -770,3 +770,20 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   KV cache first: vLLM's merged TurboQuant study reports substantial low-bit
   throughput costs, and an SM75 llama.cpp test also measured slower prefill and
   decode. No runtime code, model download or service state changed.
+
+### Integrated — upstream Qwen3.8 baseline before the TQ3_4S port
+
+- Integrated upstream through `58f4b9e` while keeping official block-sparse QSA
+  and the fork's GGUF token-indexed QSA as separate runtime/cache contracts.
+- Fixed GGUF Qwen3.8 router-weight renormalization and migrated GDN gate values
+  to the upstream string API (`sigmoid` Qwen3.8, `silu` Ornith/Qwen3.5), each
+  covered by a regression test.
+- Corrected an over-broad AOT registry assertion: only exact-geometry Qwen3.8
+  aliases are claimed by its AOT entry; universal GGUF/JIT architectures are not.
+- Replaced one bit-exact CPU PLE assertion with a measured `1e-6` tolerance after
+  proving BLAS reduction order was the sole source (`max abs 8.34e-7`).
+- Combined merge gate: `245 passed, 139 skipped`. No model download, TQ3 kernel,
+  service restart or new performance number occurred in this integration step.
+- Retained `tq4-nc` as the first TQ3-weight A/B control. A hypothetical 3-bit KV
+  mode is tracked separately because it is a distinct online codec and projects
+  only about +250 slots at 122,880, versus about +514 from TQ3 weights.

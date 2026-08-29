@@ -70,8 +70,8 @@ def fused_topk(
         return _torch_fused_topk(gating_output, topk, renormalize, num_token_non_padded)
 
     if topk & (topk - 1):
-        # triton_kernels.topk builds tl.arange(0, k), so Qwen3.8's top-10
-        # router must use the padded/masked in-tree implementation.
+        # triton_kernels.topk builds tl.arange(0, k), which must be a power of 2; a
+        # top-10 router (qwen4_exp) takes the equivalent vendored triton router instead.
         from freetoken.kernel.triton.moe_router import fused_topk_softmax
 
         return fused_topk_softmax(gating_output, topk, renormalize, num_token_non_padded)

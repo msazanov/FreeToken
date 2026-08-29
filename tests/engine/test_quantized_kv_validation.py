@@ -52,11 +52,11 @@ def test_tq4_qsa_uses_its_dedicated_scale_aware_backend():
     """Qwen4 QSA can only use the packed TQ4 gathered-row implementation."""
     from freetoken.engine.engine import _validate_quantized_kv_config
 
-    _validate_quantized_kv_config(_config("tq4-nc", "qsa", AttnType.QSA))
+    _validate_quantized_kv_config(_config("tq4-nc", "qsa", AttnType.QSA_TOKEN))
 
 
 def test_qsa_int8_stays_rejected_until_it_has_a_gathered_kernel():
     from freetoken.engine.engine import _validate_quantized_kv_config
 
     with pytest.raises(ValueError, match="tq4-nc"):
-        _validate_quantized_kv_config(_config("int8", "qsa", AttnType.QSA))
+        _validate_quantized_kv_config(_config("int8", "qsa", AttnType.QSA_TOKEN))

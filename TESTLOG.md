@@ -1575,3 +1575,59 @@ Primary references: [FreeToken #141](https://github.com/FlashML-org/FreeToken/is
 [llama.cpp feature issue #20977](https://github.com/ggml-org/llama.cpp/issues/20977),
 [TQ3 runtime fork](https://github.com/turbo-tan/llama.cpp-tq3), and
 [Ornith TQ3_4S](https://huggingface.co/YTan2000/Ornith-1.5-35B-A3B-TQ3_4S).
+
+## 2026-08-30 — TQ3_4S upstream/baseline gate (complete; no TQ3 runtime yet)
+
+The feature branch started this gate at `719633d`; upstream `58f4b9e` was merged
+before adding GGML type 46. Official Qwen3.8 and the existing GGUF/Turing runtime
+have incompatible QSA cache/state contracts, so they were kept separate:
+official Qwen3.8 uses `QSA` + `qsa_sparse`, while GGUF uses `QSA_TOKEN` + the
+legacy token-indexed pool. This avoids making one enum silently select the wrong
+page geometry or PLE implementation.
+
+Independent review found two silent quality regressions in the draft merge. Both
+were reproduced by new RED assertions and fixed before any TQ3 code:
+
+- GGUF Qwen3.8 had `norm_topk_prob=False`; it now matches the official default
+  `True`, so the ten selected router weights are renormalized.
+- `LinearGatedDeltaGroupConfig.output_gate` changed from a boolean to an
+  activation name upstream. The adapters now use `sigmoid` for Qwen3.8 and
+  `silu` for Ornith/Qwen3.5.
+
+One upstream PLE boundary test was also diagnosed rather than suppressed. A
+70-row CPU GEMM and its 64-row truncated reference select different BLAS
+reduction orders: maximum absolute state difference was `8.344650268554688e-7`,
+mean `2.7411967806756365e-8`, with no NaNs and no value above `1e-6`. The test
+now uses `rtol=1e-5, atol=1e-6`; the snapshot/COW production path was unchanged.
+
+Verification with the repository source forced ahead of the older editable
+venv install:
+
+```text
+PYTHONPATH=/home/random/dev/qwen/freetoken/python \
+  /home/random/freetoken-turing/.venv/bin/python -m pytest <combined Qwen/QSA/KV/MoE/scheduler matrix> -q
+245 passed, 139 skipped, 1 warning
+```
+
+The immutable speed control remains commit `7bfeeae`, artifact
+`benchmarks/results/ornith35-q4km-live-16k-p1024-r2/context-16384.json`:
+official Ornith Q4_K_M, 122,880-token INT8 KV, 1,429 auto-sized expert slots,
+offload + serial expert loading, Triton attention, one request, prefill chunk
+1024, seed `20260828`, temperature 0. It measured 16,400 prompt + 4,095 forced
+output tokens, 99.856 prefill tok/s, 19.522 decode tok/s and 164.24 s TTFT.
+
+### Why the initial KV control stays `tq4-nc`
+
+Weight `TQ3_4S` and online KV TurboQuant are not byte-compatible. Exact Ornith
+KV accounting for its ten full-attention layers is:
+
+| KV mode | Bytes/token | 122,880-token footprint | Delta vs `tq4-nc` | TQ3 slot equivalent |
+| --- | ---: | ---: | ---: | ---: |
+| `tq4-nc` | 5,200 | 609.375 MiB | control | 0 |
+| hypothetical three-bit TurboQuant KV | 2,000 | 234.375 MiB | -375 MiB | about +250 |
+
+Projected extra TQ3 slots from KV are about 33/133/233/250 at
+16K/64K/112K/122,880. The smaller TQ3 weights project roughly +514 slots under
+the current packed-weight budget, so the weight change has about twice the
+first-order cache-capacity effect. No three-bit KV kernel, GPU result, speedup or
+quality result is claimed here.

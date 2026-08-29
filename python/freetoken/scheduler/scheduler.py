@@ -82,7 +82,7 @@ def _snapshot_finished_moe_stats(config, engine, replies: List[DetokenizeMsg]) -
     """Attach one terminal telemetry snapshot to finished detokenize replies."""
     if not getattr(config, "moe_collect_stats", False) or not any(m.finished for m in replies):
         return
-    cache = engine.moe_offload_cache
+    cache = getattr(engine, "moe_offload_cache", None)
     moe_stats = cache.telemetry_snapshot() if cache is not None else None
     if moe_stats is not None:
         for msg in replies:
@@ -431,7 +431,9 @@ class Scheduler(SchedulerIOMixin):
                     self.cache_manager.cache_req(req, finished=False)
 
         self.finished_reqs = new_finished_reqs
-        _snapshot_finished_moe_stats(self.config, self.engine, reply)
+        # CPU scheduler harnesses exercise the real drain path without constructing the
+        # heavyweight Engine.  Telemetry is optional there, so keep the core path duck-typed.
+        _snapshot_finished_moe_stats(self.config, getattr(self, "engine", None), reply)
         # Stamp each reply with the post-batch KV page occupancy so the frontend (shell
         # status bar) can show live KV usage without a separate query.
         used, total = self._kv_usage_pages()

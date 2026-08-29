@@ -86,7 +86,7 @@ def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
             key_head_dim=int(_kv(shim, "ssm.state_size")),
             value_head_dim=int(_kv(shim, "ssm.state_size")),
             conv_kernel_dim=int(_kv(shim, "ssm.conv_kernel")),
-            output_gate=True,
+            output_gate="sigmoid",
         ),
         QSAAttentionGroupConfig(
             name="qsa",
@@ -151,7 +151,9 @@ def parse_gguf_config(shim: "GgufConfigShim") -> ModelConfig:
         num_experts_per_tok=int(_kv(shim, "expert_used_count")),
         moe_intermediate_size=int(_kv(shim, "expert_feed_forward_length")),
         shared_expert_intermediate_size=int(_kv(shim, "expert_shared_feed_forward_length")),
-        norm_topk_prob=False,
+        # Match the official qwen4_exp text config: top-k route weights are
+        # renormalized after expert selection.  Disabling this is silent quality drift.
+        norm_topk_prob=True,
         model_type=shim.model_type,
         architectures=list(shim.architectures),
         moe_enabled=True,
