@@ -986,3 +986,29 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
 - Do not claim quality parity: the lexical rubric scored all runs 4/5, but the
   TQ3 answer reversed accepted/rejected experiment facts and was truncated; Q4
   was more accurate on this single prompt. Broader quality evaluation remains.
+
+### Fixed — objective 2D model/feature throughput graph
+
+- Replaced the misleading all-ledger polyline and interim dashboard with one 2D
+  figure: linear decode tok/s on X and actual context tokens on a log2 Y axis
+  with one equally spaced tick per doubling.
+- Added `benchmarks/comparison_cohorts.json` as an auditable assignment layer.
+  All 21 immutable ledger rows are plotted once; the unmatched
+  108-output-token run remains visible as a cross with an exclusion reason.
+- Made graph generation fail on unclassified or multiply assigned rows, so a
+  future benchmark cannot silently become a visually invalid comparison.
+- Connected only the unchanged Ornith Q4_K_M and Qwen REAP configurations across
+  1K/16K/64K. TQ3/cache/prefill-block repeats remain isolated points, preventing
+  a one-context modification from becoming a fabricated context curve.
+- Used blue shades and distinct marker shapes for Ornith modifications and a
+  separate green series for Qwen. Kept raw repeat points rather than replacing
+  them with a selected or averaged result.
+- Closed independent-review P2 gaps: baseline series/category metadata is
+  checked against the ledger model/quant/context identity; duplicate artifact
+  rows are rejected before dictionary construction; SVG tests now compare all
+  21 exact artifact coordinates and both line-membership sets with source data.
+- Mitigated real 16K point overlap without coordinate jitter by cycling the
+  p1024-p4096 sweep through four marker shapes and eight related blue shades;
+  exact values remain printed below the plot.
+- Kept every source measurement unchanged in the append-only JSONL registry;
+  regenerated only the derived `model-context-speed.svg/png` presentation.

@@ -84,13 +84,17 @@ traffic. The two complete matched series are retained under
 the added host-I/O telemetry, while v1 remains a real repeat.
 
 **`plot_context_results.py`** — dependency-free SVG renderer for both the
-append-only cross-model ledger and the compact Task-7 weight/cache summary. It
-plots every valid registry row rather than selecting three representative
-points. Reproduce the checked-in figures with:
+append-only cross-model ledger and the compact Task-7 weight/cache summary.
+The ledger remains complete, but the presentation layer uses the explicit
+`comparison_cohorts.json` manifest instead of connecting unrelated rows. Every
+row must be assigned exactly once to a controlled cohort or to an exclusion
+with a reason; otherwise rendering fails. Reproduce the checked-in figures
+with:
 
 ```bash
 PYTHONPATH=python:. python benchmarks/plot_context_results.py \
   --registry benchmarks/results/model-context-speed.jsonl \
+  --comparison-manifest benchmarks/comparison_cohorts.json \
   --output benchmarks/results/model-context-speed.svg
 
 PYTHONPATH=python:. python benchmarks/plot_context_results.py \
@@ -100,5 +104,10 @@ PYTHONPATH=python:. python benchmarks/plot_context_results.py \
     benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/weight-ab.svg
 ```
 
+The main figure is one 2D decode-throughput plot: X is linear decode tok/s and Y
+is actual context on a log2 scale with one tick per doubling. It displays every
+ledger run exactly once. Only the unchanged Ornith Q4_K_M and Qwen REAP
+1K/16K/64K configurations are connected; all TQ3/cache/prefill-block repeats
+remain isolated blue-family markers, and the unmatched short run is a cross.
 The PNG copies are presentation derivatives of those SVG files. The raw JSON,
 not a chart pixel, remains the numeric authority.

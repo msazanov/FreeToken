@@ -80,6 +80,14 @@ rejected rather than rewritten. Each row binds actual input/output tokens,
 prefill and decode throughput, seed, quantization, runtime profile, revision and
 the immutable raw JSON path.
 
+The presentation graph plots all 21 rows exactly once but does **not** connect
+them into one synthetic curve. `benchmarks/comparison_cohorts.json` assigns
+every immutable artifact to a controlled series or records why it is not a
+direct comparison. The current ledger has six canonical cross-model context
+runs, six repeated TQ3 weight/cache A/B runs, eight 16K prefill-block runs, and
+one older 16K/108-output-token run marked with a cross. Rendering fails if a new
+row is unclassified or one row is assigned twice.
+
 The first normalized cross-model slice uses the same fixed prompt generator,
 temperature `0` and seed `20260828`. It is a useful hardware comparison, not a
 one-variable A/B: Qwen needs `tq4-nc`/256-slot LRU while Ornith uses the
@@ -91,6 +99,23 @@ chat template also give a slightly different actual prompt length.
 | 1K | 14.63 / 2.17 tok/s | 63.54 / 29.08 tok/s | 13.4× |
 | 16K | 36.72 / 2.10 tok/s | 91.75 / 21.00 tok/s | 10.0× |
 | 64K | 38.23 / 2.05 tok/s | 53.45 / 13.59 tok/s | 6.6× |
+
+Rebuild the objective 2D SVG with:
+
+```bash
+PYTHONPATH=python:. python benchmarks/plot_context_results.py \
+  --registry benchmarks/results/model-context-speed.jsonl \
+  --comparison-manifest benchmarks/comparison_cohorts.json \
+  --output benchmarks/results/model-context-speed.svg
+```
+
+The single graph puts linear decode speed on X and actual context tokens on a
+log2 Y axis, with one equally spaced tick per doubling from 1K through 64K.
+Color families encode model family: blue shades are Ornith configurations and
+green is Qwen. Only the unchanged canonical Ornith Q4_K_M and Qwen REAP
+configurations have lines across 1K/16K/64K. TQ3, cache-capacity, prefill-block,
+repeat, and unmatched measurements remain individual points at their real
+coordinates rather than becoming invented context curves.
 
 At 16K, the direct chunk A/B has now completed: `1024` measured 97.83 prefill
 tok/s and 21.48 decode tok/s, versus 91.75 / 21.00 with `640` (+6.6% / +2.3%),
@@ -436,8 +461,10 @@ repeats, yet it reversed the accepted/rejected labels of two optimizations and
 was truncated. A broader quality suite is required before replacing Q4_K_M for
 accuracy-sensitive work.
 
-The compact source-of-truth JSON and plots are under
+The compact source-of-truth JSON and focused plots are under
 `benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/`; the complete
-21-point cross-model/context ledger is rendered from
-`benchmarks/results/model-context-speed.jsonl` by
-`benchmarks/plot_context_results.py`.
+21-point numeric ledger remains
+`benchmarks/results/model-context-speed.jsonl`. The objective 2D figure is
+rendered from that ledger plus `benchmarks/comparison_cohorts.json` by
+`benchmarks/plot_context_results.py`; all 21 runs are visible, while the lone
+non-matched run uses a cross and is never connected to a context series.

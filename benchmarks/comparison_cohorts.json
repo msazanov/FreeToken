@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "description": "Explicit apples-to-apples cohorts for the RTX 2070 end-to-end throughput figure. Artifact paths are immutable ledger identities; every ledger row must appear exactly once in a cohort or in excluded.",
+  "cohorts": {
+    "model_context": [
+      {
+        "artifact": "qwen38-reap256-1k-lru/context-1024.json",
+        "series": "Qwen3.8 REAP-256 · Q3_K_XL",
+        "category": "1K"
+      },
+      {
+        "artifact": "qwen38-reap256-16k-lru/context-16384.json",
+        "series": "Qwen3.8 REAP-256 · Q3_K_XL",
+        "category": "16K"
+      },
+      {
+        "artifact": "qwen38-reap256-64k-lru/context-65536.json",
+        "series": "Qwen3.8 REAP-256 · Q3_K_XL",
+        "category": "64K"
+      },
+      {
+        "artifact": "ornith35-q4km-r2/context-1024.json",
+        "series": "Ornith 1.5 35B · Q4_K_M",
+        "category": "1K"
+      },
+      {
+        "artifact": "ornith35-q4km-r3/context-16384.json",
+        "series": "Ornith 1.5 35B · Q4_K_M",
+        "category": "16K"
+      },
+      {
+        "artifact": "ornith35-q4km-r3/context-65536.json",
+        "series": "Ornith 1.5 35B · Q4_K_M",
+        "category": "64K"
+      }
+    ],
+    "tq3_weight_cache_ab": [
+      {
+        "artifact": "ornith35-tq3-weight-ab-task7-v1/q4km-fixed1429-v3-cold/compression-1024.json",
+        "variant": "Q4_K_M fixed",
+        "slots": 1429,
+        "repeat": "v1"
+      },
+      {
+        "artifact": "ornith35-tq3-weight-ab-task7-v2-system/q4km-fixed1429-cold/compression-1024.json",
+        "variant": "Q4_K_M fixed",
+        "slots": 1429,
+        "repeat": "v2"
+      },
+      {
+        "artifact": "ornith35-tq3-weight-ab-task7-v1/tq3-fixed1429-cold/compression-1024.json",
+        "variant": "TQ3_4S fixed",
+        "slots": 1429,
+        "repeat": "v1"
+      },
+      {
+        "artifact": "ornith35-tq3-weight-ab-task7-v2-system/tq3-fixed1429-cold/compression-1024.json",
+        "variant": "TQ3_4S fixed",
+        "slots": 1429,
+        "repeat": "v2"
+      },
+      {
+        "artifact": "ornith35-tq3-weight-ab-task7-v1/tq3-auto2633-cold/compression-1024.json",
+        "variant": "TQ3_4S auto",
+        "slots": 2633,
+        "repeat": "v1"
+      },
+      {
+        "artifact": "ornith35-tq3-weight-ab-task7-v2-system/tq3-auto2633-cold/compression-1024.json",
+        "variant": "TQ3_4S auto",
+        "slots": 2633,
+        "repeat": "v2"
+      }
+    ],
+    "prefill_block_sweep": [
+      {
+        "artifact": "ornith35-q4km-live-16k-p1024-r2/context-16384.json",
+        "category": "p1024",
+        "prefill_block_tokens": 1024
+      },
+      {
+        "artifact": "ornith35-live-prefill-sweep-16k-4k-r2-p1280/context-16384.json",
+        "category": "p1280",
+        "prefill_block_tokens": 1280
+      },
+      {
+        "artifact": "ornith35-live-prefill-sweep-16k-4k-r2-p1536/context-16384.json",
+        "category": "p1536",
+        "prefill_block_tokens": 1536
+      },
+      {
+        "artifact": "ornith35-live-prefill-sweep-16k-4k-r2-p1792/context-16384.json",
+        "category": "p1792",
+        "prefill_block_tokens": 1792
+      },
+      {
+        "artifact": "ornith35-live-prefill-sweep-16k-4k-r2-p2048/context-16384.json",
+        "category": "p2048",
+        "prefill_block_tokens": 2048
+      },
+      {
+        "artifact": "ornith35-live-prefill-sweep-16k-4k-r2-p2560/context-16384.json",
+        "category": "p2560",
+        "prefill_block_tokens": 2560
+      },
+      {
+        "artifact": "ornith35-live-prefill-sweep-16k-4k-r2-p3072/context-16384.json",
+        "category": "p3072",
+        "prefill_block_tokens": 3072
+      },
+      {
+        "artifact": "ornith35-live-prefill-sweep-16k-4k-r2-p4096/context-16384.json",
+        "category": "p4096",
+        "prefill_block_tokens": 4096
+      }
+    ]
+  },
+  "excluded": [
+    {
+      "artifact": "ornith35-q4km-16k-p1024-r2/context-16384.json",
+      "reason": "Иной коммит и короткая генерация на 108 токенов: запись не относится ни к каноническому model-sweep 1K/16K/64K, ни к согласованному prefill-sweep с 4,095 выходными токенами."
+    }
+  ]
+}

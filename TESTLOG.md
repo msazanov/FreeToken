@@ -2285,3 +2285,68 @@ server arguments and resolved BF16/INT8/cache geometry are in the sibling
 canonical v1/v2 points were appended to the
 21-row `model-context-speed.jsonl` registry and rendered to
 `model-context-speed.svg/png` rather than replacing earlier measurements.
+
+## 2026-08-30 — Objective model/feature graph from the existing 21-run ledger
+
+No model was rerun for this presentation correction and no numeric result was
+changed. The previous graph grouped only by model and quantization, so it drew
+ten different Ornith Q4_K_M 16K experiments as a vertical cloud, mixed short
+and 4,095-token generations, hid prefill-block/cache changes, and connected
+unrelated context points with a polyline. The picture was numerically sourced
+but visually implied comparisons that the experiment controls did not support.
+
+An explicit manifest at `benchmarks/comparison_cohorts.json` now accounts for
+all 21 immutable artifact paths:
+
+| Cohort | Runs | Directly controlled comparison |
+|---|---:|---|
+| model/context | 6 | Qwen REAP Q3_K_XL versus Ornith Q4_K_M at requested 1K, 16K and 64K; same seed/temperature, model-specific runtime profiles disclosed |
+| TQ3 weight/cache A/B | 6 | Q4 fixed-1429, TQ3 fixed-1429 and TQ3 auto-2633; two complete repeats, same 1,012-token prompt/16K INT8-KV/p1024 controls |
+| prefill-block sweep | 8 | Ornith Q4_K_M at 16,400 input + 4,095 output tokens; p1024 through p4096 |
+| explicitly excluded | 1 | older 16K p1024 run from another commit with only 108 output tokens |
+
+The corrected SVG/PNG is one 2D graph, not a dashboard. X is measured decode
+tok/s on a linear axis; Y is actual input context on a log2 axis whose evenly
+spaced ticks each mean a twofold increase. All 21 raw runs appear as points.
+Blue shades and marker shapes distinguish Ornith Q4, TQ3 fixed/auto,
+fixed-capacity repeats, and the p1024-p4096 sweep; Qwen is green. Only the two
+unchanged canonical configurations have lines across 1K/16K/64K. Single-context
+modifications are deliberately not connected. The unmatched 108-output-token
+run remains visible as a cross rather than being silently dropped.
+
+The plotted numbers therefore remain exactly the earlier measurements:
+
+- canonical model decode at 1K/16K/64K: Ornith `29.085 / 20.996 / 13.591`
+  tok/s versus Qwen `2.175 / 2.100 / 2.046` tok/s;
+- repeated 1K TQ3 A/B decode means: Q4 fixed `24.972`, TQ3 fixed `28.019`,
+  TQ3 auto `34.242` tok/s;
+- 16K p-sweep prefill rises from `99.856` at p1024 to `112.345` at p4096,
+  while decode is non-monotonic and peaks at the measured p2560 point
+  (`28.064` tok/s).
+
+`classify_comparison_rows` rejects an unclassified ledger row and a duplicate
+assignment. This intentionally turns future line/style membership into a
+visible methodology decision instead of automatically drawing another
+ambiguous curve. Numeric authority remains
+`benchmarks/results/model-context-speed.jsonl`; the new presentation outputs
+remain `model-context-speed.svg/png`. The complete benchmark-tool regression
+suite passed `77 passed in 4.44s` after the 2D renderer and CLI change; the
+pre-review repeat passed `77 passed in 4.19s`. After adding the review-requested
+forged-category regression, the final gate passed `78 passed in 3.99s`.
+
+An independent Luna methodology review found no P0/P1 blocker and reproduced
+the 21/21 point count, exact two-line topology, coordinate values and readable
+1500×1050 PNG. It identified three P2 guard gaps: a forged manifest `series`
+could move a Qwen point onto an Ornith line, duplicate ledger artifacts could
+collapse in a dictionary, and tests counted SVG marks without checking exact
+artifact coordinates/line membership. All three now fail closed. The SVG stores
+each artifact key plus exact context/decode data attributes, and each polyline
+stores its three source artifacts; a regression test compares both sets against
+the JSONL and manifest. The remaining P3 was unavoidable near-overlap between
+genuinely close 16K points. They were not jittered because that would falsify
+context coordinates; instead the eight p-sweep measurements now rotate through
+four marker shapes and eight related blue shades, while exact values remain in
+the figure footer. The reviewer's isolated environment passed the 11 plotting
+tests but reported `73 passed, 1 failed` for the broader benchmark directory
+because `huggingface_hub` was absent there; the controller's configured project
+environment produced both complete 77-test passes above.
