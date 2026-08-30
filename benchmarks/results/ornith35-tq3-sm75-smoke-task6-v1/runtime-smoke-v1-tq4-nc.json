@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-08-30T03:55:54+03:00",
+  "ended_at": "2026-08-30T03:57:14+03:00",
+  "result": "failed_before_request",
+  "model": "Ornith 1.5 35b TQ3",
+  "model_sha256": "07ec68966341e3915d7fde699cbf70af11f1b1e01a26a45692a1399420473740",
+  "runtime": {
+    "context_tokens": 16384,
+    "kv_capacity_tokens": 16384,
+    "kv_cache_dtype": "tq4-nc",
+    "attention_backend": "triton",
+    "moe_backend": "offload",
+    "expert_load": "serial",
+    "memory_ratio": 0.85,
+    "max_prefill_length": 1024,
+    "cuda_graph_max_batch": 1,
+    "moe_prefill_overlap": false
+  },
+  "resolved": {
+    "moe_cache_slots": 2687,
+    "num_pages": 16461,
+    "kv_reported_gib": 0.08,
+    "free_vram_before_model_gib": 7.49,
+    "free_vram_after_initialization_gib": 1.10
+  },
+  "resource_summary": {
+    "wall_seconds": 80.603,
+    "cpu_seconds": 197.932,
+    "memory_peak_gib": 22.4,
+    "swap_peak_gib": 4.2
+  },
+  "failure": {
+    "phase": "CUDA graph warmup before serving any generation request",
+    "exception": "AssertionError",
+    "location": "python/freetoken/attention/triton.py:155",
+    "assertion": "head_dim == q.shape[-1]",
+    "root_cause": "MHAKVCache exposes half-width packed uint8 TQ4 storage, while generic Triton attention interprets its physical last dimension as the logical head dimension and has no nibble decoder",
+    "weight_kernel_implicated": false,
+    "oom": false,
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  "follow_up": {
+    "red_test": "1 failed, 5 passed in 4.12s",
+    "fixed_validation_gate": "9 passed, 1 skipped in 4.16s",
+    "policy": "reject generic-MHA tq4-nc before model loading; retain tq4-nc only for the dedicated QSA path",
+    "next_run_kv_dtype": "int8"
+  }
+}

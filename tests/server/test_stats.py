@@ -16,6 +16,7 @@ def _state(stats: StatsTracker) -> SimpleNamespace:
             served_model_name="test-model",
             max_seq_len=4096,
             page_size=1,
+            kv_cache_dtype="int8",
             model_config=SimpleNamespace(
                 has_linear_attention=False,
                 has_swa_attention=False,
@@ -49,6 +50,21 @@ def test_stats_tracker_publishes_only_the_terminal_moe_payload():
     assert document["requests"]["completed"] == 1
     assert document["requests"]["p95_ms"] == 12
     assert document["requests"]["ttft_mean_ms"] == 3
+
+
+def test_stats_publish_the_resolved_kv_dtype_with_the_pool_geometry():
+    stats = StatsTracker()
+    stats.kv_used_pages = 17
+    stats.kv_total_pages = 128
+
+    document = build_stats(_state(stats), p95_ms=0, ttft_mean_ms=0)
+
+    assert document["kv"] == {
+        "used_pages": 17,
+        "total_pages": 128,
+        "page_size": 1,
+        "dtype": "int8",
+    }
 
 
 def test_moe_reset_waits_for_first_prefill_batch_not_user_queue_arrival():

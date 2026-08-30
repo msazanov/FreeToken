@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-08-30T04:02:24+03:00",
+  "ready_at": "2026-08-30T04:03:39+03:00",
+  "result": "served_and_generated",
+  "model": "Ornith 1.5 35b TQ3",
+  "model_sha256": "07ec68966341e3915d7fde699cbf70af11f1b1e01a26a45692a1399420473740",
+  "source_commit_before_task6": "3204bbb3b8c058bf659c2ce9765b7f01e56eee42",
+  "source_dirty": true,
+  "provenance": {
+    "artifact": "run-provenance.json"
+  },
+  "runtime": {
+    "context_tokens": 16384,
+    "kv_capacity_tokens": 16384,
+    "kv_cache_dtype": "int8",
+    "attention_backend": "triton",
+    "moe_backend": "offload",
+    "expert_load": "serial",
+    "memory_ratio": 0.85,
+    "max_prefill_length": 1024,
+    "cuda_graph_max_batch": 1,
+    "moe_prefill_overlap": false,
+    "cache_type": "hybrid_radix"
+  },
+  "resolved": {
+    "moe_cache_slots": 2633,
+    "num_pages_solver": 16524,
+    "kv_usable_pages": 16384,
+    "kv_reported_gib": 0.16,
+    "kv_bytes_per_token": 10320,
+    "expert_slot_bytes": 1572864,
+    "mamba_slots": 8,
+    "free_vram_before_model_gib": 7.49,
+    "free_vram_after_initialization_gib": 1.10,
+    "server_vram_bytes_after_requests": 6977224704,
+    "process_memory_peak_bytes": 24047763456
+  },
+  "warmup": {
+    "cuda_graph_batch_sizes": [1],
+    "prefill_lengths": [80, 128],
+    "prefill_warmup_seconds": 11.013
+  },
+  "deterministic_short_requests": [
+    {
+      "prompt_tokens": 28,
+      "completion_tokens": 4,
+      "cached_tokens_from_scheduler": 0,
+      "wall_seconds": 5.429698,
+      "http_status": 200,
+      "response": "Turing works"
+    },
+    {
+      "prompt_tokens": 28,
+      "completion_tokens": 4,
+      "cached_tokens_from_scheduler": 0,
+      "wall_seconds": 4.277123,
+      "http_status": 200,
+      "response": "Turing works"
+    }
+  ],
+  "repository_compression": [
+    {
+      "artifact": "benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/live/compression-1024.json",
+      "prompt_tokens": 1012,
+      "completion_tokens": 127,
+      "cached_tokens": 0,
+      "ttft_seconds": 8.98275438300334,
+      "cold_prefill_tps_estimate": 112.66032186239549,
+      "decode_tps": 37.61168459513721,
+      "quality_anchors": "2/5 (response truncated at 127 tokens)"
+    },
+    {
+      "artifact": "benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/live-long/compression-1024.json",
+      "prompt_tokens": 1012,
+      "completion_tokens": 383,
+      "cached_tokens": 960,
+      "new_prompt_tokens": 52,
+      "ttft_seconds": 3.8842741799890064,
+      "naive_total_prompt_over_ttft_tps": 260.5377357792143,
+      "decode_tps": 38.883052224911,
+      "quality_anchors": "4/5 (response truncated at 383 tokens)",
+      "prefill_note": "the naive 1012/TTFT rate is not a cold-prefill rate because 960 tokens were restored from radix cache"
+    }
+  ],
+  "sampled_resources": {
+    "cold_1k_gpu_util_mean_percent": 61.583333333333336,
+    "cold_1k_gpu_util_max_percent": 100.0,
+    "long_1k_gpu_util_mean_percent": 76.21428571428571,
+    "long_1k_gpu_util_max_percent": 98.0,
+    "gpu_memory_max_mib": 7096.0,
+    "gpu_temperature_max_c": 74.0,
+    "gpu_power_max_w": 118.78,
+    "host_mem_available_min_bytes": 5125615616,
+    "swap_free_min_bytes": 16202670080
+  },
+  "historical_q4_control_not_matched": {
+    "artifact": "benchmarks/results/2026-08-27-ornith-moe1700-smoke/compression-1024.json",
+    "prompt_tokens": 1012,
+    "completion_tokens": 383,
+    "ttft_seconds": 5.513964346027933,
+    "prefill_tps_estimate": 183.53401228083916,
+    "decode_tps": 28.442583754328048,
+    "qualification": "same task geometry but different KV/context/expert-slot configuration and dirty historical source; comparison is directional only"
+  }
+}

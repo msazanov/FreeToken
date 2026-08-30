@@ -1,4 +1,8 @@
-"""Exact gathered-row GQA attention for Qwen compressed sparse attention."""
+"""Legacy exact gathered-row GQA attention for compressed sparse attention.
+
+This module lives inside the ``qsa`` package so that the historical gathered
+QSA entry points can coexist with the newer paged-QSA kernels.
+"""
 
 from __future__ import annotations
 

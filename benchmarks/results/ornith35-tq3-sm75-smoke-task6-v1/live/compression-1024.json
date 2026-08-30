@@ -1,0 +1,991 @@
+{
+  "schema": 1,
+  "timestamp_utc": "2026-08-30T01:05:59.302032+00:00",
+  "scenario": "repository-compression",
+  "requested_context_tokens": 1024,
+  "dossier_body_tokens": 864,
+  "model": "Ornith 1.5 35b TQ3",
+  "origin": "http://127.0.0.1:1919",
+  "metrics": {
+    "wall_s": 12.333984408003744,
+    "ttft_s": 8.98275438300334,
+    "decode_window_s": 3.350022775004618,
+    "prompt_tokens": 1012,
+    "completion_tokens": 127,
+    "cached_tokens": 0,
+    "new_prompt_tokens": 1012,
+    "is_cold_prefill": true,
+    "response_text": "Here's the compressed repository dossier:\n\n**FreeToken Repository Dossier (12 bullets)**\n\n1. **Purpose**: A local inference runtime for gaming desktops, workstations, and NVIDIA RTX 30/40/50 series GPUs.\n\n2. **Target hardware**: RTX 2070 Mobile (8 GiB VRAM), Intel i7-8750H, 32 GiB DDR4, 1 TB NVMe.\n\n3. **Primary model**: Ornith 1.5 35B A3B (MoE), served via FreeToken with CPU/R",
+    "prefill_tps_estimate": 112.66032186239549,
+    "naive_total_prompt_over_ttft_tps": 112.66032186239549,
+    "decode_tps": 37.61168459513721
+  },
+  "quality": {
+    "required_anchors": [
+      "ornith",
+      "rtx 2070",
+      "control_api.py",
+      "build_stats",
+      "tq4"
+    ],
+    "found_anchors": [
+      "ornith",
+      "rtx 2070"
+    ],
+    "score": 2
+  },
+  "runtime_before": {
+    "stats": {
+      "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+      "model": {
+        "id": "Ornith 1.5 35b TQ3",
+        "ctx": 16384,
+        "attn": "hybrid_linear",
+        "moe": true,
+        "sampling": {
+          "temperature": 1.0,
+          "top_k": 20,
+          "top_p": 0.949999988079071
+        }
+      },
+      "uptime_s": 127,
+      "kv": {
+        "used_pages": 0,
+        "total_pages": 16384,
+        "page_size": 1
+      },
+      "mamba": {
+        "used_slots": 0,
+        "total_slots": 8
+      },
+      "swa": null,
+      "moe": null,
+      "vram_bytes": 6872367104,
+      "gpus": [
+        {
+          "index": 0,
+          "name": "NVIDIA GeForce RTX 2070",
+          "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+          "total_bytes": 8172666880
+        }
+      ],
+      "throughput": {
+        "decode_tps": 0.0,
+        "prefill_tps": 0.0
+      },
+      "requests": {
+        "active": 0,
+        "completed": 2,
+        "p95_ms": 5421,
+        "ttft_mean_ms": 0,
+        "prompt_tokens_total": 56,
+        "completion_tokens_total": 8
+      }
+    },
+    "cache": {
+      "state": "serving",
+      "last_rebuild": null,
+      "geometry": {
+        "num_pages": 16384,
+        "page_size": 1,
+        "moe_cache_size": 2633,
+        "num_mamba_slots": 8,
+        "num_experts": 256,
+        "num_moe_layers": 40,
+        "moe_cache_policy": "lru",
+        "unit_bytes": {
+          "kv_per_token": 10320,
+          "moe_per_expert": 1572864,
+          "mamba_per_slot": 64389120,
+          "swa_per_token": 0
+        },
+        "swa_full_tokens_ratio": 0.0,
+        "swa_page_size": 0,
+        "num_swa_pages": 0,
+        "cache_budget_bytes": 4891387494,
+        "reasoning": {
+          "gears": [
+            "off",
+            "on"
+          ],
+          "default": "on",
+          "kwargs": {
+            "off": {
+              "enable_thinking": false,
+              "thinking_mode": "disabled"
+            },
+            "on": {
+              "enable_thinking": true,
+              "thinking_mode": "enabled"
+            }
+          }
+        },
+        "limits": {
+          "kv_tokens": {
+            "min": 1,
+            "max": 473971
+          },
+          "moe_experts": {
+            "min": 256,
+            "max": 3109
+          },
+          "mamba_slots": {
+            "min": 4,
+            "max": 75
+          },
+          "swa_tokens": {
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "runtime_after": {
+    "stats": {
+      "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+      "model": {
+        "id": "Ornith 1.5 35b TQ3",
+        "ctx": 16384,
+        "attn": "hybrid_linear",
+        "moe": true,
+        "sampling": {
+          "temperature": 1.0,
+          "top_k": 20,
+          "top_p": 0.949999988079071
+        }
+      },
+      "uptime_s": 139,
+      "kv": {
+        "used_pages": 0,
+        "total_pages": 16384,
+        "page_size": 1
+      },
+      "mamba": {
+        "used_slots": 0,
+        "total_slots": 8
+      },
+      "swa": null,
+      "moe": null,
+      "vram_bytes": 6977224704,
+      "gpus": [
+        {
+          "index": 0,
+          "name": "NVIDIA GeForce RTX 2070",
+          "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+          "total_bytes": 8172666880
+        }
+      ],
+      "throughput": {
+        "decode_tps": 37.9,
+        "prefill_tps": 0.0
+      },
+      "requests": {
+        "active": 0,
+        "completed": 3,
+        "p95_ms": 12324,
+        "ttft_mean_ms": 8973,
+        "prompt_tokens_total": 1068,
+        "completion_tokens_total": 135
+      }
+    },
+    "cache": {
+      "state": "serving",
+      "last_rebuild": null,
+      "geometry": {
+        "num_pages": 16384,
+        "page_size": 1,
+        "moe_cache_size": 2633,
+        "num_mamba_slots": 8,
+        "num_experts": 256,
+        "num_moe_layers": 40,
+        "moe_cache_policy": "lru",
+        "unit_bytes": {
+          "kv_per_token": 10320,
+          "moe_per_expert": 1572864,
+          "mamba_per_slot": 64389120,
+          "swa_per_token": 0
+        },
+        "swa_full_tokens_ratio": 0.0,
+        "swa_page_size": 0,
+        "num_swa_pages": 0,
+        "cache_budget_bytes": 4891387494,
+        "reasoning": {
+          "gears": [
+            "off",
+            "on"
+          ],
+          "default": "on",
+          "kwargs": {
+            "off": {
+              "enable_thinking": false,
+              "thinking_mode": "disabled"
+            },
+            "on": {
+              "enable_thinking": true,
+              "thinking_mode": "enabled"
+            }
+          }
+        },
+        "limits": {
+          "kv_tokens": {
+            "min": 1,
+            "max": 473971
+          },
+          "moe_experts": {
+            "min": 256,
+            "max": 3109
+          },
+          "mamba_slots": {
+            "min": 4,
+            "max": 75
+          },
+          "swa_tokens": {
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "runtime_samples": [
+    {
+      "monotonic_s": 129339.379258605,
+      "gpu_util_percent": 0.0,
+      "gpu_memory_used_mib": 6996.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 60.0,
+      "gpu_power_w": 11.76,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5265944576,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16671293440,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 127,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 56,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129340.421868856,
+      "gpu_util_percent": 5.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 62.0,
+      "gpu_power_w": 45.65,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5179805696,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16719450112,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 128,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 1030.6
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129341.454167961,
+      "gpu_util_percent": 0.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 62.0,
+      "gpu_power_w": 45.76,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5188841472,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16725196800,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 129,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 493.4
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129342.522891649,
+      "gpu_util_percent": 0.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 66.0,
+      "gpu_power_w": 94.68,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5197398016,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16724209664,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 130,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 327.8
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129343.559507522,
+      "gpu_util_percent": 60.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 68.0,
+      "gpu_power_w": 106.5,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5193928704,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16721248256,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 131,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 243.4
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129344.628886473,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 68.0,
+      "gpu_power_w": 102.03,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5211803648,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16708698112,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 132,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129345.668265415,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 69.0,
+      "gpu_power_w": 118.76,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5167906816,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16751906816,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 133,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129346.708915332,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 69.0,
+      "gpu_power_w": 117.56,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5175586816,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16760676352,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 134,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129347.746018916,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 70.0,
+      "gpu_power_w": 118.78,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5125615616,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16760811520,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 135,
+        "kv": {
+          "used_pages": 0,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 0,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6872367104,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 8
+        }
+      }
+    },
+    {
+      "monotonic_s": 129348.786279409,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 72.0,
+      "gpu_power_w": 112.69,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5168513024,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16768352256,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 136,
+        "kv": {
+          "used_pages": 1027,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6977224704,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 31.2,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 23
+        }
+      }
+    },
+    {
+      "monotonic_s": 129349.84315438,
+      "gpu_util_percent": 77.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 73.0,
+      "gpu_power_w": 114.38,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5176631296,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16769544192,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 137,
+        "kv": {
+          "used_pages": 1069,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6977224704,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 37.6,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 65
+        }
+      }
+    },
+    {
+      "monotonic_s": 129350.87714531,
+      "gpu_util_percent": 97.0,
+      "gpu_memory_used_mib": 7096.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 73.0,
+      "gpu_power_w": 104.28,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 5179469824,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 16766861312,
+      "server_stats": {
+        "instance_id": "75bf913f-3357-4577-8534-649d24f8b158",
+        "model": {
+          "id": "Ornith 1.5 35b TQ3",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 138,
+        "kv": {
+          "used_pages": 1111,
+          "total_pages": 16384,
+          "page_size": 1
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 6977224704,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 38.7,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 2,
+          "p95_ms": 5421,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1068,
+          "completion_tokens_total": 107
+        }
+      }
+    }
+  ],
+  "slice": {
+    "series": "ornith35-tq3-sm75",
+    "label": "task6-int8-auto-16k",
+    "git": {
+      "commit": "3204bbb3b8c058bf659c2ce9765b7f01e56eee42",
+      "dirty": true
+    },
+    "parameters": {
+      "weights": "TQ3_4S",
+      "kv": "int8",
+      "moe_cache": "auto",
+      "max_prefill": "1024"
+    },
+    "runtime_parameters": {
+      "context_budget_tokens": 16384,
+      "kv_dtype": "int8",
+      "kv_pages": 16384,
+      "moe_cache_slots": 2633,
+      "mamba_slots": 8
+    },
+    "sampling": {
+      "mode": "greedy-argmax",
+      "temperature": 0.0,
+      "seed": null
+    }
+  },
+  "provenance": {
+    "artifact": "../run-provenance.json"
+  },
+  "artifact": "/home/random/dev/qwen/freetoken/benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/live/compression-1024.json"
+}

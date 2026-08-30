@@ -24,6 +24,7 @@ from freetoken.models.gguf.dequant import (
     GGML_IQ3_S,
     GGML_Q4_K,
     GGML_Q6_K,
+    GGML_TQ3_4S,
     BLOCK_SHAPE,
     row_bytes,
 )
@@ -117,6 +118,30 @@ def test_expert_specs_keep_mixed_down_layers_compact():
         ((8, 512, 210), torch.uint8),
         ((8, 512, 144), torch.uint8),
     ]
+
+
+def test_tq3_expert_specs_match_real_ornith_slot_geometry():
+    """Type-46 banks must retain the projected 1.5 MiB served slot."""
+    from freetoken.models.qwen3_5_moe.gguf_experts import gguf_expert_specs
+
+    config = SimpleNamespace(
+        num_layers=40,
+        num_experts=256,
+        hidden_size=2048,
+        moe_intermediate_size=512,
+    )
+    types = {
+        "gate_up": [GGML_TQ3_4S] * config.num_layers,
+        "down": [GGML_TQ3_4S] * config.num_layers,
+    }
+
+    specs = gguf_expert_specs(config, types)
+
+    assert specs["gate_up"][0] == ((256, 1024, 1024), torch.uint8)
+    assert specs["down"][0] == ((256, 2048, 256), torch.uint8)
+    gate_up_slot_bytes = 1024 * 1024
+    down_slot_bytes = 2048 * 256
+    assert gate_up_slot_bytes + down_slot_bytes == 1_572_864
 
 
 def test_expert_loader_writes_mixed_down_layers_at_native_width(monkeypatch):

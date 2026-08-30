@@ -235,15 +235,16 @@ The production control remains the official `Q4_K_M`. A Hugging Face intake on
 4. APEX Compact (16.54 GB) — role-aware mixed precision that compresses routed
    experts more heavily; it needs a GGUF type/startup gate before download.
 
-`TQ3_4S` is not end-to-end loadable yet, but the exact tensor audit promoted it
-to the highest-upside **runtime-port** candidate and its dense and selected-
-expert decode kernels are now implemented. Its served expert slot is
+`TQ3_4S` is now end-to-end loadable through FreeToken with generic-MHA `int8`
+KV: the 16K smoke server completed warmup and deterministic generation. Its
+dense and selected-expert decode kernels are implemented, while matched Q4_K_M
+speed/quality A/B and long-context qualification remain open. Its served expert slot is
 1,572,864 bytes, 22.89% below Q4_K_M, while its dense served weights are also
 smaller. Under the same packed-weight VRAM budget this projects roughly 1,943
 slots instead of the measured 1,429; that is a first-order capacity estimate,
-not a speed result. Correct execution requires the matching activation WHT,
-Lloyd-Max centroids and native SM75 `dp4a` vector-dot path from
-`turbo-tan/llama.cpp-tq3`.
+not a matched speed result. Correct execution uses the matching activation WHT,
+Lloyd-Max centroids and native SM75 `dp4a` vector-dot path ported from the
+`turbo-tan/llama.cpp-tq3` donor into this FreeToken branch.
 
 The follow-up header audit also changes how the direct AD/UD candidates should
 be read. Atomic AD has the strongest published same-corpus quality evidence and
@@ -264,14 +265,15 @@ Qwen3.8 now renormalizes its selected top-10 expert weights and the GDN output
 gates use the upstream string contracts (`sigmoid` for Qwen3.8, `silu` for
 Ornith/Qwen3.5).
 
-The first `TQ3_4S` weight A/B deliberately keeps the current KV format unchanged.
+The first `TQ3_4S` weight A/B deliberately uses the known-good `int8` KV path.
 `TQ3_4S` model weights and a three-bit TurboQuant KV cache are different codecs:
 the former stores offline-transformed weight blocks, while KV must encode dynamic
-attention vectors online. At 122,880 tokens a hypothetical three-bit KV codec
-using the denser `TURBO3_0` layout would save about 140.625 MiB versus `tq4-nc`,
-worth roughly 70 additional TQ3 expert slots; the weight port itself projects
-about 514 additional slots. Therefore KV
-is a later isolated A/B, not part of the initial weight result.
+attention vectors online. A real startup exposed that generic MHA currently has
+no packed `tq4-nc` decoder: the half-width cache reached Triton attention as if it
+were logical-width INT8 and failed before generation. `tq4-nc` remains valid only
+for the dedicated QSA path until the historical generic packed-MHA experiment is
+recovered or reimplemented. Three-bit KV is therefore a later isolated A/B, not
+part of the initial weight result.
 
 The metadata/CPU gate for `TQ3_4S` is now implemented. FreeToken recognizes
 GGML type 46 as `32 values / 16 bytes`, can read it even when the installed
@@ -313,7 +315,7 @@ JSON result.
 This Task-4 result was not yet an Ornith tok/s result. The selected-expert MoE
 gate is now covered below; large-batch prefill, real checkpoint loading,
 routing/cache behavior and model quality remain separate gates. The KV control
-therefore remains `tq4-nc`; changing it at the same time would hide whether any
+therefore remains `int8`; changing it at the same time would hide whether any
 later end-to-end gain came from weights or KV storage.
 
 The packed selected-expert path is now connected as the next isolated gate.
@@ -344,3 +346,56 @@ The final Task-5 mixed regression gate is `55 passed, 1 warning in 25.67s`.
 The warning is the pre-existing read-only NumPy mmap warning; it is unrelated to
 the TQ3 arithmetic or slot-bounds checks. The invalid-ID regression also passes
 CUDA `compute-sanitizer` memcheck with `ERROR SUMMARY: 0 errors`.
+
+The first Task-6 FP16 prefill layer sweep also reaches 1,024 tokens without OOM.
+For a real-shape dense 2048→1024 projection, the intentional dispatch boundary
+is visible at 6→7 tokens: packed MMVQ takes 0.043632 ms at 6, while exact
+materialization + GEMM takes 0.295168 ms at 7. The fixed dequantization cost is
+then amortized to 0.509856 ms at 1,024 tokens with only 6 MiB peak allocated
+delta. Resident top-8 MoE has no batched MMQ yet and scales nearly linearly:
+0.189760 ms at 1 token, 4.919216 ms at 64 and 66.854015 ms at 1,024, with
+88.016 MiB peak allocated delta. These are per-layer numbers with all eight
+experts already in VRAM, not model tok/s. They identify batched TQ3 MoE and real
+expert-cache traffic—not dense prefill memory—as the next likely bottlenecks.
+All 360 event samples are in
+`benchmarks/results/ornith35-tq3-sm75-prefill-task6-v1/prefill-sweep.json`.
+The combined loader, kernel, prefill and provenance gate is `61 passed, 1
+warning in 10.50s`; the warning is the same pre-existing read-only mmap notice.
+
+The pinned real checkpoint is
+`YTan2000/Ornith-1.5-35B-A3B-TQ3_4S@d63085f`. Its 18,051,687,776-byte GGUF
+matches the published SHA-256
+`07ec68966341e3915d7fde699cbf70af11f1b1e01a26a45692a1399420473740`.
+Header-only intake found 753 tensors and 17,230,725,120 packed TQ3_4S bytes.
+FreeToken resolves the advertised 41 blocks to 40 served decoder layers plus
+one dropped NextN/MTP block, with 256 experts, top-8 routing and type 46 in both
+served expert banks. The immutable intake record is
+`benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/checkpoint-audit.json`.
+
+The first real 16K server gate now passes with `int8` KV and 2,633 auto-sized
+TQ3 expert slots. A deterministic 28-token prompt returned exactly `Turing
+works` twice with HTTP 200. The cold 1,012-token repository task measured 8.983
+s TTFT, 112.66 prefill tok/s and 37.61 decode tok/s over 127 output tokens. A
+second 383-token generation hit 960 cached prompt tokens, reduced TTFT to 3.884
+s and sustained 38.88 decode tok/s; its naive prompt/TTFT quotient is not a cold
+prefill rate. Peak sampled state was 7,096 MiB VRAM, 100% GPU, 74 C and 118.78 W.
+The historical Q4_K_M 1,012-token artifact measured 28.44 decode tok/s, but used
+a different context/KV/slot setup and dirty source. TQ3's apparent decode gain
+is 32-37%, but its cold prefill is also 38.6% slower (112.66 versus 183.53 tok/s)
+and TTFT 62.9% longer. Both directions are provisional until the matched Task-7
+A/B. Raw evidence lives under
+`benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/`.
+
+That directory also contains `run-provenance.json` with the exact dirty-source
+diff digest, per-file runtime hashes, software versions, model revision and
+checkpoint hash. Warm-cache points record cached/new input separately and do
+not publish total-prompt/TTFT as cold prefill throughput. A post-smoke sweep
+also found a `qsa.py` versus `qsa/` Python import collision; the legacy
+gathered-QSA functions now live inside the package alongside upstream paged-QSA
+kernels. The expanded RTX-2070 KV/QSA matrix passes `327 passed, 3 skipped in
+8.30s`.
+The server now publishes the resolved KV dtype in `/v1/stats`; the context
+runner requires a precomputed model SHA-256 and automatically retains GPU UUID,
+driver, compute capability, staged/unstaged tracked diff and untracked-file
+hashes. Missing cache telemetry is represented as `unknown`, never silently as
+a cold cache.

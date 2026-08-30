@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "run_family": "ornith35-tq3-sm75-smoke-task6-v1",
+  "source_commit": "3204bbb3b8c058bf659c2ce9765b7f01e56eee42",
+  "source_dirty": true,
+  "runtime_source_diff_sha256": "0f2f5725ba723193536c56334bd7251f1462dbc69e994ea06642de58c2700e22",
+  "runtime_source_sha256": {
+    "benchmarks/ornith_context_bench.py": "3ac567a5db129a86f0b65acdbb87d049b508ac3db8ec20414904d5415fa947bd",
+    "python/freetoken/engine/engine.py": "617c22c03d3750f3188217527ce706ae4a857e5816a7d19da09e96550fc364f4",
+    "python/freetoken/attention/triton.py": "49516fa18a969d6675da8504cd2f3d24d9e59123d80d2e33bdc54263c1322058",
+    "python/freetoken/kvcache/mha_pool.py": "72b5f98086f4cb54e65df4d7c6e8dde9de3eb47e186df99539e9ad130ec37eb9",
+    "python/freetoken/models/qwen3_5_moe/gguf.py": "a01fc70f5fab601a8b6c69062fe481894b83af3e417c338234b28477b4a3c776",
+    "python/freetoken/kernel/gguf.py": "92a2fa3a31f31cdf780d912d64d84751340a2def7ae2f538e2649df64a3e09a8",
+    "python/freetoken/kernel/csrc/gguf/gguf_kernel.cu": "dfc9cef85645d8fed57bb6877737b96f5cb64d940751352ca8a44caf0e36aa90",
+    "python/freetoken/kernel/csrc/gguf/moe_vec.cuh": "f1f4a82aec97b76c310f0799b070fe5052a3c429ebfe7d39f6858661b2b1dadf",
+    "python/freetoken/kernel/csrc/gguf/vecdotq.cuh": "f12fe25f3948385b3d434ca6567adfa228fd517844866da3f715220e4152d3a7"
+  },
+  "software": {
+    "python": "3.12.13",
+    "torch": "2.11.0+cu130",
+    "torch_cuda": "13.0",
+    "triton": "3.6.0",
+    "nvidia_driver": "610.57.04"
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2070",
+    "compute_capability": "7.5",
+    "vram_bytes": 8172666880
+  },
+  "model": {
+    "repository": "YTan2000/Ornith-1.5-35B-A3B-TQ3_4S",
+    "revision": "d63085fd25f49c274d04a3eac503b3ab23958f36",
+    "gguf_sha256": "07ec68966341e3915d7fde699cbf70af11f1b1e01a26a45692a1399420473740",
+    "gguf_bytes": 18051687776
+  },
+  "note": "Hashes capture the executable source at the successful run; later artifact-schema and QSA-import fixes intentionally change the working tree."
+}

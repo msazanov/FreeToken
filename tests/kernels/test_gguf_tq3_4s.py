@@ -170,3 +170,36 @@ def test_tq3_4s_mmvq_rejects_partial_blocks_and_unsafe_views():
     assert misaligned_weight.is_contiguous()
     with pytest.raises(RuntimeError, match="16-byte aligned"):
         ggml_mul_mat_vec_a8(misaligned_weight, activation, GGML_TQ3_4S, rows)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_tq3_4s_large_batch_prefill_fallback_matches_exact_reference(dtype):
+    """Batch > 6 must use exact materialization, never an unsupported MMQ case."""
+    from freetoken.layers.gguf import _MMVQ_SAFE, fused_mul_mat_gguf
+    from freetoken.models.gguf.dequant import GGML_TQ3_4S, dequant_tq3_4s
+
+    rows, columns, tokens = 64, 512, _MMVQ_SAFE + 1
+    generator = torch.Generator().manual_seed(20260907)
+    packed = torch.randint(
+        0,
+        256,
+        (rows, columns // 2),
+        dtype=torch.uint8,
+        generator=generator,
+    )
+    scale_bank = torch.tensor([0x00, 0x5F, 0x80, 0xFF], dtype=torch.uint8)
+    packed.reshape(-1, 16)[:, :4] = torch.stack(
+        [scale_bank.roll(i) for i in range(packed.numel() // 16)]
+    )
+    x = (torch.randn(tokens, columns, generator=generator) * 0.25).to(dtype)
+
+    dense = dequant_tq3_4s(packed.flatten(), torch.float32).reshape(rows, columns)
+    expected = x.float() @ dense.t()
+    actual = fused_mul_mat_gguf(
+        x.cuda(), packed.cuda(), GGML_TQ3_4S
+    ).float().cpu()
+
+    relative_l2 = torch.linalg.vector_norm(actual - expected) / torch.linalg.vector_norm(expected)
+    cosine = torch.nn.functional.cosine_similarity(actual.flatten(), expected.flatten(), dim=0)
+    assert cosine.item() > 0.999
+    assert relative_l2.item() < 0.02

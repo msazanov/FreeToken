@@ -55,6 +55,14 @@ def test_tq4_qsa_uses_its_dedicated_scale_aware_backend():
     _validate_quantized_kv_config(_config("tq4-nc", "qsa", AttnType.QSA_TOKEN))
 
 
+def test_tq4_generic_mha_is_rejected_without_a_packed_triton_attention_kernel():
+    """Packed nibbles must not be mistaken for a logical-width INT8 KV tensor."""
+    from freetoken.engine.engine import _validate_quantized_kv_config
+
+    with pytest.raises(ValueError, match="packed TQ4.*generic MHA"):
+        _validate_quantized_kv_config(_config("tq4-nc", "triton", AttnType.FULL))
+
+
 def test_qsa_int8_stays_rejected_until_it_has_a_gathered_kernel():
     from freetoken.engine.engine import _validate_quantized_kv_config
 

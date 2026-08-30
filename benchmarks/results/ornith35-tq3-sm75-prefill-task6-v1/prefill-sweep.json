@@ -1,0 +1,1232 @@
+{
+  "schema_version": 1,
+  "kind": "tq3_4s_sm75_prefill_layer_sweep",
+  "scope": "real Ornith dense projection and resident top-8 MoE layer",
+  "not_measured": [
+    "model tokens/second",
+    "expert cache transfer or misses",
+    "PCIe or NVMe",
+    "attention or GDN",
+    "scheduler or sampling",
+    "end-to-end model quality"
+  ],
+  "correctness_gates": [
+    "tests/kernels/test_gguf_tq3_4s.py::test_tq3_4s_large_batch_prefill_fallback_matches_exact_reference",
+    "tests/moe/test_tq3_4s_moe.py::test_tq3_4s_top8_prefill_matches_exact_routed_reference"
+  ],
+  "timestamp_utc": "2026-08-30T00:34:25.911426+00:00",
+  "command": [
+    "benchmarks/tq3_4s_prefill_bench.py",
+    "--output",
+    "benchmarks/results/ornith35-tq3-sm75-prefill-task6-v1/prefill-sweep.json",
+    "--warmup",
+    "5",
+    "--iterations",
+    "20",
+    "--seed",
+    "20260911"
+  ],
+  "parameters": {
+    "tokens": [
+      1,
+      6,
+      7,
+      16,
+      64,
+      128,
+      256,
+      512,
+      1024
+    ],
+    "dtype": "float16",
+    "warmup": 5,
+    "iterations": 20,
+    "seed": 20260911
+  },
+  "software": {
+    "python": "3.12.13",
+    "torch": "2.11.0+cu130",
+    "torch_cuda": "13.0"
+  },
+  "hardware": {
+    "cuda_device": "NVIDIA GeForce RTX 2070",
+    "compute_capability": [
+      7,
+      5
+    ],
+    "before": {
+      "name": "NVIDIA GeForce RTX 2070",
+      "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+      "temperature.gpu": "52",
+      "power.draw": "43.94",
+      "utilization.gpu": "0",
+      "clocks.current.sm": "1215",
+      "memory.used": "12",
+      "memory.free": "7783"
+    },
+    "after": {
+      "name": "NVIDIA GeForce RTX 2070",
+      "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+      "temperature.gpu": "62",
+      "power.draw": "105.22",
+      "utilization.gpu": "89",
+      "clocks.current.sm": "1665",
+      "memory.used": "280",
+      "memory.free": "7515"
+    }
+  },
+  "git": {
+    "commit": "3204bbb3b8c058bf659c2ce9765b7f01e56eee42",
+    "branch": "feat/qwen4exp-gguf-turing",
+    "dirty": true,
+    "status": [
+      "M tests/kernels/test_gguf_tq3_4s.py",
+      " M tests/models/test_gguf_dispatch.py",
+      " M tests/moe/test_tq3_4s_moe.py",
+      "?? benchmarks/tq3_4s_prefill_bench.py",
+      "?? tests/benchmarks/test_tq3_4s_prefill_bench.py"
+    ],
+    "working_tree_diff_sha256": "605a4b1aa49e127f70ada4ac29779f5df984d50b6698a0b2bd8dc7225df2206d"
+  },
+  "source_sha256": {
+    "benchmarks/tq3_4s_prefill_bench.py": "6e37a49fd7c02d20764be2d27485f0d02908eb54b15f2dcc80178ed6b12fd868",
+    "benchmarks/tq3_4s_kernel_bench.py": "588fdcba03975fb98cceab801cdc9f44c489691d4763c43500d41be2bb544de8",
+    "python/freetoken/layers/gguf.py": "2feb36ef8dce4c405bfa625c79b83b65e1b2c0324aeb152fe14e570fd7b6816e",
+    "python/freetoken/moe/fused_q4_0.py": "9a7fe4b8d9a7b88ebbefb3cd1a6d88cfc84e8bfc1ee83f56b4532034781c9348",
+    "python/freetoken/models/gguf/dequant.py": "2407983e3746b2b624c621e7c4b7f9a918098eb72cf6afae40a25b827250acb5",
+    "python/freetoken/kernel/gguf.py": "92a2fa3a31f31cdf780d912d64d84751340a2def7ae2f538e2649df64a3e09a8",
+    "python/freetoken/kernel/csrc/gguf/ggml-common.h": "5db697d06ba58f1050d9d381f87a881151185f0002da00e3d7483642ccbdea7d",
+    "python/freetoken/kernel/csrc/gguf/gguf_kernel.cu": "dfc9cef85645d8fed57bb6877737b96f5cb64d940751352ca8a44caf0e36aa90",
+    "python/freetoken/kernel/csrc/gguf/moe_vec.cuh": "f1f4a82aec97b76c310f0799b070fe5052a3c429ebfe7d39f6858661b2b1dadf",
+    "python/freetoken/kernel/csrc/gguf/vecdotq.cuh": "f12fe25f3948385b3d434ca6567adfa228fd517844866da3f715220e4152d3a7"
+  },
+  "cases": [
+    {
+      "kind": "dense_gate_up",
+      "tokens": 1,
+      "dispatch": "packed_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.02348800003528595,
+        "p50_ms": 0.025968000292778015,
+        "mean_ms": 0.03021280001848936,
+        "p95_ms": 0.04255839884281162,
+        "max_ms": 0.09238400310277939,
+        "raw_ms": [
+          0.09238400310277939,
+          0.03270399942994118,
+          0.028255999088287354,
+          0.027327999472618103,
+          0.025087999179959297,
+          0.02703999914228916,
+          0.02457600086927414,
+          0.03993599861860275,
+          0.028543999418616295,
+          0.026016000658273697,
+          0.024992000311613083,
+          0.02630399912595749,
+          0.02457600086927414,
+          0.025919999927282333,
+          0.024831999093294144,
+          0.024800000712275505,
+          0.02348800003528595,
+          0.02457600086927414,
+          0.02457600086927414,
+          0.02831999957561493
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 38508.93363853323,
+        "milliseconds_per_input_token_at_p50": 0.025968000292778015
+      },
+      "memory": {
+        "baseline_allocated_bytes": 1052672,
+        "peak_allocated_bytes": 1057280,
+        "peak_allocated_delta_bytes": 4608,
+        "baseline_reserved_bytes": 2097152,
+        "peak_reserved_bytes": 2097152,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          1,
+          1024
+        ],
+        "output_abs_mean": 2.723198413848877,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 1
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 6,
+      "dispatch": "packed_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.04265600070357323,
+        "p50_ms": 0.04363199882209301,
+        "mean_ms": 0.04932639971375465,
+        "p95_ms": 0.06670559681952003,
+        "max_ms": 0.11507199704647064,
+        "raw_ms": [
+          0.11507199704647064,
+          0.04710400104522705,
+          0.04729599878191948,
+          0.043007999658584595,
+          0.043007999658584595,
+          0.043327998369932175,
+          0.04307200014591217,
+          0.06415999680757523,
+          0.0514880008995533,
+          0.05104000121355057,
+          0.04505600035190582,
+          0.04435199871659279,
+          0.04310400038957596,
+          0.042688000947237015,
+          0.04694399982690811,
+          0.043935999274253845,
+          0.0432640016078949,
+          0.043007999658584595,
+          0.04294399917125702,
+          0.04265600070357323
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 137513.75508751406,
+        "milliseconds_per_input_token_at_p50": 0.007271999803682168
+      },
+      "memory": {
+        "baseline_allocated_bytes": 1073152,
+        "peak_allocated_bytes": 1099264,
+        "peak_allocated_delta_bytes": 26112,
+        "baseline_reserved_bytes": 2097152,
+        "peak_reserved_bytes": 2097152,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          6,
+          1024
+        ],
+        "output_abs_mean": 2.817371368408203,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 6
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 7,
+      "dispatch": "exact_materialized_dequant_plus_gemm",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.291456013917923,
+        "p50_ms": 0.2951679974794388,
+        "mean_ms": 0.297639998793602,
+        "p95_ms": 0.30704959034919743,
+        "max_ms": 0.32972800731658936,
+        "raw_ms": [
+          0.32972800731658936,
+          0.2982400059700012,
+          0.2993279993534088,
+          0.2932159900665283,
+          0.29548799991607666,
+          0.2953920066356659,
+          0.30246400833129883,
+          0.30585598945617676,
+          0.3006399869918823,
+          0.29494398832321167,
+          0.2975040078163147,
+          0.2938559949398041,
+          0.29286399483680725,
+          0.2956799864768982,
+          0.2935679852962494,
+          0.291456013917923,
+          0.29260799288749695,
+          0.29443201422691345,
+          0.2933120131492615,
+          0.2922239899635315
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 23715.30809496926,
+        "milliseconds_per_input_token_at_p50": 0.04216685678277697
+      },
+      "memory": {
+        "baseline_allocated_bytes": 9596928,
+        "peak_allocated_bytes": 13805568,
+        "peak_allocated_delta_bytes": 4208640,
+        "baseline_reserved_bytes": 23068672,
+        "peak_reserved_bytes": 23068672,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          7,
+          1024
+        ],
+        "output_abs_mean": 2.7607760429382324,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 7
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 16,
+      "dispatch": "exact_materialized_dequant_plus_gemm",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.29392001032829285,
+        "p50_ms": 0.2969279885292053,
+        "mean_ms": 0.29976800084114075,
+        "p95_ms": 0.3066463991999626,
+        "max_ms": 0.33504000306129456,
+        "raw_ms": [
+          0.33504000306129456,
+          0.3049280047416687,
+          0.30105599761009216,
+          0.30403199791908264,
+          0.3051519989967346,
+          0.2979840040206909,
+          0.2949120104312897,
+          0.2961919903755188,
+          0.29398399591445923,
+          0.29392001032829285,
+          0.29840001463890076,
+          0.2969279885292053,
+          0.2963840067386627,
+          0.2969279885292053,
+          0.2941119968891144,
+          0.2949120104312897,
+          0.2949120104312897,
+          0.3012480139732361,
+          0.2956799864768982,
+          0.29865598678588867
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 53885.11901237046,
+        "milliseconds_per_input_token_at_p50": 0.018557999283075333
+      },
+      "memory": {
+        "baseline_allocated_bytes": 9633792,
+        "peak_allocated_bytes": 13860864,
+        "peak_allocated_delta_bytes": 4227072,
+        "baseline_reserved_bytes": 23068672,
+        "peak_reserved_bytes": 23068672,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          16,
+          1024
+        ],
+        "output_abs_mean": 2.7526497840881348,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 16
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 64,
+      "dispatch": "exact_materialized_dequant_plus_gemm",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.30300799012184143,
+        "p50_ms": 0.30585600435733795,
+        "mean_ms": 0.3084192007780075,
+        "p95_ms": 0.31485920399427414,
+        "max_ms": 0.33878400921821594,
+        "raw_ms": [
+          0.33878400921821594,
+          0.30608001351356506,
+          0.31305599212646484,
+          0.30716800689697266,
+          0.3049919903278351,
+          0.31360000371932983,
+          0.31276801228523254,
+          0.3076480031013489,
+          0.3051519989967346,
+          0.3038719892501831,
+          0.30563199520111084,
+          0.30422401428222656,
+          0.30300799012184143,
+          0.3092480003833771,
+          0.3070720136165619,
+          0.3036479949951172,
+          0.30480000376701355,
+          0.30316799879074097,
+          0.30316799879074097,
+          0.3112959861755371
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 209248.7938383824,
+        "milliseconds_per_input_token_at_p50": 0.0047790000680834055
+      },
+      "memory": {
+        "baseline_allocated_bytes": 9830400,
+        "peak_allocated_bytes": 14155776,
+        "peak_allocated_delta_bytes": 4325376,
+        "baseline_reserved_bytes": 23068672,
+        "peak_reserved_bytes": 23068672,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          64,
+          1024
+        ],
+        "output_abs_mean": 2.767534017562866,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 64
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 128,
+      "dispatch": "exact_materialized_dequant_plus_gemm",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.31564798951148987,
+        "p50_ms": 0.3235359936952591,
+        "mean_ms": 0.32505439817905424,
+        "p95_ms": 0.33589278608560563,
+        "max_ms": 0.35817599296569824,
+        "raw_ms": [
+          0.35817599296569824,
+          0.3227840065956116,
+          0.328000009059906,
+          0.32767999172210693,
+          0.3235839903354645,
+          0.3256320059299469,
+          0.3243519961833954,
+          0.32767999172210693,
+          0.3347199857234955,
+          0.32396799325942993,
+          0.3208959996700287,
+          0.3234879970550537,
+          0.32022398710250854,
+          0.317440003156662,
+          0.3176319897174835,
+          0.3193280100822449,
+          0.31696000695228577,
+          0.31564798951148987,
+          0.33136001229286194,
+          0.32153600454330444
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 395628.31491498323,
+        "milliseconds_per_input_token_at_p50": 0.0025276249507442117
+      },
+      "memory": {
+        "baseline_allocated_bytes": 10092544,
+        "peak_allocated_bytes": 14548992,
+        "peak_allocated_delta_bytes": 4456448,
+        "baseline_reserved_bytes": 25165824,
+        "peak_reserved_bytes": 25165824,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          128,
+          1024
+        ],
+        "output_abs_mean": 2.77400803565979,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 128
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 256,
+      "dispatch": "exact_materialized_dequant_plus_gemm",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.34220799803733826,
+        "p50_ms": 0.3453119993209839,
+        "mean_ms": 0.34758879989385605,
+        "p95_ms": 0.35368960052728654,
+        "max_ms": 0.38092800974845886,
+        "raw_ms": [
+          0.38092800974845886,
+          0.3461120128631592,
+          0.3445119857788086,
+          0.3439039885997772,
+          0.34220799803733826,
+          0.34249600768089294,
+          0.34323200583457947,
+          0.3425599932670593,
+          0.3461120128631592,
+          0.3522239923477173,
+          0.3470720052719116,
+          0.3468480110168457,
+          0.3434560000896454,
+          0.34252798557281494,
+          0.35225600004196167,
+          0.3479999899864197,
+          0.35183998942375183,
+          0.3481920063495636,
+          0.3439359962940216,
+          0.3433600068092346
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 741358.540981473,
+        "milliseconds_per_input_token_at_p50": 0.0013488749973475933
+      },
+      "memory": {
+        "baseline_allocated_bytes": 10616832,
+        "peak_allocated_bytes": 15335424,
+        "peak_allocated_delta_bytes": 4718592,
+        "baseline_reserved_bytes": 27262976,
+        "peak_reserved_bytes": 27262976,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          256,
+          1024
+        ],
+        "output_abs_mean": 2.7721893787384033,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 256
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 512,
+      "dispatch": "exact_materialized_dequant_plus_gemm",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.39321601390838623,
+        "p50_ms": 0.39905600249767303,
+        "mean_ms": 0.4013120010495186,
+        "p95_ms": 0.4132352083921433,
+        "max_ms": 0.4336639940738678,
+        "raw_ms": [
+          0.4336639940738678,
+          0.397599995136261,
+          0.395904004573822,
+          0.39321601390838623,
+          0.4039680063724518,
+          0.40089601278305054,
+          0.4105600118637085,
+          0.4121600091457367,
+          0.41097599267959595,
+          0.3973119854927063,
+          0.39955198764801025,
+          0.39555200934410095,
+          0.3993600010871887,
+          0.39923200011253357,
+          0.39904001355171204,
+          0.3948799967765808,
+          0.395904004573822,
+          0.39366400241851807,
+          0.39907199144363403,
+          0.39372798800468445
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 1283027.9379220353,
+        "milliseconds_per_input_token_at_p50": 0.0007794062548782676
+      },
+      "memory": {
+        "baseline_allocated_bytes": 11665408,
+        "peak_allocated_bytes": 16908288,
+        "peak_allocated_delta_bytes": 5242880,
+        "baseline_reserved_bytes": 27262976,
+        "peak_reserved_bytes": 27262976,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          512,
+          1024
+        ],
+        "output_abs_mean": 2.7758913040161133,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 512
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "dense_gate_up",
+      "tokens": 1024,
+      "dispatch": "exact_materialized_dequant_plus_gemm",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.5036479830741882,
+        "p50_ms": 0.5098560154438019,
+        "mean_ms": 0.5115007996559143,
+        "p95_ms": 0.5193200021982193,
+        "max_ms": 0.5471360087394714,
+        "raw_ms": [
+          0.5471360087394714,
+          0.5100160241127014,
+          0.5055360198020935,
+          0.5051199793815613,
+          0.5117759704589844,
+          0.5159680247306824,
+          0.5162240266799927,
+          0.517632007598877,
+          0.5087040066719055,
+          0.5140479803085327,
+          0.5178560018539429,
+          0.5108479857444763,
+          0.5074560046195984,
+          0.5046079754829407,
+          0.5059199929237366,
+          0.5038080215454102,
+          0.5036479830741882,
+          0.5039680004119873,
+          0.510047972202301,
+          0.5096960067749023
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 2008410.156951201,
+        "milliseconds_per_input_token_at_p50": 0.0004979062650818378
+      },
+      "memory": {
+        "baseline_allocated_bytes": 13762560,
+        "peak_allocated_bytes": 20054016,
+        "peak_allocated_delta_bytes": 6291456,
+        "baseline_reserved_bytes": 48234496,
+        "peak_reserved_bytes": 48234496,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          1024,
+          1024
+        ],
+        "output_abs_mean": 2.777378559112549,
+        "all_finite": true
+      },
+      "geometry": {
+        "input": 2048,
+        "output": 1024,
+        "tokens": 1024
+      },
+      "packed_weight_bytes": 1048576,
+      "exact_materialized_weight_bytes": 4194304
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 1,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.18115200102329254,
+        "p50_ms": 0.1897599995136261,
+        "mean_ms": 0.2018207997083664,
+        "p95_ms": 0.23853439390659342,
+        "max_ms": 0.38153600692749023,
+        "raw_ms": [
+          0.38153600692749023,
+          0.21247999370098114,
+          0.19968000054359436,
+          0.19068799912929535,
+          0.200095996260643,
+          0.19046400487422943,
+          0.1860159933567047,
+          0.19017599523067474,
+          0.18934400379657745,
+          0.23100799322128296,
+          0.18665599822998047,
+          0.18268799781799316,
+          0.18409599363803864,
+          0.20044800639152527,
+          0.18572799861431122,
+          0.18432000279426575,
+          0.18371200561523438,
+          0.18115200102329254,
+          0.19385600090026855,
+          0.18227200210094452
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 5269.814516036574,
+        "milliseconds_per_input_token_at_p50": 0.1897599995136261
+      },
+      "memory": {
+        "baseline_allocated_bytes": 21107712,
+        "peak_allocated_bytes": 21198336,
+        "peak_allocated_delta_bytes": 90624,
+        "baseline_reserved_bytes": 48234496,
+        "peak_reserved_bytes": 48234496,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          1,
+          2048
+        ],
+        "output_abs_mean": 19.59137725830078,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 1
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 6,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.5058559775352478,
+        "p50_ms": 0.5120320022106171,
+        "mean_ms": 0.5162080019712448,
+        "p95_ms": 0.5303472250699998,
+        "max_ms": 0.5773760080337524,
+        "raw_ms": [
+          0.5773760080337524,
+          0.5125120282173157,
+          0.517952024936676,
+          0.5181440114974976,
+          0.5130239725112915,
+          0.5109760165214539,
+          0.5210559964179993,
+          0.5278720259666443,
+          0.508512020111084,
+          0.5065600275993347,
+          0.5081279873847961,
+          0.5058559775352478,
+          0.5073919892311096,
+          0.5099520087242126,
+          0.5140479803085327,
+          0.5115519762039185,
+          0.5112320184707642,
+          0.5073279738426208,
+          0.5206720232963562,
+          0.5140159726142883
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 11718.017573307821,
+        "milliseconds_per_input_token_at_p50": 0.08533866703510284
+      },
+      "memory": {
+        "baseline_allocated_bytes": 21128192,
+        "peak_allocated_bytes": 21669376,
+        "peak_allocated_delta_bytes": 541184,
+        "baseline_reserved_bytes": 48234496,
+        "peak_reserved_bytes": 48234496,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          6,
+          2048
+        ],
+        "output_abs_mean": 19.013526916503906,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 6
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 7,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 0.5847359895706177,
+        "p50_ms": 0.5869759917259216,
+        "mean_ms": 0.5897647976875305,
+        "p95_ms": 0.594095978140831,
+        "max_ms": 0.636352002620697,
+        "raw_ms": [
+          0.636352002620697,
+          0.5874559879302979,
+          0.5855039954185486,
+          0.5897279977798462,
+          0.5896959900856018,
+          0.5874559879302979,
+          0.5873919725418091,
+          0.5865600109100342,
+          0.5857279896736145,
+          0.591871976852417,
+          0.5908480286598206,
+          0.5863999724388123,
+          0.5858880281448364,
+          0.5885760188102722,
+          0.5861759781837463,
+          0.5847359895706177,
+          0.5877760052680969,
+          0.5861120223999023,
+          0.586080014705658,
+          0.5849599838256836
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 11925.530343102226,
+        "milliseconds_per_input_token_at_p50": 0.08385371310370308
+      },
+      "memory": {
+        "baseline_allocated_bytes": 21132288,
+        "peak_allocated_bytes": 21763584,
+        "peak_allocated_delta_bytes": 631296,
+        "baseline_reserved_bytes": 48234496,
+        "peak_reserved_bytes": 48234496,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          7,
+          2048
+        ],
+        "output_abs_mean": 18.848541259765625,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 7
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 16,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 1.2645440101623535,
+        "p50_ms": 1.2718560099601746,
+        "mean_ms": 1.275536012649536,
+        "p95_ms": 1.296976000070572,
+        "max_ms": 1.3112640380859375,
+        "raw_ms": [
+          1.3112640380859375,
+          1.2737599611282349,
+          1.2718080282211304,
+          1.2715200185775757,
+          1.282080054283142,
+          1.2654720544815063,
+          1.2962239980697632,
+          1.2730560302734375,
+          1.2681280374526978,
+          1.2735999822616577,
+          1.2645440101623535,
+          1.2695679664611816,
+          1.2658560276031494,
+          1.2742719650268555,
+          1.2718080282211304,
+          1.2698880434036255,
+          1.2781440019607544,
+          1.2871040105819702,
+          1.2719039916992188,
+          1.2707200050354004
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 12580.040409213465,
+        "milliseconds_per_input_token_at_p50": 0.07949100062251091
+      },
+      "memory": {
+        "baseline_allocated_bytes": 21169152,
+        "peak_allocated_bytes": 22611456,
+        "peak_allocated_delta_bytes": 1442304,
+        "baseline_reserved_bytes": 48234496,
+        "peak_reserved_bytes": 48234496,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          16,
+          2048
+        ],
+        "output_abs_mean": 19.12249183654785,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 16
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 64,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 4.912352085113525,
+        "p50_ms": 4.91921591758728,
+        "mean_ms": 4.920460748672485,
+        "p95_ms": 4.932172799110413,
+        "max_ms": 4.933631896972656,
+        "raw_ms": [
+          4.923391819000244,
+          4.923423767089844,
+          4.932096004486084,
+          4.919136047363281,
+          4.917088031768799,
+          4.9271039962768555,
+          4.919871807098389,
+          4.913023948669434,
+          4.933631896972656,
+          4.929664134979248,
+          4.918943881988525,
+          4.914175987243652,
+          4.912928104400635,
+          4.924736022949219,
+          4.919295787811279,
+          4.92307186126709,
+          4.912831783294678,
+          4.917247772216797,
+          4.912352085113525,
+          4.915200233459473
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 13010.203469863134,
+        "milliseconds_per_input_token_at_p50": 0.07686274871230125
+      },
+      "memory": {
+        "baseline_allocated_bytes": 21368832,
+        "peak_allocated_bytes": 27137024,
+        "peak_allocated_delta_bytes": 5768192,
+        "baseline_reserved_bytes": 48234496,
+        "peak_reserved_bytes": 48234496,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          64,
+          2048
+        ],
+        "output_abs_mean": 18.949987411499023,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 64
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 128,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 6.6623358726501465,
+        "p50_ms": 8.527215957641602,
+        "mean_ms": 8.051372814178468,
+        "p95_ms": 8.696191644668579,
+        "max_ms": 8.716863632202148,
+        "raw_ms": [
+          6.66918420791626,
+          6.6623358726501465,
+          6.783103942871094,
+          6.782400131225586,
+          6.772640228271484,
+          7.900544166564941,
+          8.162336349487305,
+          8.431296348571777,
+          8.716863632202148,
+          8.695103645324707,
+          8.538975715637207,
+          8.529824256896973,
+          8.52460765838623,
+          8.544511795043945,
+          8.550080299377441,
+          8.539135932922363,
+          8.54259204864502,
+          8.626912117004395,
+          8.558272361755371,
+          8.496735572814941
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 15010.760913741578,
+        "milliseconds_per_input_token_at_p50": 0.06661887466907501
+      },
+      "memory": {
+        "baseline_allocated_bytes": 21635072,
+        "peak_allocated_bytes": 33171456,
+        "peak_allocated_delta_bytes": 11536384,
+        "baseline_reserved_bytes": 48234496,
+        "peak_reserved_bytes": 48234496,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          128,
+          2048
+        ],
+        "output_abs_mean": 18.86228370666504,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 128
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 256,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 13.367199897766113,
+        "p50_ms": 16.319168090820312,
+        "mean_ms": 16.067487955093384,
+        "p95_ms": 17.027434825897217,
+        "max_ms": 17.03615951538086,
+        "raw_ms": [
+          13.367199897766113,
+          14.082048416137695,
+          14.746879577636719,
+          17.03615951538086,
+          17.026975631713867,
+          16.642047882080078,
+          16.40140724182129,
+          16.325536727905273,
+          16.35443115234375,
+          16.434335708618164,
+          16.308767318725586,
+          16.18943977355957,
+          16.24064064025879,
+          16.367616653442383,
+          16.4451847076416,
+          16.31279945373535,
+          16.19353675842285,
+          16.160863876342773,
+          16.282304763793945,
+          16.431583404541016
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 15687.074155698074,
+        "milliseconds_per_input_token_at_p50": 0.06374675035476685
+      },
+      "memory": {
+        "baseline_allocated_bytes": 22167552,
+        "peak_allocated_bytes": 45240320,
+        "peak_allocated_delta_bytes": 23072768,
+        "baseline_reserved_bytes": 69206016,
+        "peak_reserved_bytes": 69206016,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          256,
+          2048
+        ],
+        "output_abs_mean": 19.0181941986084,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 256
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 512,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 26.48409652709961,
+        "p50_ms": 32.96643257141113,
+        "mean_ms": 32.76198558807373,
+        "p95_ms": 34.35398349761963,
+        "max_ms": 34.44636917114258,
+        "raw_ms": [
+          26.48409652709961,
+          34.34912109375,
+          34.44636917114258,
+          32.940799713134766,
+          32.775360107421875,
+          32.64604949951172,
+          33.07526397705078,
+          32.91151809692383,
+          32.5873908996582,
+          33.16553497314453,
+          33.07651138305664,
+          33.03036880493164,
+          33.0544319152832,
+          32.8702392578125,
+          33.040382385253906,
+          32.905601501464844,
+          32.815391540527344,
+          33.27628707885742,
+          32.9920654296875,
+          32.79692840576172
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 15530.949516327475,
+        "milliseconds_per_input_token_at_p50": 0.06438756361603737
+      },
+      "memory": {
+        "baseline_allocated_bytes": 23232512,
+        "peak_allocated_bytes": 69378048,
+        "peak_allocated_delta_bytes": 46145536,
+        "baseline_reserved_bytes": 85983232,
+        "peak_reserved_bytes": 85983232,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          512,
+          2048
+        ],
+        "output_abs_mean": 18.950260162353516,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 512
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    },
+    {
+      "kind": "resident_top8_moe",
+      "tokens": 1024,
+      "dispatch": "packed_selected_expert_mmvq",
+      "timing": {
+        "count": 20,
+        "min_ms": 59.719871520996094,
+        "p50_ms": 66.8540153503418,
+        "mean_ms": 66.56634140014648,
+        "p95_ms": 67.1715244293213,
+        "max_ms": 68.88015747070312,
+        "raw_ms": [
+          59.719871520996094,
+          68.88015747070312,
+          66.87789154052734,
+          66.56934356689453,
+          66.80806732177734,
+          67.08009338378906,
+          66.69977569580078,
+          66.57638549804688,
+          66.81001281738281,
+          67.07830047607422,
+          66.61939239501953,
+          66.60364532470703,
+          66.88873291015625,
+          66.57234954833984,
+          66.8919677734375,
+          67.08159637451172,
+          66.97154998779297,
+          66.84931182861328,
+          66.85871887207031,
+          66.88966369628906
+        ]
+      },
+      "derived": {
+        "layer_input_tokens_per_second_at_p50": 15316.955827317628,
+        "milliseconds_per_input_token_at_p50": 0.06528712436556816
+      },
+      "memory": {
+        "baseline_allocated_bytes": 25362432,
+        "peak_allocated_bytes": 117653504,
+        "peak_allocated_delta_bytes": 92291072,
+        "baseline_reserved_bytes": 153092096,
+        "peak_reserved_bytes": 153092096,
+        "peak_reserved_delta_bytes": 0
+      },
+      "sanity": {
+        "output_shape": [
+          1024,
+          2048
+        ],
+        "output_abs_mean": 18.920974731445312,
+        "all_finite": true
+      },
+      "geometry": {
+        "hidden": 2048,
+        "intermediate": 512,
+        "top_k": 8,
+        "resident_slots": 8,
+        "tokens": 1024
+      },
+      "packed_weight_bytes_touched_per_input_token": 12582912
+    }
+  ],
+  "status": "success",
+  "failure": null
+}

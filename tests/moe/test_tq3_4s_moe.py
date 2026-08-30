@@ -140,3 +140,48 @@ def test_tq3_4s_invalid_slot_ids_are_zeroed_without_oob_reads():
     torch.cuda.synchronize()
 
     assert torch.equal(actual, torch.zeros_like(actual))
+
+
+def test_tq3_4s_top8_prefill_matches_exact_routed_reference():
+    """A multi-token prefill must preserve all top-8 route IDs and weights."""
+    from freetoken.models.gguf.dequant import GGML_TQ3_4S
+    from freetoken.moe.fused_q4_0 import fused_experts_gguf
+
+    slots, hidden, intermediate, tokens, top_k = 8, 64, 32, 32, 8
+    gate_up_cpu = _packed_tq3(slots, 2 * intermediate, hidden, 20260908)
+    down_cpu = _packed_tq3(slots, hidden, intermediate, 20260909)
+    generator = torch.Generator().manual_seed(20260910)
+    hidden_cpu = (torch.randn(tokens, hidden, generator=generator) * 0.2).half()
+    base_ids = torch.arange(top_k, dtype=torch.int32)
+    topk_ids = torch.stack([base_ids.roll(token % top_k) for token in range(tokens)])
+    raw_weights = torch.rand(tokens, top_k, generator=generator)
+    topk_weights = raw_weights / raw_weights.sum(dim=1, keepdim=True)
+
+    actual = fused_experts_gguf(
+        hidden_cpu.cuda(),
+        gate_up_cpu.cuda(),
+        down_cpu.cuda(),
+        topk_weights.cuda(),
+        topk_ids.cuda(),
+        "silu",
+        GGML_TQ3_4S,
+    ).float().cpu()
+
+    gate_up = _dense_bank(gate_up_cpu, hidden)
+    down = _dense_bank(down_cpu, intermediate)
+    expected = []
+    for token in range(tokens):
+        routed = []
+        for route in range(top_k):
+            expert = int(topk_ids[token, route])
+            projected = hidden_cpu[token].float() @ gate_up[expert].t()
+            gate, up = projected.chunk(2)
+            inter = F.silu(gate) * up
+            routed.append(inter @ down[expert].t() * topk_weights[token, route])
+        expected.append(sum(routed))
+    expected = torch.stack(expected)
+
+    relative_l2 = torch.linalg.vector_norm(actual - expected) / torch.linalg.vector_norm(expected)
+    cosine = F.cosine_similarity(actual.flatten(), expected.flatten(), dim=0)
+    assert cosine.item() > 0.999
+    assert relative_l2.item() < 0.03

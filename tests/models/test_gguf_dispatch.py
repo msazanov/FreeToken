@@ -30,6 +30,7 @@ from freetoken.models.gguf.dequant import (
     GGML_Q2_K,
     GGML_Q4_K,
     GGML_Q6_K,
+    GGML_TQ3_4S,
     BLOCK_SHAPE,
 )
 from freetoken.layers.gguf import _MMVQ_SAFE, fused_mul_mat_gguf
@@ -165,6 +166,7 @@ class TestSmallBatchMMVQ:
         GGML_Q6_K,   # K-quant
         GGML_IQ2_S,  # I-quant
         GGML_IQ1_M,  # I-quant
+        GGML_TQ3_4S, # transformed TurboQuant weight
     ])
     def test_small_batch_uses_mmvq(self, mock_kernel_module, qweight_type):
         """Batch <= _MMVQ_SAFE in MMVQ_TYPES calls ggml_mul_mat_vec_a8."""
@@ -275,6 +277,27 @@ class TestIQuantDispatch:
         call_info = mock_kernel_module["ggml_dequantize"]
         assert call_info["qweight_type"] == qweight_type
         assert call_info["out_features"] == out_features
+        assert call_info["in_features"] == in_features
+        assert result.shape == (batch_size, out_features)
+
+
+class TestTQ3Dispatch:
+    """TQ3 has MMVQ decode but deliberately no unverified large-batch MMQ."""
+
+    def test_tq3_large_batch_takes_exact_dequant_path(self, mock_kernel_module):
+        out_features = 64
+        in_features = 256
+        batch_size = _MMVQ_SAFE + 1
+        x = torch.randn(batch_size, in_features, dtype=torch.bfloat16)
+        qweight = make_qweight(out_features, in_features, GGML_TQ3_4S)
+
+        result = fused_mul_mat_gguf(x, qweight, GGML_TQ3_4S)
+
+        assert mock_kernel_module["ggml_dequantize"] is not None
+        assert mock_kernel_module["ggml_mul_mat_a8"] is None
+        assert mock_kernel_module["ggml_mul_mat_vec_a8"] is None
+        call_info = mock_kernel_module["ggml_dequantize"]
+        assert call_info["qweight_type"] == GGML_TQ3_4S
         assert call_info["in_features"] == in_features
         assert result.shape == (batch_size, out_features)
 

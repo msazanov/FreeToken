@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-08-30T03:55:00+03:00",
+  "hardware": "NVIDIA GeForce RTX 2070 Mobile, SM75, 8 GiB",
+  "source": {
+    "repository": "YTan2000/Ornith-1.5-35B-A3B-TQ3_4S",
+    "revision": "d63085fd25f49c274d04a3eac503b3ab23958f36",
+    "filename": "Ornith-1.5-35B-A3B-TQ3_4S.gguf",
+    "path": "/home/random/dev/qwen/models/ornith-15-35b-tq3-4s/Ornith-1.5-35B-A3B-TQ3_4S.gguf",
+    "file_bytes": 18051687776,
+    "sha256": "07ec68966341e3915d7fde699cbf70af11f1b1e01a26a45692a1399420473740",
+    "sha256_matches_hugging_face_lfs": true
+  },
+  "download": {
+    "hugging_face_cli_result": "stalled",
+    "hugging_face_cli_partial_bytes_before_abort": 87883318,
+    "aria2c_connections": 8,
+    "aria2c_result": "complete",
+    "aria2c_reported_average_mib_s": 37.0,
+    "aria2c_approximate_wall_seconds": 462
+  },
+  "gguf": {
+    "architecture": "qwen35moe",
+    "declared_block_count": 41,
+    "served_decoder_layers": 40,
+    "dropped_nextn_layers": 1,
+    "hidden_size": 2048,
+    "moe_intermediate_size": 512,
+    "experts": 256,
+    "experts_per_token": 8,
+    "native_context_tokens": 262144,
+    "tensor_count": 753,
+    "tensor_payload_bytes": 18040697344,
+    "tensor_types": {
+      "F32": {"ggml_type": 0, "count": 370, "bytes": 106729984},
+      "Q4_K": {"ggml_type": 12, "count": 1, "bytes": 286064640},
+      "Q6_K": {"ggml_type": 14, "count": 1, "bytes": 417177600},
+      "TQ3_4S": {"ggml_type": 46, "count": 381, "bytes": 17230725120}
+    },
+    "expert_tensor_stacks_including_nextn": {
+      "gate": {"ggml_type": 46, "count": 41, "bytes": 5502926848},
+      "up": {"ggml_type": 46, "count": 41, "bytes": 5502926848},
+      "down": {"ggml_type": 46, "count": 41, "bytes": 5502926848}
+    },
+    "freetoken_served_expert_type_sets": {
+      "gate_up": [46],
+      "down": [46]
+    },
+    "freetoken_served_expert_type_lengths": {
+      "gate_up": 40,
+      "down": 40
+    },
+    "packed_expert_slot_bytes": 1572864
+  },
+  "diagnostic_incidents": [
+    {
+      "operation": "manual parsed-config print",
+      "result": "failed before serving",
+      "error": "AttributeError: ModelConfig has no attribute top_k",
+      "resolution": "used the real field num_experts_per_tok; value is 8",
+      "runtime_impact": "none"
+    }
+  ]
+}

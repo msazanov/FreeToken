@@ -52,3 +52,25 @@ an exact-FP32 quality comparison, plus hashes for the Python API/activation and
 CUDA implementation it exercises. This isolates one hot MoE layer; cache
 misses, PCIe/NVMe, non-MoE layers, prefill and model tok/s are deliberately
 excluded.
+
+**`tq3_4s_prefill_bench.py`** — FP16 sweep across 1/6/7/16/64/128/256/512/
+1024 input tokens for a real-shape TQ3 dense projection and resident top-8
+Ornith MoE layer. It labels the dense MMVQ→exact-materialized dispatch boundary,
+retains every CUDA-event sample and records peak allocated/reserved VRAM. It is
+still a layer benchmark: cache misses, PCIe/NVMe, attention/GDN and model tok/s
+are excluded.
+
+The first real checkpoint intake, failed generic-MHA TQ4 startup, successful
+16K INT8 startup, deterministic short prompts and cold/warm 1K repository tasks
+are preserved together under
+`benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/`. The two
+`compression-1024.json` files were produced by `ornith_context_bench.py` and
+include SSE TTFT, full output, cache geometry and one-second GPU/host samples.
+Warm-cache artifacts separate cached and newly processed prompt tokens; their
+canonical `prefill_tps_estimate` is null rather than the misleading total
+prompt/TTFT quotient. `run-provenance.json` pins the exact dirty source,
+software stack, model revision and checkpoint used by the successful server.
+Future `ornith_context_bench.py` runs require `--model-sha256`; this deliberately
+uses the intake gate's precomputed digest instead of rereading tens of GiB and
+perturbing the page cache during a context sweep. The runner also records local
+model file stats, GPU UUID/name, compute capability and NVIDIA driver.

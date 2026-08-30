@@ -878,3 +878,85 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   with zero reported errors.
 - Final independent Luna review found no P1/P2 blocker, reran 4 MoE and 2
   provenance tests successfully, and matched all 10 v4 source hashes.
+
+### Added — TQ3_4S correctness-first prefill sweep
+
+- Added CPU dispatch, SM75 exact large-batch dense and 32-token top-8 MoE gates;
+  all pass without adding an unverified TQ3 MMQ case.
+- Added a source-hashed prefill layer benchmark over 1/6/7/16/64/128/256/512/
+  1024 tokens with every CUDA-event sample and peak VRAM allocation retained.
+- Dense exact materialization crosses from 0.043632 ms packed MMVQ at six tokens
+  to 0.295168 ms at seven, then amortizes to 0.509856 ms at 1,024 with 6 MiB
+  peak allocated delta. Resident top-8 MoE reaches 66.854015 ms and 88.016 MiB
+  peak delta at 1,024. No OOM occurred.
+- The result identifies the selected-expert MMVQ prefill path and real cache
+  traffic as the likely bottlenecks; all measurements remain explicitly
+  per-layer, resident-only, and not model tok/s.
+- Expanded loader/kernel/prefill/provenance gate: 61 passed with one
+  pre-existing read-only mmap warning.
+
+### Verified — real Ornith TQ3_4S checkpoint intake
+
+- Pinned `YTan2000/Ornith-1.5-35B-A3B-TQ3_4S` at revision `d63085f` and
+  downloaded only its text GGUF into `/home/random/dev/qwen/models/`.
+- The Hugging Face CLI stalled at 87,883,318 bytes; an eight-connection aria2
+  retry completed the 18,051,687,776-byte object, whose SHA-256 exactly matches
+  the published LFS hash.
+- Header-only inspection found 753 tensors, including 381 TQ3_4S tensors with
+  17,230,725,120 packed bytes. FreeToken resolves 41 advertised blocks to 40
+  served decoder layers plus one omitted NextN/MTP block, with 256 experts and
+  top-8 routing.
+- Added immutable checkpoint/download/config evidence at
+  `benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/checkpoint-audit.json`.
+
+### Fixed — packed TQ4 cannot enter generic Triton MHA
+
+- A real Ornith TQ3_4S startup exposed that `tq4-nc` half-width storage was
+  accepted for generic MHA even though only QSA has a packed-nibble reader. It
+  failed during CUDA-graph warmup after model loading, not in a TQ3 weight
+  kernel and not from OOM.
+- Added a red-first validation regression and now reject generic-MHA TQ4 before
+  expensive loading; the dedicated QSA + TQ4 combination remains valid. The KV
+  gate passes 9 tests with one CUDA-only skip.
+- Preserved the failed startup geometry, resource peaks and traceback summary in
+  `runtime-smoke-v1-tq4-nc.json`. Historical TQ4 Ornith artifacts came from a
+  dirty worktree; no reachable generic packed-MHA implementation was found.
+
+### Verified — Ornith TQ3_4S serves on RTX 2070
+
+- Repeated the 16K launch with the supported INT8 KV path. Auto-sizing selected
+  2,633 1,572,864-byte expert slots, the server completed CUDA/prefill warmup,
+  and two deterministic requests returned exactly `Turing works` with HTTP 200.
+- A cold real 1,012-token repository task measured 8.983 s TTFT, 112.660
+  prefill tok/s and 37.612 decode tok/s. A 383-token warm generation sustained
+  38.883 decode tok/s and reported 960 cached prompt tokens; its total-prompt
+  quotient is deliberately excluded from cold-prefill comparisons.
+- The saved Q4_K_M 1K control measured 28.443 decode tok/s, making the initial
+  TQ3 decode signal 32-37% faster. Cold prefill moved the opposite way: 112.660
+  versus 183.534 tok/s (-38.6%) with 62.9% longer TTFT. Context/KV/slot/source
+  controls differ, so neither direction is final until Task 7's matched
+  fixed-slot and auto-slot A/B.
+- Expanded post-server regression: 77 passed with one pre-existing GGUF mmap
+  warning. All successful and failed raw evidence is under
+  `benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/`.
+- Corrected the initial weight-control policy from generic-MHA TQ4 to INT8.
+  Three-bit KV remains a separate codec project; the preferred first design is
+  asymmetric INT8 K plus TQ3_0 V, not reuse of TQ3_4S weight blocks.
+- Corrected benchmark publication semantics after Luna review: warm cache hits
+  now expose cached/new token counts and a null cold-prefill rate, while the
+  naive total-prompt quotient remains separately available. Added exact
+  dirty-source, software, model-revision and checkpoint provenance for the real
+  Task-6 run, plus `_adjust_config` coverage for the generic-MHA TQ4 rejection.
+  Provenance now hashes `git diff HEAD`, so staged experiment code cannot
+  silently produce the SHA-256 of an empty diff.
+- Fixed a latent `qsa.py` versus `qsa/` import collision by relocating legacy
+  gathered-QSA kernels into the package and re-exporting both legacy and newer
+  paged APIs. The expanded RTX-2070 KV/QSA matrix passes 327 tests with 3 skips.
+- Closed the second Luna provenance review: `/v1/stats` now publishes KV dtype;
+  the benchmark requires an intake-provided model SHA-256 and captures model
+  revision/file stats plus GPU/driver identity; Git identity includes staged,
+  unstaged and untracked sources. Absent cache telemetry remains unknown instead
+  of being mislabeled as a cold prefill, and the active plan now uses INT8 for
+  generic-MHA controls.
+- Final post-review combined Task-6 gate: 135 tests passed; the separate broader
+  RTX-2070 KV/QSA matrix remains 327 passed with 3 skips.

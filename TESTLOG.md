@@ -1936,3 +1936,238 @@ Final independent Luna review reported no P1/P2 blockers. It reran all four TQ3
 MoE tests (`4 passed`), both provenance tests (`2 passed`) and matched all ten v4
 source hashes. The reviewer kept real file-backed cache traffic, model quality
 and end-to-end throughput as explicit residual risks for Tasks 6-7.
+
+## 2026-08-30 — TQ3_4S correctness-first prefill sweep on RTX 2070
+
+The benchmark contract was written first and failed at the intended missing
+module boundary: `3 failed in 0.04s`, all with `ModuleNotFoundError` for
+`benchmarks.tq3_4s_prefill_bench`. After implementation it passed `3 passed in
+0.02s`. Separate dispatch, exact dense FP16/BF16 and 32-token top-8 MoE
+characterization gates passed `4 passed in 6.77s`; the real Ornith bank-shape
+gate plus CPU dispatch/provenance set passed `5 passed in 3.73s`.
+
+The FP16 sweep uses a real 2048→1024 dense projection and a real H=2048, I=512,
+top-8 MoE layer with eight slots already resident. Every point has five warmups
+and 20 retained CUDA-event samples. `layer tok/s` below is input-token throughput
+for one isolated layer, never whole-model generation or prefill throughput.
+
+| tokens | dense dispatch | dense p50 ms | dense layer tok/s | dense peak Δ MiB | resident MoE p50 ms | MoE layer tok/s | MoE peak Δ MiB |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1 | packed MMVQ | 0.025968 | 38,509 | 0.004 | 0.189760 | 5,270 | 0.086 |
+| 6 | packed MMVQ | 0.043632 | 137,514 | 0.025 | 0.512032 | 11,718 | 0.516 |
+| 7 | exact dequant + GEMM | 0.295168 | 23,715 | 4.014 | 0.586976 | 11,926 | 0.602 |
+| 16 | exact dequant + GEMM | 0.296928 | 53,885 | 4.031 | 1.271856 | 12,580 | 1.375 |
+| 64 | exact dequant + GEMM | 0.305856 | 209,249 | 4.125 | 4.919216 | 13,010 | 5.501 |
+| 128 | exact dequant + GEMM | 0.323536 | 395,628 | 4.250 | 8.527216 | 15,011 | 11.002 |
+| 256 | exact dequant + GEMM | 0.345312 | 741,359 | 4.500 | 16.319168 | 15,687 | 22.004 |
+| 512 | exact dequant + GEMM | 0.399056 | 1,283,028 | 5.000 | 32.966433 | 15,531 | 44.008 |
+| 1024 | exact dequant + GEMM | 0.509856 | 2,008,410 | 6.000 | 66.854015 | 15,317 | 88.016 |
+
+The full immutable artifact contains all 360 samples, p95/max values, output
+sanity, PyTorch allocated/reserved peaks, Git/GPU state and ten verified source
+hashes:
+`benchmarks/results/ornith35-tq3-sm75-prefill-task6-v1/prefill-sweep.json`.
+
+Interpretation: exact dense materialization has a clear fixed cost at 7 tokens
+but excellent large-batch amortization and modest memory. Resident MoE reaches a
+plateau around 15-16k input tokens/s per layer because it still performs routed
+MMVQ rather than a batched MMQ. The real model can be slower still because a
+prefill block may route across far more than eight unique experts, adding cache
+misses and host/NVMe traffic. Therefore native/batched TQ3 MoE and live cache
+telemetry are higher priorities than replacing the already-bounded dense
+fallback.
+
+The expanded focused gate combines GGUF dispatch/intake, real Ornith loader
+geometry, materialized and MMVQ kernels, selected-expert prefill and both TQ3
+benchmark contracts: `61 passed, 1 warning in 10.50s`. The warning remains the
+pre-existing read-only NumPy mmap notice.
+
+## 2026-08-30 — Real Ornith TQ3_4S checkpoint intake
+
+The real checkpoint is pinned to
+`YTan2000/Ornith-1.5-35B-A3B-TQ3_4S@d63085fd25f49c274d04a3eac503b3ab23958f36`.
+Only `Ornith-1.5-35B-A3B-TQ3_4S.gguf` was fetched; the optional 902.8 MB
+multimodal projector was deliberately excluded from this text-inference test.
+The venv Hugging Face CLI stopped making progress at 87,883,318 bytes and was
+aborted. An eight-range `aria2c` resume completed the 18,051,687,776-byte file
+at a reported average of about 37 MiB/s in approximately 7.7 minutes. The final
+SHA-256 is
+`07ec68966341e3915d7fde699cbf70af11f1b1e01a26a45692a1399420473740`, an exact
+match for the Hugging Face LFS object. The stale partial was no longer present
+after the successful range download; only its zero-byte lock remained, and that
+lock was removed.
+
+Header-only GGUF inspection, without materializing the tensor payload, found:
+
+| item | observed value |
+|---|---:|
+| architecture | `qwen35moe` |
+| tensors / tensor payload | 753 / 18,040,697,344 bytes |
+| F32 | 370 tensors / 106,729,984 bytes |
+| Q4_K embedding | 1 / 286,064,640 bytes |
+| Q6_K output | 1 / 417,177,600 bytes |
+| TQ3_4S | 381 / 17,230,725,120 bytes |
+| declared blocks | 41 = 40 served decoder + 1 dropped NextN/MTP |
+| expert geometry | 256 total, 8 selected per token, H=2048, I=512 |
+| served expert bank types | gate/up type 46, down type 46, 40 layers each |
+| one packed served expert slot | 1,572,864 bytes |
+
+The raw file also carries gate/up/down expert stacks for block 40, because it is
+the NextN/MTP head. The parser intentionally removes that block from normal
+text-only serving, so the runtime bank lengths are 40 rather than 41. A manual
+diagnostic first attempted to print a nonexistent `ModelConfig.top_k` property
+and raised `AttributeError`; rerunning it with the actual
+`num_experts_per_tok` property returned 8. This was a diagnostic-script error
+before serving and had no model/runtime impact. Full intake evidence is retained
+in `benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/checkpoint-audit.json`.
+
+## 2026-08-30 — Real Ornith TQ3_4S 16K server gate
+
+### Attempt 1 — generic-MHA `tq4-nc` rejected after a real failure
+
+The first launch used the real TQ3_4S checkpoint, 16,384 KV tokens, 1,024-token
+prefill chunks, offload MoE, serial host-bank loading, auto expert capacity,
+Triton attention, one request and `tq4-nc`. Model loading itself succeeded:
+auto-sizing selected 2,687 expert slots, reported 0.08 GiB K+V and left 1.10
+GiB free VRAM. CUDA-graph warmup then failed before any API request in
+`attention/triton.py:155` at `assert head_dim == q.shape[-1]`.
+
+This was neither OOM nor a TQ3 weight-kernel failure. `MHAKVCache` physically
+stores TQ4 nibbles at half logical head width, while generic Triton MHA treats
+the physical last dimension as logical and has no packed-nibble decoder. The
+process used 80.603 s wall / 197.932 s CPU, peaked at 22.4 GiB process memory
+and 4.2 GiB process swap, then shut down cleanly with zero prompt/output tokens.
+Raw evidence is
+`benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/runtime-smoke-v1-tq4-nc.json`.
+
+The missing preflight check was reproduced TDD-first: the new generic-MHA TQ4
+case produced `1 failed, 5 passed in 4.12s` because no exception was raised.
+The minimum fix rejects that unsupported combination before loading 22 GiB,
+while preserving packed TQ4 for its dedicated QSA backend. The focused KV set
+then passed `9 passed, 1 skipped in 4.16s`.
+
+Repository archaeology found that the historical 2026-08-27 TQ4 Ornith
+artifacts identify a dirty worktree. Reachable commits contain the TQ4
+storage/writer and dedicated QSA reader, but no generic MHA packed reader; the
+current `kv-quant` worktree also contains only FP8/INT8 generic attention. Thus
+the old live numbers cannot be used to claim that the current branch supports
+generic-MHA TQ4. Internet/GitHub search likewise found no FreeToken PR to import.
+The closest public TQ3_0 implementation found is llama.cpp discussion #20969:
+CPU-only K+V, explicit no-GPU-kernel limitation. It is a design donor, not a
+FreeToken runtime fallback.
+
+### Attempt 2 — `int8` KV serves and generates
+
+Only KV mode changed to `int8`; weights, context, prefill chunk, cache policy,
+memory ratio and all other runtime controls stayed fixed. The server became
+ready, with these resolved values:
+
+| field | result |
+|---|---:|
+| usable KV pages / dtype | 16,384 / INT8 |
+| KV bytes per token / reported total | 10,320 / 0.16 GiB |
+| auto TQ3 expert slots / slot bytes | 2,633 / 1,572,864 |
+| slots lost versus failed TQ4 sizing | 54 |
+| Mamba slots | 8 |
+| free VRAM after initialization | 1.10 GiB |
+| CUDA graph / prefill warmup | batch 1; lengths 80/128 in 11.013 s |
+
+Two greedy, reasoning-disabled short requests used the same 28-token prompt and
+returned exactly `Turing works` with HTTP 200. They emitted four output tokens
+in 5.429698 s and 4.277123 s wall respectively. The scheduler reported stable
+decode lines around 22-24 tok/s, but these tiny outputs are correctness checks,
+not the performance result.
+
+The real repository-compression runner then produced:
+
+| run | prompt / output | cached input | TTFT | prefill | decode | quality |
+|---|---:|---:|---:|---:|---:|---:|
+| cold 1K | 1,012 / 127 | 0 | 8.983 s | 112.660 tok/s | 37.612 tok/s | coherent, 2/5 anchors before truncation |
+| warm long output | 1,012 / 383 | 960 | 3.884 s | not a cold-prefill point | 38.883 tok/s | coherent, 4/5 anchors before truncation |
+
+The warm runner's mechanically computed `1012 / TTFT = 260.538 tok/s` is stored
+in its JSON but must not be plotted as cold prefill: only 52 prompt tokens were
+new. This run proves a 960-token hybrid-radix hit and stable long decode. Peak
+sampled values across the two runs were 7,096 MiB VRAM, 100% GPU, 74 C and
+118.78 W; minimum host available memory was 4.77 GiB and minimum free swap was
+15.09 GiB. Raw time series and full responses are:
+
+- `benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/live/compression-1024.json`;
+- `benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/live-long/compression-1024.json`;
+- `benchmarks/results/ornith35-tq3-sm75-smoke-task6-v1/runtime-smoke-v2-int8.json`.
+
+The historical Q4_K_M `moe1700-smoke` artifact used the same 1,012-token task
+shape and measured 28.443 decode tok/s. TQ3's cold/long values are 32.2-36.7%
+higher. The other direction must also be retained: TQ3 cold prefill was 112.660
+versus Q4's 183.534 tok/s (-38.6%), and TTFT was 8.983 versus 5.514 s (+62.9%).
+This is explicitly **not yet the matched A/B**: the historical run used 122,880
+TQ4 pages, 1,700 slots and dirty source, while TQ3 used 16K INT8 and 2,633
+slots. The result suggests a decode win and a prefill regression, but Task 7
+must separate the codec, context/KV budget and additional residency effects.
+
+After stopping the temporary service and freeing VRAM, the expanded TQ3 plus KV
+validation matrix passed `77 passed, 1 warning in 12.25s`. The sole warning is
+the already-recorded read-only NumPy GGUF mmap warning.
+
+An independent Luna review found no P1 blocker but identified four publication
+and integration gaps. The warm 960-token radix-cache hit had been emitted as
+`260.538 prefill tok/s`; that quotient is retained only as
+`naive_total_prompt_over_ttft_tps`, while the canonical warm prefill value is
+now null and the artifact records 52 new prompt tokens. The benchmark runner
+now applies that rule automatically and writes cached/new/cold fields into the
+plot ledger. Existing successful-run artifacts reference a new
+`run-provenance.json` containing the exact dirty-source diff digest, per-file
+runtime hashes, Python/Torch/CUDA/Triton/driver versions, model revision and
+GGUF hash. README's stale statement that the control remained `tq4-nc` was
+corrected to `int8`, and the packed-MHA rejection is now covered through the
+real `_adjust_config` integration boundary as well as its private validator.
+One additional RED test proved that plain `git diff` hashes an empty byte stream
+when all edits are staged (`dirty=true` but SHA-256 `e3b0...`). The runner now
+hashes `git diff HEAD`, covering staged and unstaged tracked source; the focused
+runner suite passes 11 tests.
+
+The follow-up Luna pass found no P1/blocker and three additional publication
+P2s: `/v1/stats` did not carry the resolved KV dtype, future runner provenance
+lacked automatic GPU/driver/model fields, and the active plan still named the
+now-rejected generic-MHA `tq4-nc` control. A P3 also noted that missing cache
+telemetry was indistinguishable from an explicit zero hit. Red tests reproduced
+all behavioral gaps: the KV geometry omitted `dtype`, a usage event without
+`prompt_tokens_details` became zero, unknown cache input was published as cold,
+and untracked source was absent from Git identity.
+
+The server now includes `kv.dtype`; both existing Task-6 slice rows are repaired
+to the known launch value `int8`. The runner requires a precomputed 64-hex model
+digest (avoiding a disruptive multi-GiB read inside the sweep), records model
+revision/path/file stats and queries GPU UUID/name/driver/compute capability via
+`nvidia-smi` without creating a CUDA context. `git diff HEAD` covers staged and
+unstaged tracked code while `git ls-files --others` contributes per-file hashes
+for untracked source. Missing cache telemetry now yields null new/cold/prefill
+fields. The combined stats/runner gate passes 19 tests, and the plan consistently
+uses INT8 for generic MHA.
+After all review fixes, the fresh combined server-stats, benchmark-schema,
+engine/KV, TQ3 loader/dispatch, prefill and SM75 MoE gate passed `135 passed in
+10.05s`. The previously recorded broader real-GPU KV/QSA matrix remains `327
+passed, 3 skipped`.
+
+The broader post-review KV/QSA suite then exposed a separate integration bug:
+the tree contained both `python/freetoken/kernel/triton/qsa.py` and the newer
+`python/freetoken/kernel/triton/qsa/` package. Python selected the package, so
+four gathered-QSA tests failed to import `qsa_sparse_gqa` even though its source
+still existed in the hidden file. The first reproduction also had two
+no-GPU failures because that command was intentionally run inside the sandbox;
+those were environment failures, not numerical regressions. The legacy
+gathered kernels were moved to `qsa/legacy.py` and exported from the package
+without changing their math. The four focused CPU tests passed, and the full
+real-RTX-2070 matrix then passed `327 passed, 3 skipped in 8.30s`. This failure
+and fix are retained because a weight-only benchmark would not have caught the
+package/runtime collision.
+
+### KV implication
+
+The TQ3_4S weight block cannot be reused as a KV page. Dynamic K/V needs an
+online codec and attention kernels. The checkpoint publisher's example uses
+asymmetric `K=Q8_0, V=TQ3_0`, not TQ3_4S for both. That is technically sensible:
+K errors perturb attention scores, while V is usually the safer aggressive
+compression target. FreeToken currently exposes one shared KV mode and has no
+generic packed TQ3 MHA kernel, so the first rational prototype is separate
+INT8-K plus TQ3_0-V storage/dispatch, tested after the matched weight A/B.

@@ -134,6 +134,15 @@ def test_auto_resolves_per_type(monkeypatch, kind, expected):
     assert config.attention_backend == expected
 
 
+def test_adjust_config_rejects_generic_mha_tq4_before_engine_start(monkeypatch):
+    from freetoken.engine.engine import _adjust_config
+
+    _patch_env(monkeypatch)
+    config = _config("full", attention_backend="triton", kv_cache_dtype="tq4-nc")
+    with pytest.raises(ValueError, match="packed TQ4.*generic MHA"):
+        _adjust_config(config)
+
+
 def test_auto_bsa_sets_block_page_size(monkeypatch):
     # m3_sparse declares page_sizes=(128,): one KV page == one sparse block, and
     # config-time resolution must coerce the page size to match.

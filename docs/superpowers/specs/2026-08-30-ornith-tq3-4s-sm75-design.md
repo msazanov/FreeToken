@@ -4,8 +4,8 @@
 
 Serve `YTan2000/Ornith-1.5-35B-A3B-TQ3_4S` through FreeToken on the
 RTX 2070 (SM 7.5), preserving the packed TQ3_4S expert weights from NVMe through
-RAM and the VRAM expert cache. The first milestone optimizes decode without
-changing the existing `tq4-nc` KV-cache format.
+RAM and the VRAM expert cache. The first live milestone isolates weight decode
+with FreeToken's known-good generic-MHA `int8` KV-cache format.
 
 ## Why this experiment is different from 3-bit KV
 
@@ -15,9 +15,12 @@ The closest TurboQuant KV format is TQ3_0, a separate block layout and runtime
 algorithm. A TQ3_4S weight kernel cannot read a TQ3_0 KV page, and KV quantization
 does not reduce expert-transfer bytes.
 
-The weight experiment therefore keeps `tq4-nc` KV constant. Only after weight
-parity and live decode measurements pass will a separate KV A/B compare memory,
-prefill, decode, and expert-cache effects.
+The original plan named `tq4-nc` as the constant control. Real startup proved
+that this branch has packed TQ4 storage and a dedicated QSA reader but no generic
+MHA packed decoder; it failed at CUDA-graph warmup on physical-width versus
+logical-width head dimensions. The corrected weight experiment therefore keeps
+`int8` KV constant. Only after weight parity and live decode measurements pass
+will a separate KV A/B compare memory, prefill, decode, and expert-cache effects.
 
 ## TQ3_4S representation
 
@@ -98,11 +101,14 @@ the hypothesis and outcome to `TESTLOG.md` and `CHANGELOG.md`. Required fields a
 
 ## KV follow-up
 
-After the TQ3_4S weight A/B, compare current `tq4-nc` with a separate TQ3_0-style
-KV prototype at 16K, 64K, and 122880 context. The 3-bit KV mode is accepted only if
-the VRAM saved creates enough additional expert slots to improve end-to-end decode
-or enables a useful context that otherwise cannot run. Lower KV bytes alone are
-not a success criterion.
+After the TQ3_4S weight A/B, compare current `int8` with a separate TQ3_0-style
+KV prototype at 16K, 64K, and 122880 context. Do not reuse the TQ3_4S weight
+codec. Prefer an asymmetric first prototype—INT8 K plus TQ3_0 V—because K errors
+directly perturb attention scores and the checkpoint publisher likewise keeps K
+at Q8 while using TQ3 only for V. The 3-bit KV mode is accepted only if the VRAM
+saved creates enough additional expert slots to improve end-to-end decode or
+enables a useful context that otherwise cannot run. Lower KV bytes alone are not
+a success criterion.
 
 ## Non-goals
 
