@@ -1,7 +1,7 @@
 # Two-Model Lease Scheduler Design
 
-**Date:** 2026-08-30  
-**Status:** Proposed for user review  
+**Date:** 2026-08-30
+**Status:** Proposed for user review
 **Tracked by:** `ornith-q4km-turing-59w`
 
 ## Purpose
