@@ -235,8 +235,9 @@ The production control remains the official `Q4_K_M`. A Hugging Face intake on
 4. APEX Compact (16.54 GB) — role-aware mixed precision that compresses routed
    experts more heavily; it needs a GGUF type/startup gate before download.
 
-`TQ3_4S` is not directly loadable yet, but the exact tensor audit promoted it
-to the highest-upside **runtime-port** candidate. Its served expert slot is
+`TQ3_4S` is not end-to-end loadable yet, but the exact tensor audit promoted it
+to the highest-upside **runtime-port** candidate and its dense and selected-
+expert decode kernels are now implemented. Its served expert slot is
 1,572,864 bytes, 22.89% below Q4_K_M, while its dense served weights are also
 smaller. Under the same packed-weight VRAM budget this projects roughly 1,943
 slots instead of the measured 1,429; that is a first-order capacity estimate,
@@ -309,8 +310,37 @@ an executable quality gate. The earlier v1 (5.85-6.15x) and v2 (5.70-5.74x)
 runs are retained as intermediate artifacts rather than overwritten. The fitted
 constants are independently reproducible from `fit_tq3_4s_dp4a.py` and its v3
 JSON result.
-This is not yet an Ornith tok/s result: fused selected-expert MoE, large-batch
-prefill, real checkpoint loading, routing/cache behavior and model quality are
-still separate gates. The KV control therefore remains `tq4-nc`; changing it at
-the same time would hide whether any later end-to-end gain came from weights or
-KV storage.
+This Task-4 result was not yet an Ornith tok/s result. The selected-expert MoE
+gate is now covered below; large-batch prefill, real checkpoint loading,
+routing/cache behavior and model quality remain separate gates. The KV control
+therefore remains `tq4-nc`; changing it at the same time would hide whether any
+later end-to-end gain came from weights or KV storage.
+
+The packed selected-expert path is now connected as the next isolated gate.
+With all eight slots already resident in VRAM, one complete routed SwiGLU layer
+at Ornith's real `H=2048`, `I=512`, top-8 geometry touches 12 MiB of packed
+weights and includes gate/up MMVQ, SiLU multiplication, down MMVQ, routing
+weights and top-k accumulation:
+
+| dtype | post-guard p50 repeats (v2 / v3 / v4) | median p50 | full-layer relative L2 | cosine |
+|---|---:|---:|---:|---:|
+| FP16 | 0.196032 / 0.194096 / 0.182496 ms | 0.194096 ms | 1.006% | 0.9999525 |
+| BF16 | 0.204256 / 0.187856 / 0.207056 ms | 0.204256 ms | 1.151% | 0.9999348 |
+
+The latest immutable 200-sample artifact, including full source provenance, is
+`benchmarks/results/ornith35-tq3-sm75-moe-task5-v4/resident-top8.json`.
+V1 is the pre-safety-guard measurement; all three post-guard repeats are retained
+as v2/v3/v4. Their p50 ranges are 0.1825-0.1960 ms FP16 and 0.1879-0.2071 ms
+BF16, so the observed run-to-run spread is larger than a clean measurement of
+the guard's two integer comparisons. Multiplying the median post-guard FP16 p50
+by 40 routed layers gives 7.76 ms, or a purely illustrative 129 layer-stack
+evaluations/s before every attention/GDN/dense operation, scheduler action and
+cache transfer. It is not a model throughput estimate, but
+it shows that hot TQ3 expert arithmetic itself is unlikely to be the main
+bottleneck. The real question moves to expert hit rate and RAM/NVMe-to-VRAM
+traffic, which the checkpoint A/B must measure.
+
+The final Task-5 mixed regression gate is `55 passed, 1 warning in 25.67s`.
+The warning is the pre-existing read-only NumPy mmap warning; it is unrelated to
+the TQ3 arithmetic or slot-bounds checks. The invalid-ID regression also passes
+CUDA `compute-sanitizer` memcheck with `ERROR SUMMARY: 0 errors`.

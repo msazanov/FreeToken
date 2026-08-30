@@ -245,7 +245,7 @@ def test_capability_sets_are_consistent():
     Checks:
     - MMVQ_TYPES == DEQUANT_TYPES after exact dequant and dense MMVQ land
     - MMQ_TYPES == MOE_MMQ_TYPES (both handle STD_K only)
-    - MOE_VEC_TYPES is a subset until TQ3 fused-MoE lands
+    - MOE_VEC_TYPES == MMVQ_TYPES after TQ3 fused-MoE lands
     - MMQ_TYPES is a strict subset of MMVQ_TYPES
     - MOE_MMQ_TYPES is a strict subset of MOE_VEC_TYPES
     - Every member of every set has a BLOCK_SHAPE entry and GGML_NAME entry
@@ -255,8 +255,9 @@ def test_capability_sets_are_consistent():
     assert MMQ_TYPES == MOE_MMQ_TYPES, (
         f"MMQ_TYPES {MMQ_TYPES} != MOE_MMQ_TYPES {MOE_MMQ_TYPES}"
     )
-    assert MOE_VEC_TYPES < MMVQ_TYPES
-    assert MMVQ_TYPES - MOE_VEC_TYPES == {GGML_TQ3_4S}
+    assert MOE_VEC_TYPES == MMVQ_TYPES, (
+        f"MOE_VEC_TYPES {MOE_VEC_TYPES} != MMVQ_TYPES {MMVQ_TYPES}"
+    )
 
     # Check subset relationships
     assert MMQ_TYPES < MMVQ_TYPES, (

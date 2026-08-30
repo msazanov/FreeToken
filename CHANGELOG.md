@@ -848,3 +848,33 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   packed-uint8 storage and 16-byte weight alignment. Extended MMVQ parity to
   FP32 and zero-scale blocks after independent Luna review. Final expanded
   Task-4 gate: 59 passed with one pre-existing read-only mmap warning.
+
+### Added — packed TQ3_4S selected-expert MoE on SM75
+
+- Connected type 46 to the existing expert-slot MMVQ kernel while preserving
+  packed bytes end-to-end. MoE activation Q8_1 now applies the same source-keyed
+  signed WHT as dense MMVQ; no BF16 expert materialization was introduced.
+- Added input/type/slot-size/stride/alignment guards around the TQ3 MoE API and
+  retained the existing byte-stride cache contract for layers whose native
+  expert matrix is smaller than the global maximum slot.
+- Added an in-device cache-slot bounds guard after independent Luna review found
+  and reproduced an invalid global read. Invalid TQ3 route IDs now leave their
+  pre-zeroed output rows untouched, avoiding both OOB and a per-token CPU/GPU
+  synchronization. Dense packed matrix bytes must occupy the prefix of a slot;
+  expert-level tail padding is supported, row padding is explicitly unsupported.
+- Added FP16/BF16 selected-expert parity, hostile expert-tail sentinels and a
+  full top-k SwiGLU routing-accumulation comparison against exact materialized
+  FP32 weights. Initial focused gate: 3 passed; mixed existing MoE/cache/grid-z
+  gate: 52 passed with one pre-existing mmap warning.
+- Added a source-hashed resident-slot benchmark at the real Ornith H=2048,
+  I=512, top-8 geometry. Three post-guard repeats measured p50 ranges of
+  0.182496-0.196032 ms FP16 and 0.187856-0.207056 ms BF16 while touching 12 MiB
+  packed; medians are 0.194096/0.204256 ms. V4 records and verifies every public
+  wrapper, activation and CUDA source hash. Relative L2 after both expert
+  projections and routing was 1.006%/1.151%. This is kernel-only and excludes
+  cache transfer, the rest of the model and model tok/s.
+- Final mixed Task-5 regression gate: 55 passed with one pre-existing read-only
+  NumPy mmap warning. The invalid-ID regression separately passed CUDA memcheck
+  with zero reported errors.
+- Final independent Luna review found no P1/P2 blocker, reran 4 MoE and 2
+  provenance tests successfully, and matched all 10 v4 source hashes.

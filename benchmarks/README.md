@@ -45,3 +45,10 @@ MAX_JOBS=12 PYTHONPATH=python:. python benchmarks/tq3_4s_kernel_bench.py \
 signed int8 levels and shared scale used by the SM75 DP4A approximation. It
 derives Gaussian Lloyd-Max bin masses from the authoritative centroids and
 enumerates every reachable rounded table in the declared scale interval.
+
+**`tq3_4s_moe_bench.py`** — resident-slot, batch-one top-8 routed SwiGLU
+microbenchmark at Ornith's real H=2048/I=512 geometry. It saves every event and
+an exact-FP32 quality comparison, plus hashes for the Python API/activation and
+CUDA implementation it exercises. This isolates one hot MoE layer; cache
+misses, PCIe/NVMe, non-MoE layers, prefill and model tok/s are deliberately
+excluded.

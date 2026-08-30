@@ -124,7 +124,13 @@ def ggml_moe_a8_vec(
     row: int,
     tokens: int,
 ) -> torch.Tensor:
-    """MMVQ grouped expert GEMV over stacked experts ``weight[E, row, *]``."""
+    """MMVQ grouped expert GEMV over stacked expert slots.
+
+    Each slot begins with one fully dense row-major packed matrix. Expert-level
+    tail padding is supported through the slot stride; padding between matrix
+    rows is not. TQ3_4S invalid slot IDs are guarded in-device and leave that
+    route zero rather than reading outside the cache allocation.
+    """
     return _module().ggml_moe_a8_vec(x, weight, topk_ids, top_k, quant_type, row, tokens)
 
 

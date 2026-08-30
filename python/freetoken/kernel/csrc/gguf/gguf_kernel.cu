@@ -608,7 +608,29 @@ torch::Tensor ggml_moe_a8_vec(
     int64_t type,
     int64_t row,
     int64_t tokens) {
+  TORCH_CHECK(X.dim() == 2, "ggml_moe_a8_vec: input must be a 2D tensor");
   int col = X.sizes()[1];
+  if (type == 46) {
+    TORCH_CHECK(col % QK_TQ3_0 == 0,
+                "ggml_moe_a8_vec: TQ3_4S input columns must be a multiple of 32, got ", col);
+    TORCH_CHECK(top_k > 0 && tokens > 0 && X.size(0) >= tokens,
+                "ggml_moe_a8_vec: TQ3_4S requires positive top_k/tokens and one input row per token");
+    TORCH_CHECK(W.scalar_type() == torch::kUInt8,
+                "ggml_moe_a8_vec: TQ3_4S weight must use packed uint8 storage");
+    TORCH_CHECK(topk_ids.scalar_type() == torch::kInt32,
+                "ggml_moe_a8_vec: TQ3_4S topk_ids must use int32");
+    TORCH_CHECK(W.device() == X.device() && topk_ids.device() == X.device(),
+                "ggml_moe_a8_vec: TQ3_4S tensors must share a device");
+    TORCH_CHECK(W.is_contiguous() && X.is_contiguous() && topk_ids.is_contiguous(),
+                "ggml_moe_a8_vec: TQ3_4S tensors must be contiguous");
+    TORCH_CHECK(W.dim() >= 2 && W.stride(0) * W.element_size() >= row * col / 2,
+                "ggml_moe_a8_vec: TQ3_4S expert slot is smaller than the packed matrix");
+    TORCH_CHECK(topk_ids.numel() >= tokens * top_k,
+                "ggml_moe_a8_vec: TQ3_4S topk_ids is smaller than tokens * top_k");
+    TORCH_CHECK((reinterpret_cast<uintptr_t>(W.data_ptr()) & 0xFu) == 0 &&
+                    (W.stride(0) * W.element_size()) % 16 == 0,
+                "ggml_moe_a8_vec: TQ3_4S expert slots must be 16-byte aligned");
+  }
   const int padded = (col + 512 - 1) / 512 * 512;
   const at::cuda::OptionalCUDAGuard device_guard(device_of(X));
   auto options = torch::TensorOptions().dtype(X.dtype()).device(W.device());
@@ -617,7 +639,8 @@ torch::Tensor ggml_moe_a8_vec(
   options = torch::TensorOptions().dtype(torch::kInt32).device(W.device());
   at::Tensor quant_X = torch::empty({tokens, padded / 32 * 9}, options);
   DISPATCH_FLOAT_TYPES(X.scalar_type(), "ggml_moe_vec_a8", [&] {
-    quantize_row_q8_1_cuda<scalar_t>((scalar_t*)X.data_ptr(), (void*)quant_X.data_ptr(), col, tokens, stream);
+    quantize_row_q8_1_cuda<scalar_t>(
+        (scalar_t*)X.data_ptr(), (void*)quant_X.data_ptr(), col, tokens, stream, type == 46);
     switch (type) {
       case 2:
         moe_vec_q4_0_q8_1_cuda<scalar_t>(
@@ -885,10 +908,25 @@ torch::Tensor ggml_moe_a8_vec(
             quant_X.stride(0),
             stream);
         break;
+      case 46:
+        moe_vec_tq3_4s_q8_1_cuda<scalar_t>(
+            (void*)W.data_ptr(),
+            (void*)quant_X.data_ptr(),
+            (scalar_t*)Y.data_ptr(),
+            (int*)topk_ids.data_ptr(),
+            top_k,
+            tokens,
+            col,
+            row,
+            W.stride(0) * W.element_size(),
+            quant_X.stride(0),
+            stream,
+            W.size(0));
+        break;
       default:
         TORCH_CHECK(false, "ggml_moe_a8_vec: unsupported GGUF quant type ", type,
                     " (MMVQ kernels exist for Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q2_K-Q6_K/IQ2_XXS/IQ2_XS/"
-                    "IQ3_XXS/IQ1_S/IQ4_NL/IQ3_S/IQ2_S/IQ4_XS/IQ1_M)");
+                    "IQ3_XXS/IQ1_S/IQ4_NL/IQ3_S/IQ2_S/IQ4_XS/IQ1_M/TQ3_4S)");
     }
   });
   return Y;

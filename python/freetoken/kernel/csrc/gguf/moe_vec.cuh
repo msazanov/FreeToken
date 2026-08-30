@@ -12,13 +12,21 @@ static __global__ void moe_vec_q(
     const int ncols,
     const int nrows,
     const int64_t expert_stride_bytes,
-    const int token_stride) {
+    const int token_stride,
+    const int num_experts) {
   const auto row = blockIdx.x * blockDim.y + threadIdx.y;
 
   const auto token = blockIdx.z / topk;
-  const auto expert = (topk_ids)[blockIdx.z];
 
   if (row >= nrows) {
+    return;
+  }
+  const auto expert = (topk_ids)[blockIdx.z];
+  // The hot serving path cannot synchronize topk_ids back to the CPU merely to
+  // validate cache-slot indexes. Guard them in-device instead: Y is zero-filled
+  // by the wrapper, so an invalid mapping produces a safe zero route, never an
+  // out-of-bounds read or a poisoned CUDA context.
+  if (expert < 0 || expert >= num_experts) {
     return;
   }
 
@@ -82,7 +90,8 @@ static void moe_vec_launch(
     const int nrows,
     const int64_t expert_stride_bytes,
     const int token_stride,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    const int num_experts = 0x7fffffff) {
   const int block_num_y = (nrows + GGML_CUDA_MMV_Y - 1) / GGML_CUDA_MMV_Y;
   const dim3 block_dims(WARP_SIZE, GGML_CUDA_MMV_Y, 1);
   // top_k is the router's experts-per-token (<= 128 in practice), so this is >= 511.
@@ -96,7 +105,7 @@ static void moe_vec_launch(
             (const void*)(((const int*)vy) + (size_t)t0 * token_stride),
             dst + (size_t)t0 * top_k * nrows,
             topk_ids + (size_t)t0 * top_k,
-            top_k, ncols, nrows, expert_stride_bytes, token_stride);
+            top_k, ncols, nrows, expert_stride_bytes, token_stride, num_experts);
   }
 }
 
@@ -421,4 +430,39 @@ static void moe_vec_iq3_s_q8_1_cuda(
     cudaStream_t stream) {
   moe_vec_launch<scalar_t, QK_K, QI3_XS, block_iq3_s, 1, vec_dot_iq3_s_q8_1>(
       vx, vy, dst, topk_ids, top_k, tokens, ncols, nrows, expert_stride_bytes, token_stride, stream);
+}
+
+template <typename scalar_t>
+static void moe_vec_tq3_4s_q8_1_cuda(
+    const void* vx,
+    const void* vy,
+    scalar_t* dst,
+    const int* topk_ids,
+    const int top_k,
+    const int tokens,
+    const int ncols,
+    const int nrows,
+    const int64_t expert_stride_bytes,
+    const int token_stride,
+    cudaStream_t stream,
+    const int num_experts) {
+  moe_vec_launch<
+      scalar_t,
+      QK_TQ3_0,
+      QI_TQ3_4S,
+      block_tq3_4s,
+      VDR_TQ3_4S_Q8_1_MMVQ,
+      vec_dot_tq3_4s_q8_1>(
+      vx,
+      vy,
+      dst,
+      topk_ids,
+      top_k,
+      tokens,
+      ncols,
+      nrows,
+      expert_stride_bytes,
+      token_stride,
+      stream,
+      num_experts);
 }

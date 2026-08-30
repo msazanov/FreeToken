@@ -1826,3 +1826,113 @@ about six times faster than repeatedly materializing the same half-megabyte
 expert matrix. It does not yet prove the fused top-k MoE path, expert-slot
 addressing, prefill dispatch, cache-hit improvement, real generation quality or
 model throughput. KV remains fixed at `tq4-nc` for the weight A/B.
+
+## 2026-08-30 — TQ3_4S packed selected-expert MoE on RTX 2070
+
+The Task-5 RED called `ggml_moe_a8_vec` with two tokens, two routes and three
+distinct packed TQ3 slots. It failed at the intended boundary:
+
+```text
+1 failed in 5.96s
+RuntimeError: ggml_moe_a8_vec: unsupported GGUF quant type 46
+```
+
+The implementation reuses the already-tested fitted vecdot inside FreeToken's
+existing byte-stride selected-expert kernel. The only new arithmetic behavior is
+that this separate MoE entry point now passes `type == 46` into Q8_1 activation
+quantization, activating the same signed normalized WHT as dense MMVQ. Public
+guards reject partial blocks, wrong ID/storage dtypes, undersized expert slots,
+non-contiguous tensors and base/stride values that violate the 16-byte `uint4`
+load contract.
+
+Three target-SM75 correctness tests initially passed in 85.46 s including rebuild:
+
+- FP16 and BF16 selected experts versus exact materialized FP32 matrices;
+- three expert slots with different hostile bytes in a padded expert-level tail,
+  proving `expert_stride_bytes` neither skips into nor reads through a neighbour;
+- complete two-projection SwiGLU, route weights and top-k sum versus an exact
+  per-expert FP32 reference.
+
+The wider gate combined these with the existing Q4 fused-copy, padded-stride,
+grid-z chunking, CPU/GPU Q4 and capability-table tests: `52 passed, 1 warning in
+26.95s`. The warning is the same read-only NumPy mmap warning already recorded.
+
+Independent Luna review found no valid-path blocker and additionally ran
+`compute-sanitizer` with zero errors on legal routes. It did reproduce an OOB
+global read for an intentionally invalid cache-slot ID. A RED regression with
+IDs `-1` and `num_slots` then poisoned the isolated CUDA process strongly enough
+that it had to be terminated (`exit 143`); this is retained as the real failure
+observation rather than reported as a normal assertion failure.
+
+The fix passes `W.size(0)` only to the TQ3 selected-expert launch and checks each
+ID in-device. Invalid routes return before reading weights and their output stays
+zero because the wrapper allocates `Y` with `torch::zeros`. This avoids the
+catastrophic read without adding a D2H min/max synchronization to every token.
+The post-fix TQ3 file is `4 passed in 84.66s`, including source rebuild and the
+new invalid-ID test.
+
+The review also clarified the storage contract. The kernel supports an
+expert-level tail because it receives `expert_stride_bytes`, but computes matrix
+rows densely inside each slot. Therefore the first `rows * row_bytes` bytes must
+be a compact matrix prefix; padding between rows is unsupported. The existing
+cache copy plan and hostile-tail test use exactly this contract, and the public
+Python wrapper now documents it explicitly.
+
+### Resident top-8 real-geometry hot-path benchmark
+
+This synthetic-weight benchmark uses Ornith's actual `H=2048`, `I=512`, top-8,
+one token and eight already-resident slots. Each call reads 8 MiB gate/up plus
+4 MiB down packed weights and includes SiLU and routing accumulation. It has 20
+warmups and retains 100 CUDA-event samples per dtype.
+
+| dtype | min / p50 / mean / p95 / max ms | effective packed GiB/s | cosine | relative L2 |
+|---|---:|---:|---:|---:|
+| FP16 (v3 post-guard) | 0.182368 / 0.194096 / 0.213359 / 0.301531 / 0.436672 | 60.38 | 0.9999525 | 0.010060 |
+| BF16 (v3 post-guard) | 0.181824 / 0.187856 / 0.195147 / 0.217646 / 0.236480 | 62.38 | 0.9999348 | 0.011514 |
+
+Both explicit gates (cosine >=0.999 and relative L2 <=0.03) passed. Source/Git,
+GPU/thermal state and all 200 ordered samples are in
+`benchmarks/results/ornith35-tq3-sm75-moe-task5-v3/resident-top8.json`.
+
+All intermediate timing evidence is preserved. V1 predates the bounds guard and
+measured p50 0.187872/0.191696 ms (FP16/BF16). Post-guard v2 measured
+0.196032/0.204256 ms; post-guard v3 measured 0.194096/0.187856 ms. A fourth
+post-guard run was added after extending provenance to the public wrapper and
+activation source; it measured:
+
+| dtype | min / p50 / mean / p95 / max ms | effective packed GiB/s | cosine | relative L2 |
+|---|---:|---:|---:|---:|
+| FP16 (v4 post-guard) | 0.172416 / 0.182496 / 0.202123 / 0.301979 / 0.311296 | 64.21 | 0.9999525 | 0.010060 |
+| BF16 (v4 post-guard) | 0.165888 / 0.207056 / 0.229166 / 0.340331 / 0.467200 | 56.60 | 0.9999348 | 0.011514 |
+
+The v4 artifact is
+`benchmarks/results/ornith35-tq3-sm75-moe-task5-v4/resident-top8.json`; all ten
+recorded source hashes were independently checked with `sha256sum -c`. Across
+v2/v3/v4, post-guard p50 ranges are 0.182496-0.196032 ms FP16 and
+0.187856-0.207056 ms BF16; their medians are 0.194096 and 0.204256 ms. Compared
+with the single pre-guard v1, those medians differ by +3.31% and +6.55%, but this
+is not a controlled on/off A/B and cannot isolate branch cost from launch
+variance. All four raw distributions are retained instead of claiming a precise
+guard overhead.
+
+At the median post-guard FP16 p50, forty such hot routed layers alone total about
+7.76 ms. That is a lower-bound decomposition, not 129 model tok/s: it omits
+attention/GDN, dense
+weights, scheduler, sampling and every expert-cache transfer. Its useful result
+is narrower: native hot TQ3 MoE arithmetic is fast enough that the real-model
+bottleneck experiment should focus on misses, transfer bytes and cache capacity.
+
+The final mixed Task-5 regression command covered the new TQ3 MoE file plus the
+existing grid-z, fused-copy, CPU MoE, GGUF type/dispatch and benchmark-provenance
+suites: `55 passed, 1 warning in 25.67s`. The warning is the already-recorded
+read-only NumPy mmap warning.
+
+The final invalid-slot regression was additionally run under CUDA
+`compute-sanitizer --tool memcheck --error-exitcode 99`: `1 passed in 7.79s`,
+`ERROR SUMMARY: 0 errors`. This specifically covers IDs `-1` and `num_slots`
+after the in-device guard fix.
+
+Final independent Luna review reported no P1/P2 blockers. It reran all four TQ3
+MoE tests (`4 passed`), both provenance tests (`2 passed`) and matched all ten v4
+source hashes. The reviewer kept real file-backed cache traffic, model quality
+and end-to-end throughput as explicit residual risks for Tasks 6-7.

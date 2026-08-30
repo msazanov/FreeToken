@@ -9,7 +9,7 @@ choice anyway. ``topk_ids`` already index the streamed cache slots (decode) or t
 materialized layer positions (prefill).
 
 This module is general over any quantization type supported by the ``ggml_moe_a8_vec``
-kernel (all types in ``MOE_VEC_TYPES``, which includes all 19 quantized types). Q4_0
+kernel (every format advertised by ``MOE_VEC_TYPES``). Q4_0
 is currently the only type the rest of the pipeline plumbs through; support for other
 types is added by parametrizing the quant type at the MoE bank loader, dequant.py, and
 moe/expert_banks.py level.

@@ -69,18 +69,19 @@ def _write_tq3_gguf(path: Path, block: bytes) -> None:
     path.write_bytes(body)
 
 
-def test_tq3_4s_type_geometry_advertises_dequant_and_dense_mmvq_only():
+def test_tq3_4s_type_geometry_advertises_dequant_dense_and_fused_mmvq():
     assert GGML_TQ3_4S == 46
     assert GGML_NAME[GGML_TQ3_4S] == "TQ3_4S"
     assert BLOCK_SHAPE[GGML_TQ3_4S] == (32, 16)
     assert row_bytes(32, GGML_TQ3_4S) == 16
     assert row_bytes(2048, GGML_TQ3_4S) == 1024
 
-    # Exact materialized CUDA and dense small-batch MMVQ have parity gates. MMQ
-    # and fused-MoE remain unavailable until their own staged tests land.
+    # Exact materialized CUDA, dense MMVQ and selected-expert MMVQ have parity
+    # gates. Large-batch MMQ remains unavailable until its own staged test lands.
     assert GGML_TQ3_4S in DEQUANT_TYPES
     assert GGML_TQ3_4S in MMVQ_TYPES
-    for capability in (MMQ_TYPES, MOE_VEC_TYPES, MOE_MMQ_TYPES):
+    assert GGML_TQ3_4S in MOE_VEC_TYPES
+    for capability in (MMQ_TYPES, MOE_MMQ_TYPES):
         assert GGML_TQ3_4S not in capability
 
 
