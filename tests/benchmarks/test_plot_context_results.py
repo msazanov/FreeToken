@@ -262,8 +262,270 @@ def test_comparison_manifest_rejects_forged_baseline_category():
         classify_comparison_rows([row], manifest)
 
 
+def test_live_decode_extractor_uses_every_stable_stdout_sample(tmp_path: Path):
+    from benchmarks.plot_context_results import extract_live_decode_samples
+
+    artifact = tmp_path / "context-16384.json"
+    artifact.write_text("{}\n", encoding="utf-8")
+    artifact.with_suffix(".stdout.log").write_text(
+        "Decode batch, #running-req: 1, #token: 16441, "
+        "gen throughput (token/s): 0.21, #queue-req: 0\n"
+        "Decode batch, #running-req: 1, #token: 16481, "
+        "gen throughput (token/s): 20.61, #queue-req: 0\n"
+        "Decode batch, #running-req: 1, #token: 16521, "
+        "gen throughput (token/s): 21.34, #queue-req: 0\n",
+        encoding="utf-8",
+    )
+
+    samples = extract_live_decode_samples(artifact)
+
+    assert samples == [
+        {
+            "context_tokens": 16481,
+            "decode_tps": 20.61,
+            "completion_tokens": None,
+            "source_kind": "server_stdout",
+            "source_line": 2,
+        },
+        {
+            "context_tokens": 16521,
+            "decode_tps": 21.34,
+            "completion_tokens": None,
+            "source_kind": "server_stdout",
+            "source_line": 3,
+        },
+    ]
+
+
+def test_live_decode_extractor_uses_stable_runtime_stats_samples(tmp_path: Path):
+    from benchmarks.plot_context_results import extract_live_decode_samples
+
+    artifact = tmp_path / "compression-1024.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "runtime_samples": [
+                    {
+                        "server_stats": {
+                            "kv": {"used_pages": 1013, "page_size": 4},
+                            "throughput": {"decode_tps": 341.4},
+                            "requests": {"completion_tokens_total": 1},
+                        }
+                    },
+                    {
+                        "server_stats": {
+                            "kv": {"used_pages": 1043, "page_size": 4},
+                            "throughput": {"decode_tps": 29.8},
+                            "requests": {"completion_tokens_total": 31},
+                        }
+                    },
+                    {
+                        "server_stats": {
+                            "kv": {"used_pages": 1074, "page_size": 4},
+                            "throughput": {"decode_tps": 29.9},
+                            "requests": {"completion_tokens_total": 62},
+                        }
+                    },
+                ]
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    samples = extract_live_decode_samples(artifact)
+
+    assert samples == [
+        {
+            "context_tokens": 4172,
+            "decode_tps": 29.8,
+            "completion_tokens": 31,
+            "source_kind": "runtime_stats",
+            "source_line": 2,
+        },
+        {
+            "context_tokens": 4296,
+            "decode_tps": 29.9,
+            "completion_tokens": 62,
+            "source_kind": "runtime_stats",
+            "source_line": 3,
+        },
+    ]
+
+
+def test_real_live_decode_sources_cover_every_run_and_all_stable_samples():
+    from benchmarks.plot_context_results import (
+        collect_live_comparison_runs,
+        load_jsonl,
+        load_live_jsonl,
+    )
+
+    root = Path(__file__).parents[2]
+    results_root = root / "benchmarks/results"
+    portable = load_live_jsonl(results_root / "model-context-speed-live.jsonl")
+    if not all(
+        (results_root / row["source_artifact"]).exists()
+        for row in portable
+    ):
+        pytest.skip("primary stdout logs are local evidence ignored by Git")
+    rows = load_jsonl(root / "benchmarks/results/model-context-speed.jsonl")
+    manifest = json.loads(
+        (root / "benchmarks/comparison_cohorts.json").read_text(encoding="utf-8")
+    )
+
+    runs = collect_live_comparison_runs(
+        rows,
+        manifest,
+        results_root=results_root,
+    )
+
+    assert len(runs) == 21
+    assert sum(len(run["samples"]) for run in runs) == 900
+    assert all(run["samples"] for run in runs)
+    assert {
+        run["samples"][0]["source_kind"] for run in runs
+    } == {"server_stdout", "runtime_stats"}
+    assert {
+        len(run["samples"])
+        for run in runs
+        if run["cohort"] == "prefill_block_sweep"
+    } == {101}
+
+
+def test_checked_in_live_registry_exactly_matches_raw_live_sources():
+    from benchmarks.plot_context_results import (
+        collect_live_comparison_runs,
+        flatten_live_comparison_runs,
+        load_jsonl,
+        load_live_jsonl,
+    )
+
+    root = Path(__file__).parents[2]
+    results_root = root / "benchmarks/results"
+    rows = load_jsonl(results_root / "model-context-speed.jsonl")
+    portable = load_live_jsonl(results_root / "model-context-speed-live.jsonl")
+    if not all(
+        (results_root / row["source_artifact"]).exists()
+        for row in portable
+    ):
+        pytest.skip("primary stdout logs are local evidence ignored by Git")
+    manifest = json.loads(
+        (root / "benchmarks/comparison_cohorts.json").read_text(encoding="utf-8")
+    )
+    raw_runs = collect_live_comparison_runs(
+        rows,
+        manifest,
+        results_root=results_root,
+    )
+
+    assert portable == flatten_live_comparison_runs(raw_runs)
+
+
+def test_live_run_resolution_rebases_stale_absolute_artifact_paths(tmp_path: Path):
+    from benchmarks.plot_context_results import collect_live_comparison_runs
+
+    results_root = tmp_path / "benchmarks/results"
+    artifact = results_root / "model/run.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    artifact.with_suffix(".stdout.log").write_text(
+        "Decode batch, #token: 1001, gen throughput (token/s): 0.1\n"
+        "Decode batch, #token: 1041, gen throughput (token/s): 20.0\n",
+        encoding="utf-8",
+    )
+    stale_artifact = tmp_path / "old/checkout/benchmarks/results/model/run.json"
+    stale_artifact.parent.mkdir(parents=True)
+    stale_artifact.write_text("{}\n", encoding="utf-8")
+    stale_artifact.with_suffix(".stdout.log").write_text(
+        "Decode batch, #token: 1001, gen throughput (token/s): 0.1\n"
+        "Decode batch, #token: 1041, gen throughput (token/s): 1.0\n",
+        encoding="utf-8",
+    )
+    row = {
+        "artifact": str(stale_artifact),
+        "model": "Ornith",
+        "quantization": "Q4",
+        "actual_context_tokens": 1000,
+        "prefill_tps": 1.0,
+        "decode_tps": 20.0,
+    }
+    manifest = {
+        "cohorts": {"custom": [{"artifact": "model/run.json"}]},
+        "excluded": [],
+    }
+
+    runs = collect_live_comparison_runs(
+        [row],
+        manifest,
+        results_root=results_root,
+    )
+
+    assert runs[0]["artifact_path"] == artifact
+    assert runs[0]["samples"][0]["context_tokens"] == 1041
+    assert runs[0]["samples"][0]["decode_tps"] == 20.0
+
+
+def test_live_runs_can_use_portable_registry_without_companion_logs(tmp_path: Path):
+    from benchmarks.plot_context_results import collect_live_comparison_runs
+
+    results_root = tmp_path / "results"
+    artifact = results_root / "model/run.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    row = {
+        "artifact": "model/run.json",
+        "model": "Ornith",
+        "quantization": "Q4",
+        "actual_context_tokens": 1000,
+        "prefill_tps": 1.0,
+        "decode_tps": 20.0,
+    }
+    manifest = {
+        "cohorts": {"custom": [{"artifact": "model/run.json"}]},
+        "excluded": [],
+    }
+    live_rows = [
+        {
+            "schema_version": 1,
+            "artifact": "model/run.json",
+            "cohort": "custom",
+            "model": "Ornith",
+            "quantization": "Q4",
+            "sample_index": 0,
+            "context_tokens": 1041,
+            "decode_tps": 20.0,
+            "completion_tokens": None,
+            "source_kind": "server_stdout",
+            "source_artifact": "model/run.stdout.log",
+            "source_line": 42,
+            "source_sha256": "0" * 64,
+        }
+    ]
+
+    runs = collect_live_comparison_runs(
+        [row],
+        manifest,
+        results_root=results_root,
+        live_rows=live_rows,
+    )
+
+    assert runs[0]["samples"] == [
+        {
+            "context_tokens": 1041,
+            "decode_tps": 20.0,
+            "completion_tokens": None,
+            "source_kind": "server_stdout",
+            "source_line": 42,
+        }
+    ]
+
+
 def test_objective_comparison_svg_is_one_decode_speed_vs_context_plot():
-    from benchmarks.plot_context_results import load_jsonl, render_comparison_svg
+    from benchmarks.plot_context_results import (
+        load_jsonl,
+        load_live_jsonl,
+        render_comparison_svg,
+    )
 
     root = Path(__file__).parents[2]
     rows = load_jsonl(root / "benchmarks/results/model-context-speed.jsonl")
@@ -271,89 +533,124 @@ def test_objective_comparison_svg_is_one_decode_speed_vs_context_plot():
         (root / "benchmarks/comparison_cohorts.json").read_text(encoding="utf-8")
     )
 
-    svg = render_comparison_svg(rows, manifest)
+    svg = render_comparison_svg(
+        rows,
+        manifest,
+        results_root=root / "benchmarks/results",
+        live_rows=load_live_jsonl(
+            root / "benchmarks/results/model-context-speed-live.jsonl"
+        ),
+    )
 
     assert svg.startswith("<svg")
-    assert "Скорость генерации в зависимости от размера контекста" in svg
+    assert "Живая скорость decode по мере роста KV-контекста" in svg
     assert 'data-x-metric="decode_tps"' in svg
     assert 'data-x-scale="linear"' in svg
-    assert 'data-y-metric="actual_context_tokens"' in svg
+    assert 'data-y-metric="live_context_tokens"' in svg
     assert 'data-y-scale="log2"' in svg
     assert 'data-axis="context" transform="rotate(-90' in svg
-    assert svg.count('data-measurement="') == 21
-    assert svg.count('data-model-family="ornith"') == 18
-    assert svg.count('data-model-family="qwen"') == 3
-    assert svg.count('data-series-line="') == 2
-    assert svg.count("<polyline") == 2
-    assert "Ornith Q4_K_M · базовая линия" in svg
-    assert "Qwen REAP Q3_K_XL · базовая линия" in svg
+    assert svg.count('data-live-measurement="') == 900
+    assert svg.count('data-model-family="ornith"') == 885
+    assert svg.count('data-model-family="qwen"') == 15
+    assert svg.count('data-run-trace="') == 21
+    assert svg.count('data-baseline-summary-line="') == 0
+    assert svg.count('data-summary-measurement="') == 0
+    assert svg.count('data-prefill-legend="') == 8
+    assert "128K</text>" not in svg
+    assert "64K</text>" in svg
+    assert "Ornith Q4_K_M · live" in svg
+    assert "Qwen REAP Q3_K_XL · live" in svg
     assert "Ornith TQ3_4S · fixed 1429" in svg
     assert "Ornith TQ3_4S · auto 2633" in svg
     assert "Ornith Q4_K_M · prefill-block sweep" in svg
     assert "p1024" in svg and "p4096" in svg
-    assert "точка = один сохранённый end-to-end прогон" in svg
-    assert "Линия соединяет только одинаковую конфигурацию" in svg
+    assert "900 стабильных живых decode-срезов" in svg
+    assert "Первый переходный интервал после prefill исключён" in svg
 
 
-def test_svg_coordinates_and_line_membership_match_the_real_ledger():
+def test_svg_live_coordinates_and_trace_membership_match_raw_sources():
     import xml.etree.ElementTree as ET
 
-    from benchmarks.plot_context_results import load_jsonl, render_comparison_svg
+    from benchmarks.plot_context_results import (
+        collect_live_comparison_runs,
+        load_jsonl,
+        load_live_jsonl,
+        render_comparison_svg,
+    )
 
     root = Path(__file__).parents[2]
     rows = load_jsonl(root / "benchmarks/results/model-context-speed.jsonl")
     manifest = json.loads(
         (root / "benchmarks/comparison_cohorts.json").read_text(encoding="utf-8")
     )
-    svg_root = ET.fromstring(render_comparison_svg(rows, manifest))
+    results_root = root / "benchmarks/results"
+    live_rows = load_live_jsonl(results_root / "model-context-speed-live.jsonl")
+    runs = collect_live_comparison_runs(
+        rows,
+        manifest,
+        results_root=results_root,
+        live_rows=live_rows,
+    )
+    svg_root = ET.fromstring(
+        render_comparison_svg(
+            rows,
+            manifest,
+            results_root=results_root,
+            live_rows=live_rows,
+        )
+    )
 
-    marks = [element for element in svg_root.iter() if "data-measurement" in element.attrib]
+    marks = [
+        element
+        for element in svg_root.iter()
+        if "data-live-measurement" in element.attrib
+    ]
     actual_points = {
-        element.attrib["data-artifact"]: (
+        (
+            element.attrib["data-artifact"],
+            element.attrib["data-source-kind"],
+            int(element.attrib["data-source-line"]),
+        ): (
             int(element.attrib["data-context-tokens"]),
             float(element.attrib["data-decode-tps"]),
         )
         for element in marks
     }
     expected_points = {
-        row["artifact"].split("benchmarks/results/", 1)[1]: (
-            int(row["actual_context_tokens"]),
-            float(row["decode_tps"]),
+        (
+            run["artifact"],
+            sample["source_kind"],
+            int(sample["source_line"]),
+        ): (
+            int(sample["context_tokens"]),
+            float(sample["decode_tps"]),
         )
-        for row in rows
+        for run in runs
+        for sample in run["samples"]
     }
     assert actual_points == expected_points
 
-    lines = {
-        element.attrib["data-series-line"]: set(
-            element.attrib["data-series-artifacts"].split("|")
-        )
+    traces = {
+        element.attrib["data-run-trace"]: int(element.attrib["data-live-samples"])
         for element in svg_root.iter()
-        if "data-series-line" in element.attrib
+        if "data-run-trace" in element.attrib
     }
-    expected_ornith = {
-        entry["artifact"]
-        for entry in manifest["cohorts"]["model_context"]
-        if entry["series"].startswith("Ornith")
-    }
-    expected_qwen = {
-        entry["artifact"]
-        for entry in manifest["cohorts"]["model_context"]
-        if entry["series"].startswith("Qwen")
-    }
-    assert lines == {
-        "Ornith Q4_K_M · базовая линия": expected_ornith,
-        "Qwen REAP Q3_K_XL · базовая линия": expected_qwen,
-    }
+    assert traces == {run["artifact"]: len(run["samples"]) for run in runs}
+
+    assert not any(
+        "data-baseline-summary-line" in element.attrib
+        or "data-summary-measurement" in element.attrib
+        for element in svg_root.iter()
+    )
 
     prefill_marks = [
         element
         for element in marks
-        if "prefill-block sweep" in element.attrib["data-measurement"]
+        if "prefill-block sweep" in element.attrib["data-live-measurement"]
     ]
-    assert len(prefill_marks) == 8
+    assert len(prefill_marks) == 8 * 101
     assert len({element.attrib["data-marker-shape"] for element in prefill_marks}) >= 4
-    assert len({element.attrib["data-marker-color"] for element in prefill_marks}) >= 4
+    assert len({element.attrib["data-marker-color"] for element in prefill_marks}) == 8
 
 
 def test_registry_cli_renders_the_explicit_comparison_manifest(tmp_path: Path):
@@ -379,9 +676,93 @@ def test_registry_cli_renders_the_explicit_comparison_manifest(tmp_path: Path):
 
     assert completed.returncode == 0, completed.stderr
     svg = output.read_text(encoding="utf-8")
-    assert "Скорость генерации в зависимости от размера контекста" in svg
-    assert svg.count('data-measurement="') == 21
-    assert svg.count('data-series-line="') == 2
+    assert "Живая скорость decode по мере роста KV-контекста" in svg
+    assert svg.count('data-live-measurement="') == 900
+    assert svg.count('data-run-trace="') == 21
+    assert svg.count('data-baseline-summary-line="') == 0
+    assert svg.count('data-summary-measurement="') == 0
+
+
+def test_registry_cli_uses_portable_live_ledger_when_raw_log_is_absent(
+    tmp_path: Path,
+):
+    root = Path(__file__).parents[2]
+    results_root = tmp_path / "results"
+    artifact = results_root / "model/run.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    registry = results_root / "model-context-speed.jsonl"
+    registry.write_text(
+        json.dumps(
+            {
+                "artifact": "/stale/checkout/benchmarks/results/model/run.json",
+                "model": "Ornith",
+                "quantization": "Q4",
+                "requested_context_tokens": 1024,
+                "actual_context_tokens": 1024,
+                "completion_tokens": 64,
+                "prefill_tps": 100.0,
+                "decode_tps": 20.0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (results_root / "model-context-speed-live.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "artifact": "model/run.json",
+                "cohort": "custom",
+                "model": "Ornith",
+                "quantization": "Q4",
+                "sample_index": 0,
+                "context_tokens": 1041,
+                "decode_tps": 20.0,
+                "completion_tokens": None,
+                "source_kind": "server_stdout",
+                "source_artifact": "model/run.stdout.log",
+                "source_line": 42,
+                "source_sha256": "0" * 64,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cohorts": {"custom": [{"artifact": "model/run.json"}]},
+                "excluded": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "portable.svg"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(root / "benchmarks/plot_context_results.py"),
+            "--registry",
+            str(registry),
+            "--comparison-manifest",
+            str(manifest),
+            "--output",
+            str(output),
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert output.read_text(encoding="utf-8").count(
+        'data-live-measurement="'
+    ) == 1
 
 
 def test_weight_ab_svg_labels_slot_count_and_transfer_pressure():

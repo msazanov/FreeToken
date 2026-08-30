@@ -94,6 +94,7 @@ with:
 ```bash
 PYTHONPATH=python:. python benchmarks/plot_context_results.py \
   --registry benchmarks/results/model-context-speed.jsonl \
+  --live-registry benchmarks/results/model-context-speed-live.jsonl \
   --comparison-manifest benchmarks/comparison_cohorts.json \
   --output benchmarks/results/model-context-speed.svg
 
@@ -104,10 +105,18 @@ PYTHONPATH=python:. python benchmarks/plot_context_results.py \
     benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/weight-ab.svg
 ```
 
-The main figure is one 2D decode-throughput plot: X is linear decode tok/s and Y
-is actual context on a log2 scale with one tick per doubling. It displays every
-ledger run exactly once. Only the unchanged Ornith Q4_K_M and Qwen REAP
-1K/16K/64K configurations are connected; all TQ3/cache/prefill-block repeats
-remain isolated blue-family markers, and the unmatched short run is a cross.
-The PNG copies are presentation derivatives of those SVG files. The raw JSON,
+The main figure is one 2D live decode-throughput plot: X is linear decode tok/s
+and Y is current KV context on a log2 scale with one tick per doubling. It
+resolves all 21 ledger artifacts into 900 stable live windows. Thin lines join
+only samples from the same invocation; terminal end-to-end means are not drawn
+on the live figure. The first stdout decode record is excluded because its
+timer spans prefill, and runtime-stat records are used only after 16 generated
+tokens. Every retained SVG point includes its raw artifact, source kind and
+source line/index. The p1024-p4096 runs contribute
+101 samples each over 16,481–20,481 current tokens, explaining their truthful
+16K-band concentration without coordinate jitter. The PNG copies are
+presentation derivatives of those SVG files. The tracked
+`model-context-speed-live.jsonl` preserves the normalized points with raw-source
+SHA-256 and line/index because the full ANSI `*.stdout.log` files are local
+evidence intentionally ignored by Git. The raw JSON,
 not a chart pixel, remains the numeric authority.

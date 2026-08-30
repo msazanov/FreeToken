@@ -2,18 +2,20 @@
 """Render dependency-free SVGs from immutable FreeToken benchmark JSON.
 
 The objective comparison plot consumes the append-only cross-model JSONL
-registry plus an explicit cohort manifest.  The weight A/B plot consumes the
-compact Task-7 summary.  SVG is intentional: the benchmark environment does
-not need matplotlib, and ImageMagick can make a PNG copy for chat/reporting
-without changing the plotted data.
+registry, its portable live-sample JSONL, and an explicit cohort manifest. The
+weight A/B plot consumes the compact Task-7 summary. SVG is intentional: the
+benchmark environment does not need matplotlib, and ImageMagick can make a PNG
+copy for chat/reporting without changing the plotted data.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import math
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -33,6 +35,11 @@ BASELINE_CATEGORY_BY_REQUESTED_CONTEXT = {
     16384: "16K",
     65536: "64K",
 }
+
+DECODE_LOG_PATTERN = re.compile(
+    r"Decode batch,.*?#token:\s*(?P<context>\d+).*?"
+    r"gen throughput \(token/s\):\s*(?P<decode_tps>[0-9.]+)"
+)
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -54,6 +61,101 @@ def load_jsonl(path: Path) -> list[dict]:
     if not rows:
         raise ValueError(f"{path}: no benchmark rows")
     return rows
+
+
+def load_live_jsonl(path: Path) -> list[dict]:
+    rows: list[dict] = []
+    required = {
+        "schema_version",
+        "artifact",
+        "cohort",
+        "model",
+        "quantization",
+        "sample_index",
+        "context_tokens",
+        "decode_tps",
+        "completion_tokens",
+        "source_kind",
+        "source_artifact",
+        "source_line",
+        "source_sha256",
+    }
+    identities: set[tuple[str, str, int]] = set()
+    for line_number, raw in enumerate(
+        path.read_text(encoding="utf-8").splitlines(),
+        1,
+    ):
+        if not raw.strip():
+            continue
+        row = json.loads(raw)
+        missing = required - row.keys()
+        if missing:
+            raise ValueError(f"{path}:{line_number}: missing {sorted(missing)}")
+        identity = (
+            _artifact_key(row["artifact"]),
+            str(row["source_kind"]),
+            int(row["source_line"]),
+        )
+        if identity in identities:
+            raise ValueError(f"{path}:{line_number}: duplicate live sample {identity}")
+        if int(row["context_tokens"]) <= 0 or float(row["decode_tps"]) <= 0:
+            raise ValueError(f"{path}:{line_number}: invalid live coordinates")
+        identities.add(identity)
+        rows.append(row)
+    if not rows:
+        raise ValueError(f"{path}: no live benchmark rows")
+    return rows
+
+
+def extract_live_decode_samples(artifact_path: Path) -> list[dict]:
+    """Extract stable per-window decode samples from a benchmark artifact."""
+    stdout_path = artifact_path.with_suffix(".stdout.log")
+    matches: list[dict] = []
+    if stdout_path.exists():
+        for line_number, line in enumerate(
+            stdout_path.read_text(encoding="utf-8", errors="replace").splitlines(),
+            1,
+        ):
+            match = DECODE_LOG_PATTERN.search(line)
+            if match:
+                matches.append(
+                    {
+                        "context_tokens": int(match.group("context")),
+                        "decode_tps": float(match.group("decode_tps")),
+                        "completion_tokens": None,
+                        "source_kind": "server_stdout",
+                        "source_line": line_number,
+                    }
+                )
+        return matches[1:]
+
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    for sample_number, sample in enumerate(artifact.get("runtime_samples", []), 1):
+        stats = sample.get("server_stats") or {}
+        kv = stats.get("kv") or {}
+        throughput = stats.get("throughput") or {}
+        requests = stats.get("requests") or {}
+        used_pages = kv.get("used_pages")
+        decode_tps = throughput.get("decode_tps")
+        completion_tokens = requests.get("completion_tokens_total")
+        if (
+            used_pages is None
+            or decode_tps is None
+            or float(decode_tps) <= 0
+            or completion_tokens is None
+            or int(completion_tokens) < 16
+        ):
+            continue
+        matches.append(
+            {
+                "context_tokens": int(used_pages) * int(kv.get("page_size") or 1),
+                "decode_tps": float(decode_tps),
+                "completion_tokens": int(completion_tokens),
+                "source_kind": "runtime_stats",
+                "source_line": sample_number,
+            }
+        )
+    return matches
 
 
 def _artifact_key(value: object) -> str:
@@ -114,6 +216,130 @@ def classify_comparison_rows(rows: Iterable[dict], manifest: dict) -> dict:
     if unclassified:
         raise ValueError(f"unclassified benchmark rows: {', '.join(unclassified)}")
     return {"cohorts": cohorts, "excluded": excluded}
+
+
+def collect_live_comparison_runs(
+    rows: Iterable[dict],
+    manifest: dict,
+    *,
+    results_root: Path | None = None,
+    live_rows: Iterable[dict] | None = None,
+) -> list[dict]:
+    """Resolve every classified run to its saved stable decode samples."""
+    classified = classify_comparison_rows(rows, manifest)
+    declared = [
+        (cohort, entry)
+        for cohort, entries in classified["cohorts"].items()
+        for entry in entries
+    ]
+    declared.extend(("excluded", entry) for entry in classified["excluded"])
+    portable_by_artifact: dict[str, list[dict]] | None = None
+    if live_rows is not None:
+        portable_by_artifact = {}
+        for live_row in live_rows:
+            portable_by_artifact.setdefault(
+                _artifact_key(live_row["artifact"]),
+                [],
+            ).append(live_row)
+    runs: list[dict] = []
+    declared_artifacts: set[str] = set()
+    for cohort, entry in declared:
+        artifact_key = _artifact_key(entry["row"]["artifact"])
+        declared_artifacts.add(artifact_key)
+        artifact_path = Path(str(entry["row"]["artifact"]))
+        if results_root is not None:
+            checkout_artifact = results_root / artifact_key
+            if checkout_artifact.exists() or not artifact_path.exists():
+                artifact_path = checkout_artifact
+        if not artifact_path.exists():
+            raise ValueError(f"missing benchmark artifact: {artifact_path}")
+        if portable_by_artifact is None:
+            samples = extract_live_decode_samples(artifact_path)
+        else:
+            portable_rows = sorted(
+                portable_by_artifact.get(artifact_key, []),
+                key=lambda row: int(row["sample_index"]),
+            )
+            if [int(row["sample_index"]) for row in portable_rows] != list(
+                range(len(portable_rows))
+            ):
+                raise ValueError(f"non-contiguous live sample indices: {artifact_key}")
+            for live_row in portable_rows:
+                if live_row["cohort"] != cohort:
+                    raise ValueError(f"live cohort mismatch: {artifact_key}")
+                if (
+                    live_row["model"] != entry["row"]["model"]
+                    or live_row["quantization"] != entry["row"]["quantization"]
+                ):
+                    raise ValueError(f"live model identity mismatch: {artifact_key}")
+            samples = [
+                {
+                    "context_tokens": int(row["context_tokens"]),
+                    "decode_tps": float(row["decode_tps"]),
+                    "completion_tokens": row["completion_tokens"],
+                    "source_kind": str(row["source_kind"]),
+                    "source_line": int(row["source_line"]),
+                }
+                for row in portable_rows
+            ]
+        if not samples:
+            raise ValueError(f"no stable live decode samples: {artifact_path}")
+        runs.append(
+            {
+                "cohort": cohort,
+                "entry": entry,
+                "row": entry["row"],
+                "artifact": artifact_key,
+                "artifact_path": artifact_path,
+                "samples": samples,
+            }
+        )
+    if portable_by_artifact is not None:
+        extras = sorted(set(portable_by_artifact) - declared_artifacts)
+        if extras:
+            raise ValueError(f"unclassified live artifacts: {', '.join(extras)}")
+    return runs
+
+
+def flatten_live_comparison_runs(runs: Iterable[dict]) -> list[dict]:
+    """Normalize raw live samples into a portable, tracked JSONL ledger."""
+    flattened: list[dict] = []
+    for run in runs:
+        source_kind = str(run["samples"][0]["source_kind"])
+        source_path = (
+            run["artifact_path"].with_suffix(".stdout.log")
+            if source_kind == "server_stdout"
+            else run["artifact_path"]
+        )
+        source_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        for sample_index, sample in enumerate(run["samples"]):
+            flattened.append(
+                {
+                    "schema_version": 1,
+                    "artifact": run["artifact"],
+                    "cohort": run["cohort"],
+                    "model": run["row"]["model"],
+                    "quantization": run["row"]["quantization"],
+                    "sample_index": sample_index,
+                    "context_tokens": int(sample["context_tokens"]),
+                    "decode_tps": float(sample["decode_tps"]),
+                    "completion_tokens": sample["completion_tokens"],
+                    "source_kind": source_kind,
+                    "source_artifact": _artifact_key(source_path),
+                    "source_line": int(sample["source_line"]),
+                    "source_sha256": source_sha256,
+                }
+            )
+    return flattened
+
+
+def write_live_jsonl(path: Path, rows: Iterable[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = "".join(
+        json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
+        for row in rows
+    )
+    path.write_text(payload, encoding="utf-8")
 
 
 def _text(x: float, y: float, value: object, *, size: int = 14, anchor: str = "start", weight: int = 400) -> str:
@@ -216,14 +442,20 @@ def _scatter_legend_item(
     return "".join(parts)
 
 
-def render_comparison_svg(rows: Iterable[dict], manifest: dict) -> str:
+def render_comparison_svg(
+    rows: Iterable[dict],
+    manifest: dict,
+    *,
+    results_root: Path | None = None,
+    live_rows: Iterable[dict] | None = None,
+) -> str:
     rows = list(rows)
-    classified = classify_comparison_rows(rows, manifest)
-    cohorts = classified["cohorts"]
-    model_context = cohorts["model_context"]
-    tq3_ab = cohorts["tq3_weight_cache_ab"]
-    prefill_sweep = cohorts["prefill_block_sweep"]
-    excluded = classified["excluded"]
+    runs = collect_live_comparison_runs(
+        rows,
+        manifest,
+        results_root=results_root,
+        live_rows=live_rows,
+    )
 
     ornith_base = "#1d4ed8"
     ornith_q4_repeat = "#2563eb"
@@ -253,88 +485,74 @@ def render_comparison_svg(rows: Iterable[dict], manifest: dict) -> str:
     ornith_unmatched = "#1e3a8a"
     qwen_base = "#059669"
 
-    points: list[dict] = []
-    baseline_lines: dict[str, list[dict]] = {
-        "Ornith Q4_K_M · базовая линия": [],
-        "Qwen REAP Q3_K_XL · базовая линия": [],
-    }
-    for entry in model_context:
-        is_ornith = entry["row"]["model"].startswith("Ornith")
-        label = (
-            "Ornith Q4_K_M · базовая линия"
-            if is_ornith
-            else "Qwen REAP Q3_K_XL · базовая линия"
-        )
-        point = {
-            "row": entry["row"],
-            "family": "ornith" if is_ornith else "qwen",
-            "config": label,
-            "color": ornith_base if is_ornith else qwen_base,
-            "shape": "circle" if is_ornith else "square",
-            "hollow": False,
-            "annotation": f"{float(entry['row']['decode_tps']):.2f}",
-        }
-        points.append(point)
-        baseline_lines[label].append(point)
-
-    for entry in tq3_ab:
-        variant = entry["variant"]
-        if variant == "Q4_K_M fixed":
-            config = "Ornith Q4_K_M · fixed 1429"
-            color, shape, hollow = ornith_q4_repeat, "circle", True
-        elif variant == "TQ3_4S fixed":
-            config = "Ornith TQ3_4S · fixed 1429"
-            color, shape, hollow = ornith_tq3_fixed, "diamond", False
+    prefill_index = 0
+    for run in runs:
+        cohort = run["cohort"]
+        entry = run["entry"]
+        row = run["row"]
+        if cohort == "model_context":
+            is_ornith = row["model"].startswith("Ornith")
+            config = (
+                "Ornith Q4_K_M · live"
+                if is_ornith
+                else "Qwen REAP Q3_K_XL · live"
+            )
+            run.update(
+                family="ornith" if is_ornith else "qwen",
+                config=config,
+                color=ornith_base if is_ornith else qwen_base,
+                shape="circle" if is_ornith else "square",
+                opacity=0.78,
+                stroke_width=2.0,
+            )
+        elif cohort == "tq3_weight_cache_ab":
+            variant = entry["variant"]
+            if variant == "Q4_K_M fixed":
+                config = "Ornith Q4_K_M · fixed 1429"
+                color, shape = ornith_q4_repeat, "circle"
+            elif variant == "TQ3_4S fixed":
+                config = "Ornith TQ3_4S · fixed 1429"
+                color, shape = ornith_tq3_fixed, "diamond"
+            else:
+                config = "Ornith TQ3_4S · auto 2633"
+                color, shape = ornith_tq3_auto, "triangle"
+            run.update(
+                family="ornith",
+                config=f"{config} · {entry['repeat']}",
+                color=color,
+                shape=shape,
+                opacity=0.55 if entry["repeat"] == "v1" else 0.82,
+                stroke_width=1.5,
+            )
+        elif cohort == "prefill_block_sweep":
+            run.update(
+                family="ornith",
+                config=f"Ornith Q4_K_M · prefill-block sweep {entry['category']}",
+                color=ornith_prefill_palette[prefill_index],
+                shape=ornith_prefill_shapes[prefill_index],
+                opacity=0.68,
+                stroke_width=1.35,
+            )
+            prefill_index += 1
         else:
-            config = "Ornith TQ3_4S · auto 2633"
-            color, shape, hollow = ornith_tq3_auto, "triangle", False
-        points.append(
-            {
-                "row": entry["row"],
-                "family": "ornith",
-                "config": config,
-                "color": color,
-                "shape": shape,
-                "hollow": hollow,
-                "annotation": None,
-                "repeat": entry["repeat"],
-            }
-        )
+            run.update(
+                family="ornith",
+                config="Ornith Q4_K_M · unmatched short run",
+                color=ornith_unmatched,
+                shape="cross",
+                opacity=0.78,
+                stroke_width=1.5,
+            )
 
-    for index, entry in enumerate(prefill_sweep):
-        points.append(
-            {
-                "row": entry["row"],
-                "family": "ornith",
-                "config": "Ornith Q4_K_M · prefill-block sweep",
-                "color": ornith_prefill_palette[index],
-                "shape": ornith_prefill_shapes[index],
-                "hollow": False,
-                "annotation": None,
-                "prefill_block": entry["category"],
-            }
-        )
-
-    for entry in excluded:
-        points.append(
-            {
-                "row": entry["row"],
-                "family": "ornith",
-                "config": "Ornith Q4_K_M · unmatched short run",
-                "color": ornith_unmatched,
-                "shape": "cross",
-                "hollow": True,
-                "annotation": None,
-                "reason": entry["reason"],
-            }
-        )
-
-    max_decode = max(float(point["row"]["decode_tps"]) for point in points)
+    all_samples = [sample for run in runs for sample in run["samples"]]
+    max_decode = max(float(sample["decode_tps"]) for sample in all_samples)
+    contexts = [float(sample["context_tokens"]) for sample in all_samples]
     x_max = math.ceil(max_decode * 1.08 / 5) * 5
-    width, height = 1500, 1050
+    width, height = 1500, 1100
     px0, px1 = 145.0, 1440.0
-    py0, py1 = 190.0, 790.0
-    log_min, log_max = 9.5, 16.5
+    py0, py1 = 210.0, 820.0
+    log_min = math.log2(min(contexts)) - 0.08
+    log_max = math.log2(max(contexts)) + 0.12
 
     def sx(value: float) -> float:
         return px0 + value / x_max * (px1 - px0)
@@ -345,19 +563,24 @@ def render_comparison_svg(rows: Iterable[dict], manifest: dict) -> str:
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         f'<rect width="{width}" height="{height}" fill="{BACKGROUND}"/>',
-        _text(42, 43, "Скорость генерации в зависимости от размера контекста", size=27, weight=700),
-        _text(42, 71, f"RTX 2070 · FreeToken · {len(points)} сохранённый end-to-end прогон · точка = один сохранённый end-to-end прогон", size=14),
-        f'<g data-x-metric="decode_tps" data-x-scale="linear" data-y-metric="actual_context_tokens" data-y-scale="log2">',
+        _text(42, 43, "Живая скорость decode по мере роста KV-контекста", size=27, weight=700),
+        _text(
+            42,
+            71,
+            f"RTX 2070 · FreeToken · {len(all_samples)} стабильных живых decode-срезов из {len(runs)} запуска · малая точка = серверный интервал",
+            size=14,
+        ),
+        f'<g data-x-metric="decode_tps" data-x-scale="linear" data-y-metric="live_context_tokens" data-y-scale="log2">',
     ]
 
     legend = [
-        (42, 108, ornith_base, "circle", "Ornith Q4_K_M · базовая линия", True, False),
-        (405, 108, qwen_base, "square", "Qwen REAP Q3_K_XL · базовая линия", True, False),
-        (790, 108, ornith_q4_repeat, "circle", "Ornith Q4 · fixed 1429", False, True),
-        (1090, 108, ornith_tq3_fixed, "diamond", "Ornith TQ3_4S · fixed 1429", False, False),
-        (42, 142, ornith_tq3_auto, "triangle", "Ornith TQ3_4S · auto 2633", False, False),
-        (350, 142, ornith_prefill, "square", "Ornith Q4_K_M · prefill-block sweep", False, False),
-        (735, 142, ornith_unmatched, "cross", "Ornith Q4 · несопоставимый short-run", False, True),
+        (42, 108, ornith_base, "circle", "Ornith Q4_K_M · live", True, False),
+        (390, 108, qwen_base, "square", "Qwen REAP Q3_K_XL · live", True, False),
+        (790, 108, ornith_q4_repeat, "circle", "Ornith Q4 · fixed 1429", True, True),
+        (1090, 108, ornith_tq3_fixed, "diamond", "Ornith TQ3_4S · fixed 1429", True, False),
+        (42, 142, ornith_tq3_auto, "triangle", "Ornith TQ3_4S · auto 2633", True, False),
+        (350, 142, ornith_prefill, "square", "Ornith Q4 · p1024…p4096", True, False),
+        (700, 142, ornith_unmatched, "cross", "Ornith Q4 · short-run", True, True),
     ]
     for lx, ly, color, shape, label, has_line, hollow in legend:
         out.append(
@@ -372,6 +595,27 @@ def render_comparison_svg(rows: Iterable[dict], manifest: dict) -> str:
             )
         )
 
+    prefill_runs = [run for run in runs if run["cohort"] == "prefill_block_sweep"]
+    for index, run in enumerate(prefill_runs):
+        lx = 42.0 + index * 174.0
+        ly = 176.0
+        category = str(run["entry"]["category"])
+        out.append(
+            f'<g data-prefill-legend="{html.escape(category)}">'
+            f'<line x1="{lx:.1f}" y1="{ly:.1f}" x2="{lx + 26:.1f}" y2="{ly:.1f}" '
+            f'stroke="{run["color"]}" stroke-width="2"/>'
+            + _scatter_marker(
+                x=lx + 13,
+                y=ly,
+                color=run["color"],
+                shape=run["shape"],
+                size=4.5,
+                hollow=False,
+            )
+            + _text(lx + 34, ly + 5, category, size=11)
+            + "</g>"
+        )
+
     for tick in range(0, int(x_max) + 1, 5):
         xx = sx(float(tick))
         out.append(
@@ -379,7 +623,7 @@ def render_comparison_svg(rows: Iterable[dict], manifest: dict) -> str:
             f'stroke="{GRID}" stroke-width="1"/>'
         )
         out.append(_text(xx, py1 + 25, tick, size=12, anchor="middle"))
-    for exponent in range(10, 17):
+    for exponent in range(math.ceil(log_min), math.floor(log_max) + 1):
         context = 2**exponent
         yy = sy(float(context))
         out.append(
@@ -392,77 +636,64 @@ def render_comparison_svg(rows: Iterable[dict], manifest: dict) -> str:
         f'fill="none" stroke="{INK}" stroke-width="1.2"/>'
     )
 
-    for label, line_points in baseline_lines.items():
-        ordered = sorted(line_points, key=lambda point: float(point["row"]["actual_context_tokens"]))
+    for run in runs:
         coords = " ".join(
-            f"{sx(float(point['row']['decode_tps'])):.1f},{sy(float(point['row']['actual_context_tokens'])):.1f}"
-            for point in ordered
-        )
-        color = ordered[0]["color"]
-        artifacts = "|".join(
-            _artifact_key(point["row"]["artifact"]) for point in ordered
+            f"{sx(float(sample['decode_tps'])):.1f},{sy(float(sample['context_tokens'])):.1f}"
+            for sample in run["samples"]
         )
         out.append(
-            f'<polyline data-series-line="{html.escape(label)}" '
-            f'data-series-artifacts="{html.escape(artifacts)}" points="{coords}" fill="none" '
-            f'stroke="{color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'
+            f'<polyline data-run-trace="{html.escape(run["artifact"])}" '
+            f'data-config="{html.escape(run["config"])}" '
+            f'data-live-samples="{len(run["samples"])}" points="{coords}" fill="none" '
+            f'stroke="{run["color"]}" stroke-width="{run["stroke_width"]}" '
+            f'stroke-opacity="{run["opacity"]}" stroke-linejoin="round" stroke-linecap="round"/>'
         )
 
-    for point in points:
-        row = point["row"]
-        xx = sx(float(row["decode_tps"]))
-        yy = sy(float(row["actual_context_tokens"]))
-        extras = []
-        if "repeat" in point:
-            extras.append(f"repeat={point['repeat']}")
-        if "prefill_block" in point:
-            extras.append(f"prefill={point['prefill_block']}")
-        detail = (
-            f"{point['config']}; context={row['actual_context_tokens']}; "
-            f"decode={float(row['decode_tps']):.6f} tok/s; output={row['completion_tokens']}"
-        )
-        if extras:
-            detail += "; " + "; ".join(extras)
-        artifact = _artifact_key(row["artifact"])
-        out.append(
-            f'<g data-measurement="{html.escape(detail)}" '
-            f'data-artifact="{html.escape(artifact)}" '
-            f'data-context-tokens="{int(row["actual_context_tokens"])}" '
-            f'data-decode-tps="{repr(float(row["decode_tps"]))}" '
-            f'data-marker-shape="{point["shape"]}" '
-            f'data-marker-color="{point["color"]}" '
-            f'data-model-family="{point["family"]}">'
-            + _scatter_marker(
-                x=xx,
-                y=yy,
-                color=point["color"],
-                shape=point["shape"],
-                size=7.5,
-                hollow=point["hollow"],
+    for run in runs:
+        for sample in run["samples"]:
+            xx = sx(float(sample["decode_tps"]))
+            yy = sy(float(sample["context_tokens"]))
+            detail = (
+                f"{run['config']}; context={sample['context_tokens']}; "
+                f"decode={float(sample['decode_tps']):.2f} tok/s; "
+                f"source={sample['source_kind']}:{sample['source_line']}"
             )
-            + f'<title>{html.escape(detail)}</title></g>'
-        )
-        if point["annotation"]:
-            anchor = "start" if point["family"] == "qwen" else "middle"
-            label_x = xx + 11 if point["family"] == "qwen" else xx
-            label_y = yy - 11
-            out.append(_text(label_x, label_y, point["annotation"], size=11, anchor=anchor, weight=700))
+            out.append(
+                f'<g data-live-measurement="{html.escape(detail)}" '
+                f'data-artifact="{html.escape(run["artifact"])}" '
+                f'data-source-kind="{sample["source_kind"]}" '
+                f'data-source-line="{sample["source_line"]}" '
+                f'data-context-tokens="{int(sample["context_tokens"])}" '
+                f'data-decode-tps="{repr(float(sample["decode_tps"]))}" '
+                f'data-marker-shape="{run["shape"]}" '
+                f'data-marker-color="{run["color"]}" '
+                f'data-model-family="{run["family"]}" opacity="{run["opacity"]}">'
+                + _scatter_marker(
+                    x=xx,
+                    y=yy,
+                    color=run["color"],
+                    shape=run["shape"],
+                    size=2.2,
+                    hollow=False,
+                )
+                + f'<title>{html.escape(detail)}</title></g>'
+            )
 
     out.extend(
         [
-            _text((px0 + px1) / 2, 835, "Скорость генерации decode, ток/с — линейная шкала", size=14, anchor="middle", weight=700),
+            _text((px0 + px1) / 2, 865, "Живая скорость генерации decode, ток/с — линейная шкала", size=14, anchor="middle", weight=700),
             (
                 f'<text data-axis="context" transform="rotate(-90 34 {(py0 + py1) / 2:.1f})" '
                 f'x="34" y="{(py0 + py1) / 2:.1f}" text-anchor="middle" '
                 f'font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="700" fill="{INK}">'
-                "Фактический контекст, токенов — log2, каждый шаг ×2</text>"
+                "Текущий KV-контекст, токенов — log2, каждый шаг ×2</text>"
             ),
-            _text(42, 875, "1K feature-повторы: Q4 fixed 25.26/24.69 · TQ3 fixed 28.49/27.55 · TQ3 auto 35.06/33.43 ток/с.", size=12),
-            _text(42, 900, "16K prefill-block sweep: p1024=19.52 · p1280=26.09 · p1536=17.60 · p1792=18.46 · p2048=17.63 ток/с", size=12),
-            _text(42, 922, "продолжение: p2560=28.06 · p3072=19.66 · p4096=18.01. Крест: отдельный short-run p1024=21.48, output=108.", size=12),
-            _text(42, 955, "Линия соединяет только одинаковую конфигурацию на 1K/16K/64K. Одноточечные модификации не образуют выдуманную зависимость от контекста.", size=12),
-            _text(42, 978, "Синие оттенки — Ornith и её модификации; зелёный — Qwen. Decode throughput не является оценкой качества ответа.", size=12),
-            _text(42, 1010, "Источник: benchmarks/results/model-context-speed.jsonl · классификация: benchmarks/comparison_cohorts.json", size=12),
+            _text(42, 905, "Малые точки и тонкие линии — реальные интервальные показания FreeToken; каждая линия соединяет точки только одного запуска.", size=12),
+            _text(42, 930, "Первый переходный интервал после prefill исключён: он включает TTFT/prefill и не является чистой скоростью decode.", size=12),
+            _text(42, 955, "Полоса p-sweep действительно лежит в 16.5–20.5K: каждый тест имел вход 16.4K и генерировал ещё 4,095 токенов; между диапазонами данных нет.", size=12),
+            _text(42, 980, "Синие оттенки — Ornith и модификации; зелёный — Qwen. Координаты не смещены и не сглажены.", size=12),
+            _text(42, 1005, "Источники live: companion stdout.log и runtime_samples[].server_stats; каждый SVG-маркер хранит artifact, source и исходный индекс.", size=12),
+            _text(42, 1037, "Реестр запусков: benchmarks/results/model-context-speed.jsonl · классификация: benchmarks/comparison_cohorts.json", size=12),
             "</g>",
             "</svg>",
         ]
@@ -638,6 +869,14 @@ def parse_args() -> argparse.Namespace:
         default=Path(__file__).with_name("comparison_cohorts.json"),
         help="explicit cohort/exclusion manifest used with --registry",
     )
+    parser.add_argument(
+        "--live-registry",
+        type=Path,
+        help=(
+            "portable live-sample JSONL; defaults to "
+            "model-context-speed-live.jsonl beside --registry when present"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True, help="output SVG")
     return parser.parse_args()
 
@@ -646,7 +885,20 @@ def main() -> None:
     args = parse_args()
     if args.registry:
         manifest = json.loads(args.comparison_manifest.read_text(encoding="utf-8"))
-        svg = render_comparison_svg(load_jsonl(args.registry), manifest)
+        live_registry = args.live_registry or args.registry.with_name(
+            "model-context-speed-live.jsonl"
+        )
+        live_rows = (
+            load_live_jsonl(live_registry)
+            if live_registry.exists()
+            else None
+        )
+        svg = render_comparison_svg(
+            load_jsonl(args.registry),
+            manifest,
+            results_root=args.registry.parent,
+            live_rows=live_rows,
+        )
     else:
         summary = json.loads(args.weight_ab_summary.read_text(encoding="utf-8"))
         svg = render_weight_ab_svg(summary)

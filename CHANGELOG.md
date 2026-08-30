@@ -1012,3 +1012,34 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
   exact values remain printed below the plot.
 - Kept every source measurement unchanged in the append-only JSONL registry;
   regenerated only the derived `model-context-speed.svg/png` presentation.
+
+### Fixed — live context-speed trajectories instead of terminal-only points
+
+- Root-caused the 16K pile-up to the presentation layer: it read one terminal
+  average from each of 21 ledger rows and ignored the raw per-window telemetry
+  already saved beside or inside every artifact.
+- Added native extraction from FreeToken `Decode batch` stdout records and from
+  `runtime_samples[].server_stats`, yielding 900 stable live decode points
+  across all 21 runs (830 stdout plus 70 runtime-stat samples).
+- Added tracked `model-context-speed-live.jsonl` with source SHA-256 and
+  line/index for every point. This preserves reproducibility in clean clones
+  without force-adding the locally retained ANSI `*.stdout.log` files ignored
+  by Git; CLI rendering automatically consumes the sibling portable ledger.
+- Excluded only non-decode transition measurements: the first stdout interval
+  spans prefill because the reporter's decode timer starts at construction;
+  runtime-stat windows begin after at least 16 completion tokens. Raw evidence
+  remains unchanged and every retained SVG mark records its artifact and exact
+  source line/index.
+- Replaced isolated terminal modification marks with per-run live traces. The
+  eight p1024-p4096 runs now expose all 808 measured windows from 16,481 through
+  20,481 current KV tokens, with explicit shade/shape legend and no coordinate
+  jitter or smoothing.
+- Removed all cross-invocation summary trends and terminal mean markers from
+  the live figure. It now contains only 900 native interval samples and 21
+  within-invocation traces; terminal means remain in the separate JSONL ledger.
+- Added exact raw-source/coordinate, sample-count, trace-membership, transition
+  filtering and legend regressions; missing artifacts or runs without live
+  evidence now fail graph generation.
+- Rebased stale absolute artifact paths onto the current checkout whenever the
+  declared artifact exists there, and convert runtime `used_pages` to tokens by
+  multiplying by `page_size` (the recorded production samples use page size 1).

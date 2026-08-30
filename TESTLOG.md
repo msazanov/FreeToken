@@ -2350,3 +2350,92 @@ the figure footer. The reviewer's isolated environment passed the 11 plotting
 tests but reported `73 passed, 1 failed` for the broader benchmark directory
 because `huggingface_hub` was absent there; the controller's configured project
 environment produced both complete 77-test passes above.
+
+## 2026-08-30 — Recovered full live decode trajectories for the 2D graph
+
+No model was rerun and no benchmark number was replaced. The prior 21-point
+figure read only `model-context-speed.jsonl`, whose rows are terminal
+end-to-end summaries. Consequently, all eight p-sweep runs shared essentially
+the same 16,400-token Y coordinate even though their artifacts retained native
+per-window telemetry. The graph was faithful to the summary ledger but not to
+the full saved experiment.
+
+The raw-source audit found usable live evidence for every one of the 21 runs:
+
+| Source | Runs | Retained stable decode samples |
+|---|---:|---:|
+| companion `context-*.stdout.log` / FreeToken `Decode batch` | 15 | 830 |
+| artifact `runtime_samples[].server_stats` | 6 | 70 |
+| total | 21 | 900 |
+
+The 15 companion stdout logs are intentionally excluded by the repository-wide
+`*.log` ignore rule. To make the result reproducible after cloning,
+`model-context-speed-live.jsonl` now stores all 900 normalized points plus the
+raw source artifact, SHA-256 and line/index. A regression regenerates the
+portable ledger from the local primary evidence and requires byte-equivalent
+decoded rows; the renderer and CLI can operate from the tracked ledger when
+the ignored logs are absent.
+
+The cohort totals are 21 live samples for the six short canonical model runs,
+70 for the six TQ3/cache repeats, 808 for the eight long p-sweep runs, and one
+for the unmatched short run. Every p-sweep run contributes 101 intervals at
+the same real contexts, 16,481 through 20,481 tokens. Their native interval
+statistics are:
+
+| Prefill block | Live samples | Min / mean / max decode tok/s |
+|---:|---:|---:|
+| p1024 | 101 | 16.42 / 19.668 / 22.65 |
+| p1280 | 101 | 17.51 / 26.931 / 31.26 |
+| p1536 | 101 | 15.99 / 17.703 / 23.44 |
+| p1792 | 101 | 16.50 / 18.599 / 22.84 |
+| p2048 | 101 | 15.92 / 17.703 / 22.18 |
+| p2560 | 101 | 19.75 / 28.818 / 32.48 |
+| p3072 | 101 | 16.68 / 20.225 / 31.83 |
+| p4096 | 101 | 16.27 / 18.135 / 23.13 |
+
+The first stdout decode report is intentionally not part of the clean decode
+trajectory. `SchedulerStatusReporter` initializes `_last_decode_time` when the
+reporter is constructed, before prompt prefill; therefore its first emitted
+40-token window divides decode tokens by a time interval containing the entire
+TTFT/prefill and reports false rates around 0.02–0.3 tok/s. For saved runtime
+stats the equivalent partially filled start is excluded until at least 16
+completion tokens; this also removes the observed one-token 341.4 tok/s timing
+artifact. The raw records remain untouched in their source files.
+
+`extract_live_decode_samples` now preserves exact context, throughput,
+source kind and source line/index. `collect_live_comparison_runs` fails if a
+declared artifact is missing or has no stable live evidence. The SVG renders
+all 900 retained samples as small marks, connects only samples from the same
+invocation with thin lines, and draws no cross-invocation aggregate trend. The
+p-sweep has an explicit eight-entry shade/shape legend. Coordinates are neither
+jittered nor smoothed; its dense 16.5–20.5K band is the actual measured range,
+not a drawing artifact.
+
+TDD failures were observed before implementation: the stdout extractor import
+was absent; runtime-stat extraction returned an empty list; the renderer
+rejected `results_root`; live SVG provenance lacked marker-shape metadata; and
+the eight-entry p legend was absent. After each minimal implementation step the
+focused renderer suite reached `18 passed in 0.20s`; the stale-checkout-path
+rebase regression raised the final focused result to `19 passed in 0.16s`.
+Repository-wide benchmark verification then passed `82 passed in 5.47s`;
+`py_compile` and
+`git diff --check` also exited zero. The regenerated PNG is 1500×1100 and was
+visually inspected both at native size and as a complete 1000×733 preview.
+
+The final live-only revision additionally removed every cross-invocation
+terminal-summary line/marker, fixed current-checkout artifact preference, and
+multiplied runtime `used_pages` by `page_size`. Fresh verification passed all
+`22` focused plot tests and all `85` tests under `tests/benchmarks` in 4.56 s.
+An XML/JSON audit matched all 900 ledger identities and exact context/decode
+coordinates to all 900 SVG live markers, counted 21 within-run traces whose
+sample totals equal 900, and found zero cross-run summary elements. Two
+independent in-memory renders and the checked-in SVG had SHA-256
+`0f7f449c75c8c88410fe3fb9b775d91b419fc5eb0a0ca59d63e78812f45ad18d`;
+`py_compile`, `git diff --check`, and visual inspection of the final 1500×1100
+PNG also passed.
+
+An independent Luna-high final review reproduced the 900/21/0 topology, all
+source hashes, exact SVG coordinates/provenance, raw-log reconstruction,
+portable no-log rendering, and byte-identical SVG output. It found no P0, P2,
+or P3 issue. Its sole P1 observation was that the new portable ledger was still
+untracked during review; the ledger is included explicitly in the final commit.

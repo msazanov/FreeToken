@@ -80,13 +80,19 @@ rejected rather than rewritten. Each row binds actual input/output tokens,
 prefill and decode throughput, seed, quantization, runtime profile, revision and
 the immutable raw JSON path.
 
-The presentation graph plots all 21 rows exactly once but does **not** connect
-them into one synthetic curve. `benchmarks/comparison_cohorts.json` assigns
-every immutable artifact to a controlled series or records why it is not a
-direct comparison. The current ledger has six canonical cross-model context
-runs, six repeated TQ3 weight/cache A/B runs, eight 16K prefill-block runs, and
-one older 16K/108-output-token run marked with a cross. Rendering fails if a new
-row is unclassified or one row is assigned twice.
+The terminal registry has 21 run summaries, but the presentation graph no
+longer collapses each run into one marker. It resolves every raw artifact and
+plots 900 stable live decode windows: 830 native `Decode batch` records from
+the companion `stdout.log` files and 70 saved
+`runtime_samples[].server_stats` records from the TQ3 A/B runs.
+`benchmarks/results/model-context-speed-live.jsonl` is the tracked portable
+normalization of those 900 points, including source path, source SHA-256 and
+line/index, so a clean clone can reproduce the figure even though `*.log`
+files are intentionally ignored by Git.
+`benchmarks/comparison_cohorts.json` still assigns every immutable artifact to
+a controlled series or records why it is not a direct comparison. Rendering
+fails if a new row is unclassified, one row is assigned twice, or an artifact
+has no usable live decode evidence.
 
 The first normalized cross-model slice uses the same fixed prompt generator,
 temperature `0` and seed `20260828`. It is a useful hardware comparison, not a
@@ -105,17 +111,28 @@ Rebuild the objective 2D SVG with:
 ```bash
 PYTHONPATH=python:. python benchmarks/plot_context_results.py \
   --registry benchmarks/results/model-context-speed.jsonl \
+  --live-registry benchmarks/results/model-context-speed-live.jsonl \
   --comparison-manifest benchmarks/comparison_cohorts.json \
   --output benchmarks/results/model-context-speed.svg
 ```
 
-The single graph puts linear decode speed on X and actual context tokens on a
+The single graph puts live decode speed on X and current KV-context tokens on a
 log2 Y axis, with one equally spaced tick per doubling from 1K through 64K.
-Color families encode model family: blue shades are Ornith configurations and
-green is Qwen. Only the unchanged canonical Ornith Q4_K_M and Qwen REAP
-configurations have lines across 1K/16K/64K. TQ3, cache-capacity, prefill-block,
-repeat, and unmatched measurements remain individual points at their real
-coordinates rather than becoming invented context curves.
+Every small point is a real server interval and every thin line connects only
+samples from the same run. Blue shades are Ornith configurations and green is
+Qwen. No line crosses an invocation boundary: the terminal end-to-end means
+remain available in the table and immutable terminal registry, but are not
+mixed into this live-slice figure.
+
+The first stdout decode report is excluded from the clean decode trajectory:
+FreeToken initializes its decode timer before prefill, so that first interval
+contains TTFT/prefill and produces a false near-zero rate. Runtime-stat samples
+are accepted after at least 16 generated tokens for the same reason. No
+remaining coordinate is jittered, smoothed or averaged. The 16K prefill-block
+sweep is still physically concentrated in a narrow band because those runs
+started at 16,400 input tokens and generated 4,095 more; its 808 live points
+span exactly 16,481–20,481 current tokens. There are no measured p-sweep points
+between 1K and 16K or above 20.5K, so the graph does not invent them.
 
 At 16K, the direct chunk A/B has now completed: `1024` measured 97.83 prefill
 tok/s and 21.48 decode tok/s, versus 91.75 / 21.00 with `640` (+6.6% / +2.3%),
@@ -465,6 +482,8 @@ The compact source-of-truth JSON and focused plots are under
 `benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/`; the complete
 21-point numeric ledger remains
 `benchmarks/results/model-context-speed.jsonl`. The objective 2D figure is
-rendered from that ledger plus `benchmarks/comparison_cohorts.json` by
-`benchmarks/plot_context_results.py`; all 21 runs are visible, while the lone
-non-matched run uses a cross and is never connected to a context series.
+rendered from that ledger, its referenced raw artifacts and
+the portable `model-context-speed-live.jsonl` plus
+`benchmarks/comparison_cohorts.json` by `benchmarks/plot_context_results.py`;
+all 21 runs and 900 stable live decode samples are visible, while the lone
+non-matched run remains a separately labeled short trace.
