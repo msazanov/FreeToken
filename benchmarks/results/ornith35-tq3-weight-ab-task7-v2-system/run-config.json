@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "source_commit": "beda1ba4abfaf859e2fe1069f0bf8ff8f18bfc90",
+  "source_pythonpath": "/home/random/dev/qwen/freetoken/python:/home/random/dev/qwen/freetoken",
+  "executable": "/home/random/freetoken-turing/.venv/bin/ft",
+  "common_server_argv": [
+    "serve",
+    "--host", "0.0.0.0",
+    "--port", "1919",
+    "--moe-backend", "offload",
+    "--expert-load", "serial",
+    "--memory-ratio", "0.85",
+    "--max-running-requests", "1",
+    "--max-seq-len-override", "16384",
+    "--num-tokens", "16384",
+    "--kv-reserve-tokens", "16384",
+    "--kv-cache-dtype", "int8",
+    "--attention-backend", "triton",
+    "--disable-moe-prefill-overlap",
+    "--max-prefill-length", "1024",
+    "--cuda-graph-max-bs", "1",
+    "--disable-pynccl",
+    "--cache-type", "radix",
+    "--enable-cache-report",
+    "--moe-collect-stats"
+  ],
+  "resolved_common": {
+    "dtype": "torch.bfloat16",
+    "cache_type": "hybrid_radix",
+    "page_size": 1,
+    "mamba_slots": 8,
+    "attention_backend": "triton",
+    "moe_backend": "offload"
+  },
+  "variants": [
+    {
+      "unit": "freetoken-ornith-q4-ab-v2.service",
+      "model_path": "/home/random/dev/qwen/models/ornith-15-35b-q4km/Ornith-1.5-35B-Q4_K_M.gguf",
+      "served_model_name": "Ornith 1.5 35b Q4 AB",
+      "additional_argv": ["--moe-cache-size", "1429"],
+      "resolved_moe_cache_size": 1429,
+      "artifact": "q4km-fixed1429-cold/compression-1024.json"
+    },
+    {
+      "unit": "freetoken-ornith-tq3-fixed-ab-v2.service",
+      "model_path": "/home/random/dev/qwen/models/ornith-15-35b-tq3-4s/Ornith-1.5-35B-A3B-TQ3_4S.gguf",
+      "served_model_name": "Ornith 1.5 35b TQ3 AB",
+      "additional_argv": ["--moe-cache-size", "1429"],
+      "resolved_moe_cache_size": 1429,
+      "artifact": "tq3-fixed1429-cold/compression-1024.json"
+    },
+    {
+      "unit": "freetoken-ornith-tq3-auto-ab-v2.service",
+      "model_path": "/home/random/dev/qwen/models/ornith-15-35b-tq3-4s/Ornith-1.5-35B-A3B-TQ3_4S.gguf",
+      "served_model_name": "Ornith 1.5 35b TQ3 AB",
+      "additional_argv": ["--moe-cache-auto"],
+      "resolved_moe_cache_size": 2633,
+      "auto_solver_num_pages": 16524,
+      "allocated_kv_pages": 16384,
+      "free_vram_after_initialization_gib": 1.10,
+      "artifact": "tq3-auto2633-cold/compression-1024.json"
+    }
+  ],
+  "benchmark_common": {
+    "runner": "benchmarks/ornith_context_bench.py",
+    "origin": "http://127.0.0.1:1919",
+    "tiers": [1024],
+    "timeout_s": 1800,
+    "max_output_tokens": 384,
+    "sampling": {
+      "temperature": 0,
+      "reasoning_effort": "none",
+      "seed": null,
+      "seed_reason": "FreeToken does not currently forward OpenAI API seed; temperature=0 is deterministic argmax."
+    }
+  },
+  "active_after_test": "freetoken-ornith-tq3-auto-ab-v2.service"
+}

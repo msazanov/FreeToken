@@ -2171,3 +2171,117 @@ K errors perturb attention scores, while V is usually the safer aggressive
 compression target. FreeToken currently exposes one shared KV mode and has no
 generic packed TQ3 MHA kernel, so the first rational prototype is separate
 INT8-K plus TQ3_0-V storage/dispatch, tested after the matched weight A/B.
+
+## 2026-08-30 — Matched TQ3_4S versus Q4_K_M weight/cache A/B
+
+### Method and runner corrections
+
+The production source commit for every server was
+`beda1ba4abfaf859e2fe1069f0bf8ff8f18bfc90`. All canonical requests used the
+same RTX 2070, Python/Torch/CUDA/Triton stack, 16,384-token context, 16,384 INT8
+KV pages, 1,024-token prefill chunks, LRU expert policy, disabled prefill
+overlap, batch-one CUDA graph, one request, greedy argmax, 1,012 actual prompt
+tokens and a 384-token output ceiling. The only planned differences were weight
+format and, for the third run, fixed versus automatic expert capacity.
+
+Before publishing speed, the runner needed three correctness fixes. Historical
+`benchmarks/results/` content was entering the next repository dossier and could
+teach the model old responses; that directory is now excluded from prompt
+construction and from untracked-source dirtiness. The OpenAI compatibility
+route intentionally omits `prompt_tokens_details` when the cache hit is zero;
+the runner now infers zero only when pre-request completed/prompt/completion
+counters are all zero, otherwise it leaves the cache observation unknown.
+Finally, `/v1/stats` has no populated KV pool before the first request, so the
+artifact now falls back to control-API cache geometry and the declared KV mode.
+The focused runner gate reached 19 passing tests before the A/B.
+
+The first Q4 client process completed its server request but exited before the
+atomic artifact write. Its real server counters are preserved at
+`ornith35-tq3-weight-ab-task7-v1/q4km-fixed1429-orphan/request-summary.json`,
+but client wall/SSE decode/GPU samples/text are absent, so it is explicitly not
+a speed point. A second complete Q4 artifact had unknown wire cache telemetry;
+it remains at `q4km-fixed1429/compression-1024.json` as a valid decode repeat,
+not a cold-prefill point. The fresh-counter inference then produced the complete
+v1 three-way series.
+
+Independent Luna review of v1 found that GPU/RAM/swap and expert-transfer
+telemetry were complete, but CPU utilization and physical NVMe traffic were not
+sampled. A red-first test required interval CPU utilization/iowait and physical
+NVMe namespace bytes. The implementation parses cumulative `/proc/stat` and
+`/proc/diskstats`, excludes partitions such as `nvme0n1p1`, and converts deltas
+to rates without double-counting. The host-rate test failed at import before
+implementation, then the combined runner/plot gate passed 23 tests. All three
+servers were restarted from zero request counters and rerun as the canonical
+`ornith35-tq3-weight-ab-task7-v2-system` series.
+
+### Canonical v2 results
+
+| Configuration | Prompt / output | Slots | Wall | TTFT | Prefill | Decode | MoE L1 miss | Total expert copies | Copy/output token |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Q4_K_M fixed | 1,012 / 318 | 1,429 | 20.902 s | 7.942 s | 127.418 tok/s | 24.687 tok/s | 44.399% | 105.892 GB | 271.662 MB |
+| TQ3_4S fixed | 1,012 / 383 | 1,429 | 20.350 s | 6.475 s | 156.284 tok/s | 27.551 tok/s | 42.744% | 98.504 GB | 215.137 MB |
+| TQ3_4S auto | 1,012 / 383 | 2,633 | 17.915 s | 6.486 s | 156.028 tok/s | 33.425 tok/s | 27.609% | 69.327 GB | 138.958 MB |
+
+“MoE L1 miss” is the routed expert-cache miss rate during decode. It is not a
+radix/prompt-cache hit and not a KV-cache metric. “Total expert copies” sums
+prefill and decode host-to-device expert bank bytes; two bank copy records are
+emitted per missing expert. Q4 prefill/decode contributed 19.504/86.388 GB,
+fixed TQ3 16.106/82.398 GB, and auto TQ3 16.106/53.221 GB.
+
+At fixed 1,429-slot capacity, TQ3 improved prefill 22.65%, TTFT 18.47%, decode
+11.60%, and end-to-end wall speed 2.71%. It reduced total expert copy bytes by
+6.98% and decode bytes per output token by 20.81%. Because Q4 and TQ3 generated
+different text and 318 versus 383 output tokens, the per-token transfer metric
+is more comparable than raw decode totals, but it is still not forced-token
+replay.
+
+The clean capacity isolation is fixed versus auto TQ3: both produced exactly
+the same 383-token byte sequence (SHA-256
+`9a72c21e6b2a436d5714892a6e930a742fcee8934758e5dcef8b2911017d8093`).
+Adding 1,204 slots left prefill and TTFT unchanged within 0.2%, cut the decode
+expert miss rate from 42.744% to 27.609% (35.41% relative), cut decode copy bytes
+35.41%, and raised decode 21.32%. Against Q4, auto TQ3 delivered 35.40% higher
+decode, 22.45% higher prefill and 48.85% fewer copied expert bytes per output
+token. The v1 repeat measured 25.256 / 28.487 / 35.059 decode tok/s versus v2's
+24.687 / 27.551 / 33.425 and reproduced the same ordering and response hashes.
+
+### System telemetry
+
+| Configuration | CPU mean / max | iowait mean | GPU mean / max | VRAM sampled max | NVMe read during request | NVMe peak read rate | RAM available min | Swap free min |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Q4_K_M fixed | 29.08 / 38.24% | 2.81% | 87.95 / 100% | 6,046 MiB | 649,564,160 B | 159.77 MB/s | 1,905,631,232 B | 14,952,112,128 B |
+| TQ3_4S fixed | 26.44 / 37.44% | 0.54% | 87.95 / 100% | 5,280 MiB | 176,316,416 B | 61.35 MB/s | 5,252,182,016 B | 15,420,116,992 B |
+| TQ3_4S auto | 26.00 / 45.81% | 1.01% | 88.17 / 100% | 7,100 MiB | 438,329,344 B | 109.85 MB/s | 5,329,358,848 B | 15,220,801,536 B |
+
+CPU was not saturated and GPU mean stayed near 88% in every configuration. The
+observed speedup therefore tracks expert-record width and residency rather than
+additional CPU utilization. Request-time physical NVMe reads are retained but
+cannot be treated as a codec-only A/B: Linux page cache was not forcibly
+dropped, model files differ, and run order affects what remains resident. The
+auto TQ3 run, for example, read more physical bytes than fixed TQ3 despite far
+fewer logical expert-copy bytes. Logical copy counters are the cleaner causal
+signal for the cache-capacity comparison.
+
+### Quality and decision
+
+The automatic anchor rubric scored every answer 4/5 because `build_stats` was
+missing. That score is inadequate for factual quality. Q4's response correctly
+described split-K as rejected and slower. TQ3 described it as active and faster,
+called the successful 3.21x mixed-prefill result rejected, and exhausted its
+output budget in an unfinished ninth bullet. TQ3 fixed and auto were stable and
+bit-identical across v1/v2, but stability does not make the claim correct.
+Therefore Task 7 establishes a repeatable speed advantage, not quality parity;
+Q4 was semantically better on this one prompt and a broader eval remains
+required.
+
+The decision is to retain TQ3_4S as the preferred performance candidate on this
+machine and advance to a separate KV experiment. The primary gain is not merely
+“three-bit math”: narrower expert transfers plus 84.25% more resident slots
+remove enough cache misses to materially accelerate deterministic decode.
+Compact authority, limitations, exact hashes and deltas are in
+`ornith35-tq3-weight-ab-task7-v2-system/summary.json`; the exact common/variant
+server arguments and resolved BF16/INT8/cache geometry are in the sibling
+`run-config.json`; `weight-ab.svg/png` render the three-way comparison. All six
+canonical v1/v2 points were appended to the
+21-row `model-context-speed.jsonl` registry and rendered to
+`model-context-speed.svg/png` rather than replacing earlier measurements.

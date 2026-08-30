@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+<rect width="1400" height="900" fill="#ffffff"/>
+<text x="38.0" y="43.0" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" fill="#172033">Ornith 1.5 35B · matched 16K weight/cache A/B</text>
+<text x="38.0" y="68.0" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="14" font-weight="400" fill="#172033">Same prompt, INT8 KV, prefill=1024, greedy decode · lower is better in bottom row</text>
+<g aria-label="Prefill, tok/s">
+<rect x="30.0" y="95.0" width="665.0" height="370.0" fill="#ffffff" stroke="#d6dbe3"/>
+<text x="46.0" y="122.0" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#172033">Prefill, tok/s</text>
+<line x1="92.0" y1="383.0" x2="677.0" y2="383.0" stroke="#d6dbe3"/>
+<line x1="92.0" y1="321.5" x2="677.0" y2="321.5" stroke="#d6dbe3"/>
+<line x1="92.0" y1="260.0" x2="677.0" y2="260.0" stroke="#d6dbe3"/>
+<line x1="92.0" y1="198.5" x2="677.0" y2="198.5" stroke="#d6dbe3"/>
+<line x1="92.0" y1="137.0" x2="677.0" y2="137.0" stroke="#d6dbe3"/>
+<rect data-point="Q4_K_M fixed; Prefill, tok/s=127.418; 1429 slots" x="132.9" y="210.1" width="113.1" height="172.9" fill="#2563eb"><title>Q4_K_M fixed; Prefill, tok/s=127.418; 1429 slots</title></rect>
+<text x="189.5" y="202.1" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">127.4</text>
+<text x="189.5" y="405.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">Q4_K_M fixed</text>
+<text x="189.5" y="425.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S fixed; Prefill, tok/s=156.284; 1429 slots" x="327.9" y="170.9" width="113.1" height="212.1" fill="#dc2626"><title>TQ3_4S fixed; Prefill, tok/s=156.284; 1429 slots</title></rect>
+<text x="384.5" y="162.9" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">156.3</text>
+<text x="384.5" y="405.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S fixed</text>
+<text x="384.5" y="425.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S auto; Prefill, tok/s=156.028; 2633 slots" x="523.0" y="171.3" width="113.1" height="211.7" fill="#059669"><title>TQ3_4S auto; Prefill, tok/s=156.028; 2633 slots</title></rect>
+<text x="579.5" y="163.3" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">156.0</text>
+<text x="579.5" y="405.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S auto</text>
+<text x="579.5" y="425.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">2633 slots</text>
+</g>
+<g aria-label="Decode, tok/s">
+<rect x="705.0" y="95.0" width="665.0" height="370.0" fill="#ffffff" stroke="#d6dbe3"/>
+<text x="721.0" y="122.0" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#172033">Decode, tok/s</text>
+<line x1="767.0" y1="383.0" x2="1352.0" y2="383.0" stroke="#d6dbe3"/>
+<line x1="767.0" y1="321.5" x2="1352.0" y2="321.5" stroke="#d6dbe3"/>
+<line x1="767.0" y1="260.0" x2="1352.0" y2="260.0" stroke="#d6dbe3"/>
+<line x1="767.0" y1="198.5" x2="1352.0" y2="198.5" stroke="#d6dbe3"/>
+<line x1="767.0" y1="137.0" x2="1352.0" y2="137.0" stroke="#d6dbe3"/>
+<rect data-point="Q4_K_M fixed; Decode, tok/s=24.687; 1429 slots" x="808.0" y="226.4" width="113.1" height="156.6" fill="#2563eb"><title>Q4_K_M fixed; Decode, tok/s=24.687; 1429 slots</title></rect>
+<text x="864.5" y="218.4" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">24.69</text>
+<text x="864.5" y="405.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">Q4_K_M fixed</text>
+<text x="864.5" y="425.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S fixed; Decode, tok/s=27.551; 1429 slots" x="1003.0" y="208.2" width="113.1" height="174.8" fill="#dc2626"><title>TQ3_4S fixed; Decode, tok/s=27.551; 1429 slots</title></rect>
+<text x="1059.5" y="200.2" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">27.55</text>
+<text x="1059.5" y="405.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S fixed</text>
+<text x="1059.5" y="425.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S auto; Decode, tok/s=33.425; 2633 slots" x="1198.0" y="170.9" width="113.1" height="212.1" fill="#059669"><title>TQ3_4S auto; Decode, tok/s=33.425; 2633 slots</title></rect>
+<text x="1254.5" y="162.9" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">33.43</text>
+<text x="1254.5" y="405.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S auto</text>
+<text x="1254.5" y="425.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">2633 slots</text>
+</g>
+<g aria-label="Cache miss, %">
+<rect x="30.0" y="485.0" width="665.0" height="370.0" fill="#ffffff" stroke="#d6dbe3"/>
+<text x="46.0" y="512.0" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#172033">Cache miss, %</text>
+<line x1="92.0" y1="773.0" x2="677.0" y2="773.0" stroke="#d6dbe3"/>
+<line x1="92.0" y1="711.5" x2="677.0" y2="711.5" stroke="#d6dbe3"/>
+<line x1="92.0" y1="650.0" x2="677.0" y2="650.0" stroke="#d6dbe3"/>
+<line x1="92.0" y1="588.5" x2="677.0" y2="588.5" stroke="#d6dbe3"/>
+<line x1="92.0" y1="527.0" x2="677.0" y2="527.0" stroke="#d6dbe3"/>
+<rect data-point="Q4_K_M fixed; Cache miss, %=44.399; 1429 slots" x="132.9" y="560.9" width="113.1" height="212.1" fill="#2563eb"><title>Q4_K_M fixed; Cache miss, %=44.399; 1429 slots</title></rect>
+<text x="189.5" y="552.9" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">44.40%</text>
+<text x="189.5" y="795.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">Q4_K_M fixed</text>
+<text x="189.5" y="815.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S fixed; Cache miss, %=42.744; 1429 slots" x="327.9" y="568.8" width="113.1" height="204.2" fill="#dc2626"><title>TQ3_4S fixed; Cache miss, %=42.744; 1429 slots</title></rect>
+<text x="384.5" y="560.8" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">42.74%</text>
+<text x="384.5" y="795.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S fixed</text>
+<text x="384.5" y="815.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S auto; Cache miss, %=27.609; 2633 slots" x="523.0" y="641.1" width="113.1" height="131.9" fill="#059669"><title>TQ3_4S auto; Cache miss, %=27.609; 2633 slots</title></rect>
+<text x="579.5" y="633.1" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">27.61%</text>
+<text x="579.5" y="795.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S auto</text>
+<text x="579.5" y="815.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">2633 slots</text>
+</g>
+<g aria-label="Transfer, MB/output token">
+<rect x="705.0" y="485.0" width="665.0" height="370.0" fill="#ffffff" stroke="#d6dbe3"/>
+<text x="721.0" y="512.0" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#172033">Transfer, MB/output token</text>
+<line x1="767.0" y1="773.0" x2="1352.0" y2="773.0" stroke="#d6dbe3"/>
+<line x1="767.0" y1="711.5" x2="1352.0" y2="711.5" stroke="#d6dbe3"/>
+<line x1="767.0" y1="650.0" x2="1352.0" y2="650.0" stroke="#d6dbe3"/>
+<line x1="767.0" y1="588.5" x2="1352.0" y2="588.5" stroke="#d6dbe3"/>
+<line x1="767.0" y1="527.0" x2="1352.0" y2="527.0" stroke="#d6dbe3"/>
+<rect data-point="Q4_K_M fixed; Transfer, MB/output token=271.662; 1429 slots" x="808.0" y="560.9" width="113.1" height="212.1" fill="#2563eb"><title>Q4_K_M fixed; Transfer, MB/output token=271.662; 1429 slots</title></rect>
+<text x="864.5" y="552.9" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">271.7</text>
+<text x="864.5" y="795.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">Q4_K_M fixed</text>
+<text x="864.5" y="815.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S fixed; Transfer, MB/output token=215.137; 1429 slots" x="1003.0" y="605.1" width="113.1" height="167.9" fill="#dc2626"><title>TQ3_4S fixed; Transfer, MB/output token=215.137; 1429 slots</title></rect>
+<text x="1059.5" y="597.1" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">215.1</text>
+<text x="1059.5" y="795.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S fixed</text>
+<text x="1059.5" y="815.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">1429 slots</text>
+<rect data-point="TQ3_4S auto; Transfer, MB/output token=138.958; 2633 slots" x="1198.0" y="664.5" width="113.1" height="108.5" fill="#059669"><title>TQ3_4S auto; Transfer, MB/output token=138.958; 2633 slots</title></rect>
+<text x="1254.5" y="656.5" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" fill="#172033">139.0</text>
+<text x="1254.5" y="795.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#172033">TQ3_4S auto</text>
+<text x="1254.5" y="815.0" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" font-weight="400" fill="#172033">2633 slots</text>
+</g>
+</svg>

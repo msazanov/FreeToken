@@ -25,12 +25,18 @@ def test_build_repository_dossier_uses_real_sources_and_excludes_git(tmp_path):
     ignored = tmp_path / ".git"
     ignored.mkdir()
     (ignored / "config").write_text("must not enter dossier\n", encoding="utf-8")
+    results = tmp_path / "benchmarks" / "results"
+    results.mkdir(parents=True)
+    (results / "old-run.json").write_text(
+        '{"response_text":"must not feed the next benchmark"}\n', encoding="utf-8"
+    )
 
     dossier = build_repository_dossier(tmp_path, max_chars=10_000)
 
     assert "FILE: README.md" in dossier
     assert "FILE: python/freetoken/stats.py" in dossier
     assert "must not enter dossier" not in dossier
+    assert "must not feed the next benchmark" not in dossier
 
 
 def test_priority_evidence_extracts_anchor_windows_before_general_dossier(tmp_path):
@@ -130,6 +136,103 @@ def test_prefill_metrics_never_publish_total_prompt_rate_for_a_cache_hit():
     }
 
 
+def test_fresh_server_counters_prove_a_zero_cache_hit_when_wire_details_are_omitted():
+    from benchmarks.ornith_context_bench import resolve_cache_observation
+
+    result = {"prompt_tokens": 1012, "cached_tokens": None}
+    before = {
+        "stats": {
+            "requests": {
+                "completed": 0,
+                "prompt_tokens_total": 0,
+                "completion_tokens_total": 0,
+            }
+        }
+    }
+
+    assert resolve_cache_observation(result, before) == {
+        "prompt_tokens": 1012,
+        "cached_tokens": 0,
+        "cache_observation": "inferred_zero_from_fresh_server_counters",
+    }
+
+
+def test_nonfresh_server_keeps_an_omitted_cache_hit_unknown():
+    from benchmarks.ornith_context_bench import resolve_cache_observation
+
+    result = {"prompt_tokens": 1012, "cached_tokens": None}
+    before = {
+        "stats": {
+            "requests": {
+                "completed": 1,
+                "prompt_tokens_total": 1012,
+                "completion_tokens_total": 10,
+            }
+        }
+    }
+
+    assert resolve_cache_observation(result, before)["cache_observation"] == "unknown"
+    assert resolve_cache_observation(result, before)["cached_tokens"] is None
+
+
+def test_runtime_parameters_fall_back_to_static_geometry_and_declared_kv_mode():
+    from benchmarks.ornith_context_bench import _runtime_parameters
+
+    runtime = _runtime_parameters(
+        {
+            "stats": {"model": {"ctx": 16384}, "kv": None},
+            "cache": {
+                "geometry": {
+                    "num_pages": 16384,
+                    "moe_cache_size": 1429,
+                    "num_mamba_slots": 8,
+                }
+            },
+        },
+        {"kv": "int8"},
+    )
+
+    assert runtime == {
+        "context_budget_tokens": 16384,
+        "kv_dtype": "int8",
+        "kv_pages": 16384,
+        "moe_cache_slots": 1429,
+        "mamba_slots": 8,
+    }
+
+
+def test_host_rate_snapshot_reports_cpu_iowait_and_physical_nvme_bytes():
+    from benchmarks.ornith_context_bench import (
+        host_rate_snapshot,
+        parse_diskstats,
+        parse_proc_stat,
+    )
+
+    previous = {
+        "cpu": parse_proc_stat("cpu  100 0 50 850 20 0 0 0 0 0\n"),
+        "disks": parse_diskstats(
+            "259 0 nvme0n1 100 0 200 0 50 0 100 0 0 0 0 0 0 0 0 0\n"
+            "259 1 nvme0n1p1 100 0 9999 0 50 0 9999 0 0 0 0 0 0 0 0 0\n"
+            "7 0 loop0 100 0 9999 0 50 0 9999 0 0 0 0 0 0 0 0 0\n"
+        ),
+    }
+    current = {
+        "cpu": parse_proc_stat("cpu  130 0 70 900 30 0 0 0 0 0\n"),
+        "disks": parse_diskstats(
+            "259 0 nvme0n1 110 0 240 0 55 0 120 0 0 0 0 0 0 0 0 0\n"
+        ),
+    }
+
+    rates = host_rate_snapshot(previous, current, elapsed_s=2.0)
+
+    assert rates["cpu_util_percent"] == pytest.approx(45.454545)
+    assert rates["cpu_iowait_percent"] == pytest.approx(9.090909)
+    assert rates["nvme_read_bytes_per_s"] == pytest.approx(10_240)
+    assert rates["nvme_write_bytes_per_s"] == pytest.approx(5_120)
+    assert rates["nvme_read_bytes_total"] == 240 * 512
+    assert rates["nvme_devices"] == ["nvme0n1"]
+
+
 def test_default_runner_output_directory_is_repository_benchmarks_results():
     from benchmarks.ornith_context_bench import parse_args
 
@@ -225,6 +328,35 @@ def test_git_identity_hashes_untracked_source_files(tmp_path):
     assert identity["untracked_sha256"] == {
         "new_kernel.py": hashlib.sha256(untracked.read_bytes()).hexdigest()
     }
+
+
+def test_git_identity_does_not_mark_benchmark_result_artifacts_as_source_dirty(tmp_path):
+    from benchmarks.ornith_context_bench import _git_identity
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "bench@example.invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "Benchmark Test"],
+        check=True,
+    )
+    tracked = tmp_path / "runtime.py"
+    tracked.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "runtime.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-q", "-m", "baseline"], check=True
+    )
+    result = tmp_path / "benchmarks" / "results" / "old-run.json"
+    result.parent.mkdir(parents=True)
+    result.write_text('{"decode_tps": 1.0}\n', encoding="utf-8")
+
+    identity = _git_identity(tmp_path)
+
+    assert identity["worktree_dirty"] is True
+    assert identity["dirty"] is False
+    assert identity["untracked_sha256"] == {}
 
 
 def test_slice_index_entry_binds_speed_point_to_revision_and_parameters():

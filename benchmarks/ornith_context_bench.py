@@ -34,6 +34,7 @@ from typing import Iterable, Iterator
 
 DEFAULT_TIERS = (1024, 16_384, 65_536, 114_688)
 IGNORED_DIRS = {".beads", ".codegraph", ".git", ".venv", "__pycache__"}
+BENCHMARK_RESULTS_PREFIX = ("benchmarks", "results")
 TEXT_SUFFIXES = {".md", ".py", ".toml", ".json", ".yaml", ".yml"}
 PRIORITY_SOURCES = (
     "README.md",
@@ -107,7 +108,10 @@ def _repository_files(root: Path, priority_paths: Iterable[str]) -> Iterator[Pat
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path in yielded:
             continue
-        if any(part in IGNORED_DIRS for part in path.relative_to(root).parts):
+        relative_parts = path.relative_to(root).parts
+        if any(part in IGNORED_DIRS for part in relative_parts):
+            continue
+        if relative_parts[: len(BENCHMARK_RESULTS_PREFIX)] == BENCHMARK_RESULTS_PREFIX:
             continue
         if path.suffix.lower() in TEXT_SUFFIXES:
             yield path
@@ -234,19 +238,25 @@ def _git_identity(root: Path) -> dict[str, object]:
                 continue
             relative = raw_relative.decode("utf-8", errors="surrogateescape")
             path = root / relative
-            if path.is_file():
+            if (
+                path.is_file()
+                and Path(relative).parts[: len(BENCHMARK_RESULTS_PREFIX)]
+                != BENCHMARK_RESULTS_PREFIX
+            ):
                 untracked_sha256[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     except (OSError, subprocess.SubprocessError):
         return {
             "commit": None,
             "dirty": None,
+            "worktree_dirty": None,
             "status": [],
             "working_tree_diff_sha256": None,
             "untracked_sha256": {},
         }
     return {
         "commit": commit,
-        "dirty": bool(status),
+        "dirty": bool(diff) or bool(untracked_sha256),
+        "worktree_dirty": bool(status),
         "status": status.splitlines() if status else [],
         "working_tree_diff_sha256": hashlib.sha256(diff).hexdigest(),
         "untracked_sha256": untracked_sha256,
@@ -347,7 +357,9 @@ def _model_identity(
     }
 
 
-def _runtime_parameters(runtime_before: dict) -> dict[str, object]:
+def _runtime_parameters(
+    runtime_before: dict, parameters: dict[str, str]
+) -> dict[str, object]:
     """Keep the serving configuration alongside manual ``--parameter`` labels."""
     stats = runtime_before.get("stats") or {}
     cache = runtime_before.get("cache") or {}
@@ -355,8 +367,8 @@ def _runtime_parameters(runtime_before: dict) -> dict[str, object]:
     kv = stats.get("kv") or {}
     return {
         "context_budget_tokens": (stats.get("model") or {}).get("ctx"),
-        "kv_dtype": kv.get("dtype"),
-        "kv_pages": kv.get("total_pages"),
+        "kv_dtype": kv.get("dtype") or parameters.get("kv") or parameters.get("kv_dtype"),
+        "kv_pages": kv.get("total_pages") or geometry.get("num_pages"),
         "moe_cache_slots": geometry.get("moe_cache_size"),
         "mamba_slots": geometry.get("num_mamba_slots"),
     }
@@ -406,6 +418,25 @@ def prefill_metrics(result: dict) -> dict[str, object]:
         "prefill_tps_estimate": naive_rate if is_cold is True else None,
         "naive_total_prompt_over_ttft_tps": naive_rate,
     }
+
+
+def resolve_cache_observation(result: dict, runtime_before: dict) -> dict:
+    """Distinguish an explicit/reliably inferred cold prefix from unknown telemetry."""
+    resolved = dict(result)
+    if resolved.get("cached_tokens") is not None:
+        resolved["cache_observation"] = "reported_by_server"
+        return resolved
+    requests = ((runtime_before.get("stats") or {}).get("requests") or {})
+    fresh = all(
+        int(requests.get(key) or 0) == 0
+        for key in ("completed", "prompt_tokens_total", "completion_tokens_total")
+    )
+    if fresh:
+        resolved["cached_tokens"] = 0
+        resolved["cache_observation"] = "inferred_zero_from_fresh_server_counters"
+    else:
+        resolved["cache_observation"] = "unknown"
+    return resolved
 
 
 def append_slice_index(results_dir: Path, row: dict) -> Path:
@@ -498,6 +529,77 @@ def _host_snapshot() -> dict:
     }
 
 
+def parse_proc_stat(text: str) -> dict[str, int]:
+    """Parse cumulative aggregate CPU ticks from Linux ``/proc/stat``."""
+    first = text.splitlines()[0].split()
+    if not first or first[0] != "cpu" or len(first) < 6:
+        raise ValueError("/proc/stat has no aggregate cpu row")
+    ticks = [int(value) for value in first[1:]]
+    idle = ticks[3]
+    iowait = ticks[4] if len(ticks) > 4 else 0
+    return {"total_ticks": sum(ticks), "idle_ticks": idle + iowait, "iowait_ticks": iowait}
+
+
+def parse_diskstats(text: str) -> dict[str, dict[str, int]]:
+    """Return cumulative counters for physical NVMe namespaces only.
+
+    Partitions such as ``nvme0n1p1`` are excluded so bytes are not counted once
+    at the namespace and again at the partition layer.
+    """
+    devices: dict[str, dict[str, int]] = {}
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) < 10 or not re.fullmatch(r"nvme\d+n\d+", fields[2]):
+            continue
+        devices[fields[2]] = {
+            "read_bytes": int(fields[5]) * 512,
+            "write_bytes": int(fields[9]) * 512,
+        }
+    return devices
+
+
+def _host_counters() -> dict[str, object]:
+    return {
+        "cpu": parse_proc_stat(Path("/proc/stat").read_text(encoding="utf-8")),
+        "disks": parse_diskstats(Path("/proc/diskstats").read_text(encoding="utf-8")),
+    }
+
+
+def host_rate_snapshot(previous: dict, current: dict, *, elapsed_s: float) -> dict[str, object]:
+    """Convert cumulative Linux CPU/NVMe counters into one interval sample."""
+    if elapsed_s <= 0:
+        raise ValueError("elapsed_s must be positive")
+    previous_cpu = previous["cpu"]
+    current_cpu = current["cpu"]
+    total_delta = int(current_cpu["total_ticks"]) - int(previous_cpu["total_ticks"])
+    idle_delta = int(current_cpu["idle_ticks"]) - int(previous_cpu["idle_ticks"])
+    iowait_delta = int(current_cpu["iowait_ticks"]) - int(previous_cpu["iowait_ticks"])
+    cpu_util = None if total_delta <= 0 else 100.0 * (total_delta - idle_delta) / total_delta
+    cpu_iowait = None if total_delta <= 0 else 100.0 * iowait_delta / total_delta
+
+    current_disks = current["disks"]
+    previous_disks = previous["disks"]
+    read_total = sum(int(values["read_bytes"]) for values in current_disks.values())
+    write_total = sum(int(values["write_bytes"]) for values in current_disks.values())
+    read_delta = sum(
+        max(0, int(values["read_bytes"]) - int(previous_disks.get(name, {}).get("read_bytes", values["read_bytes"])))
+        for name, values in current_disks.items()
+    )
+    write_delta = sum(
+        max(0, int(values["write_bytes"]) - int(previous_disks.get(name, {}).get("write_bytes", values["write_bytes"])))
+        for name, values in current_disks.items()
+    )
+    return {
+        "cpu_util_percent": cpu_util,
+        "cpu_iowait_percent": cpu_iowait,
+        "nvme_read_bytes_per_s": read_delta / elapsed_s,
+        "nvme_write_bytes_per_s": write_delta / elapsed_s,
+        "nvme_read_bytes_total": read_total,
+        "nvme_write_bytes_total": write_total,
+        "nvme_devices": sorted(current_disks),
+    }
+
+
 class RuntimeSampler:
     def __init__(self, origin: str, interval_s: float = 1.0):
         self.origin = origin
@@ -514,8 +616,43 @@ class RuntimeSampler:
         self._thread.join(timeout=self.interval_s + 5)
 
     def _run(self) -> None:
+        previous_counters: dict[str, object] | None = None
+        previous_at: float | None = None
         while not self._stop.is_set():
-            sample = {"monotonic_s": time.monotonic(), **_gpu_snapshot(), **_host_snapshot()}
+            sampled_at = time.monotonic()
+            sample = {"monotonic_s": sampled_at, **_gpu_snapshot(), **_host_snapshot()}
+            try:
+                current_counters = _host_counters()
+                if previous_counters is None or previous_at is None:
+                    sample.update(
+                        {
+                            "cpu_util_percent": None,
+                            "cpu_iowait_percent": None,
+                            "nvme_read_bytes_per_s": None,
+                            "nvme_write_bytes_per_s": None,
+                            "nvme_read_bytes_total": sum(
+                                values["read_bytes"]
+                                for values in current_counters["disks"].values()
+                            ),
+                            "nvme_write_bytes_total": sum(
+                                values["write_bytes"]
+                                for values in current_counters["disks"].values()
+                            ),
+                            "nvme_devices": sorted(current_counters["disks"]),
+                        }
+                    )
+                else:
+                    sample.update(
+                        host_rate_snapshot(
+                            previous_counters,
+                            current_counters,
+                            elapsed_s=sampled_at - previous_at,
+                        )
+                    )
+                previous_counters = current_counters
+                previous_at = sampled_at
+            except (OSError, ValueError, KeyError):
+                sample["host_rate_snapshot_error"] = True
             try:
                 sample["server_stats"] = _get_json(self.origin, "/v1/stats", timeout=5)
             except (OSError, ValueError):
@@ -600,6 +737,7 @@ def run_tier(
     finally:
         sampler.stop()
     after = {"stats": _get_json(origin, "/v1/stats"), "cache": _get_json(origin, "/v1/cache/status")}
+    result = resolve_cache_observation(result, before)
     decode_window = result["decode_window_s"]
     decode_tps = None
     if decode_window and decode_window > 0 and result["completion_tokens"] > 1:
@@ -623,7 +761,7 @@ def run_tier(
             "label": slice_label,
             "git": _git_identity(root),
             "parameters": parameters,
-            "runtime_parameters": _runtime_parameters(before),
+            "runtime_parameters": _runtime_parameters(before, parameters),
             # FreeToken's current OpenAI route does not forward a seed to its sampler.
             # temperature=0 selects argmax, so the result is deterministic without one.
             "sampling": {"mode": "greedy-argmax", "temperature": 0.0, "seed": None},

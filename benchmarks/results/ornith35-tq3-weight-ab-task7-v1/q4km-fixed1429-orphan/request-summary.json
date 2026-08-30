@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "incomplete_client_artifact",
+  "model": "Ornith 1.5 35b Q4_K_M",
+  "model_sha256": "42739874cc2ccfdb8523b23fbe52e29b2a7555c8176737ca9ca0b5d59859d41f",
+  "source_commit": "beda1ba4abfaf859e2fe1069f0bf8ff8f18bfc90",
+  "runtime": {
+    "dtype": "bfloat16",
+    "kv_dtype": "int8",
+    "context_tokens": 16384,
+    "max_prefill_tokens": 1024,
+    "moe_cache_slots": 1429,
+    "cache_policy": "lru"
+  },
+  "server_observation": {
+    "prompt_tokens": 1012,
+    "completion_tokens": 318,
+    "server_ttft_mean_ms": 9950,
+    "server_request_p95_ms": 22625,
+    "decode_layer_calls": 12720,
+    "decode_expert_references": 101760,
+    "decode_l1_hits": 56580,
+    "decode_l1_misses": 45180,
+    "decode_miss_rate": 0.44398584905660377,
+    "decode_copy_records": 90360,
+    "decode_copy_bytes": 86388473856,
+    "decode_evictions": 44007,
+    "prefill_expert_references": 323840,
+    "prefill_unique_sum": 9106,
+    "prefill_l1_hits": 0,
+    "prefill_l1_misses": 9106,
+    "prefill_copy_records": 20480,
+    "prefill_copy_bytes": 19503513600,
+    "prefill_evictions": 9984
+  },
+  "missing": [
+    "client SSE wall clock",
+    "client decode_tps",
+    "one-second GPU/host samples",
+    "response text and quality anchors"
+  ],
+  "qualification": "The request completed and server telemetry is real, but the benchmark client exited before atomic artifact creation. This is retained as an incomplete failure and must not be plotted as a speed point."
+}

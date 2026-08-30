@@ -235,16 +235,15 @@ The production control remains the official `Q4_K_M`. A Hugging Face intake on
 4. APEX Compact (16.54 GB) — role-aware mixed precision that compresses routed
    experts more heavily; it needs a GGUF type/startup gate before download.
 
-`TQ3_4S` is now end-to-end loadable through FreeToken with generic-MHA `int8`
-KV: the 16K smoke server completed warmup and deterministic generation. Its
-dense and selected-expert decode kernels are implemented, while matched Q4_K_M
-speed/quality A/B and long-context qualification remain open. Its served expert slot is
-1,572,864 bytes, 22.89% below Q4_K_M, while its dense served weights are also
-smaller. Under the same packed-weight VRAM budget this projects roughly 1,943
-slots instead of the measured 1,429; that is a first-order capacity estimate,
-not a matched speed result. Correct execution uses the matching activation WHT,
-Lloyd-Max centroids and native SM75 `dp4a` vector-dot path ported from the
-`turbo-tan/llama.cpp-tq3` donor into this FreeToken branch.
+`TQ3_4S` is now end-to-end loadable and benchmarked through FreeToken with
+generic-MHA `int8` KV. Its served expert slot is 1,572,864 bytes, 22.89% below
+Q4_K_M, while its dense served weights are also smaller. A matched 16K A/B found
+that this helps twice: with the cache held at 1,429 slots TQ3_4S improved repeat
+decode by 11.6-12.8%, and automatic sizing raised the pool to 2,633 slots and
+improved repeat decode by 35.4-38.8% over Q4_K_M. Correct execution uses the
+matching activation WHT, Lloyd-Max centroids and native SM75 `dp4a` vector-dot
+path ported from the `turbo-tan/llama.cpp-tq3` donor into this FreeToken branch.
+Long-context and broad quality qualification remain open.
 
 The follow-up header audit also changes how the direct AD/UD candidates should
 be read. Atomic AD has the strongest published same-corpus quality evidence and
@@ -399,3 +398,46 @@ runner requires a precomputed model SHA-256 and automatically retains GPU UUID,
 driver, compute capability, staged/unstaged tracked diff and untracked-file
 hashes. Missing cache telemetry is represented as `unknown`, never silently as
 a cold cache.
+
+### Matched Ornith TQ3_4S weight/cache A/B
+
+The canonical repeat added whole-system CPU/iowait and physical-NVMe counters.
+All three configurations used the same 1,012-token prompt, 16,384-token budget,
+INT8 KV, 1,024-token prefill chunks, greedy decoding, LRU policy, RTX 2070 and
+source diff. Each server started with zero completed requests. The older v1
+series remains as an independent repeat and reproduced the same ordering and
+bit-identical response text for each quantization.
+
+| Configuration | Expert slots | TTFT | Prefill | Decode | MoE L1 miss | Expert copy/output token | Sampled VRAM peak |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Q4_K_M fixed | 1,429 | 7.942 s | 127.42 tok/s | 24.69 tok/s | 44.40% | 271.7 MB | 6,046 MiB |
+| TQ3_4S fixed | 1,429 | 6.475 s | 156.28 tok/s | 27.55 tok/s | 42.74% | 215.1 MB | 5,280 MiB |
+| TQ3_4S auto | 2,633 | 6.486 s | 156.03 tok/s | 33.43 tok/s | 27.61% | 139.0 MB | 7,100 MiB |
+
+At fixed capacity, TQ3_4S improved prefill by 22.65%, decode by 11.60% and
+reduced expert-copy bytes per generated token by 20.81%. Giving its saved VRAM
+to expert residency added 1,204 slots; against fixed TQ3 this reduced the MoE
+expert-cache miss rate by 35.41% and raised decode another 21.32%. Against the
+Q4 control, TQ3 auto was 35.40% faster in decode and moved 48.85% fewer expert
+bytes per output token. This is the central result: both the narrower transfer
+record and the larger resident working set matter.
+
+The new physical-NVMe samples observed 649,564,160 / 176,316,416 / 438,329,344
+request-time read bytes for Q4 fixed / TQ3 fixed / TQ3 auto. They are retained
+but not treated as a causal codec comparison because Linux page cache was not
+forcibly dropped and run order affects residency. Mean whole-system CPU was
+29.08% / 26.44% / 26.00%; mean sampled GPU utilization stayed near 88% in all
+three, so additional CPU parallelism is not the explanation for the speedup.
+
+Quality is not declared equal. The lexical anchor score was 4/5 for every run,
+but Q4_K_M produced the more accurate answer on this single repository task.
+The TQ3 response was stable and bit-identical between fixed/auto and both
+repeats, yet it reversed the accepted/rejected labels of two optimizations and
+was truncated. A broader quality suite is required before replacing Q4_K_M for
+accuracy-sensitive work.
+
+The compact source-of-truth JSON and plots are under
+`benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/`; the complete
+21-point cross-model/context ledger is rendered from
+`benchmarks/results/model-context-speed.jsonl` by
+`benchmarks/plot_context_results.py`.

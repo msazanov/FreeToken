@@ -74,3 +74,31 @@ Future `ornith_context_bench.py` runs require `--model-sha256`; this deliberatel
 uses the intake gate's precomputed digest instead of rereading tens of GiB and
 perturbing the page cache during a context sweep. The runner also records local
 model file stats, GPU UUID/name, compute capability and NVIDIA driver.
+
+Task 7 extends each one-second sample with aggregate CPU utilization, CPU
+iowait, and physical NVMe namespace read/write counters from `/proc/stat` and
+`/proc/diskstats`. Partitions are excluded to avoid double-counting namespace
+traffic. The two complete matched series are retained under
+`ornith35-tq3-weight-ab-task7-v1/` and
+`ornith35-tq3-weight-ab-task7-v2-system/`; v2 is canonical because it includes
+the added host-I/O telemetry, while v1 remains a real repeat.
+
+**`plot_context_results.py`** — dependency-free SVG renderer for both the
+append-only cross-model ledger and the compact Task-7 weight/cache summary. It
+plots every valid registry row rather than selecting three representative
+points. Reproduce the checked-in figures with:
+
+```bash
+PYTHONPATH=python:. python benchmarks/plot_context_results.py \
+  --registry benchmarks/results/model-context-speed.jsonl \
+  --output benchmarks/results/model-context-speed.svg
+
+PYTHONPATH=python:. python benchmarks/plot_context_results.py \
+  --weight-ab-summary \
+    benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/summary.json \
+  --output \
+    benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/weight-ab.svg
+```
+
+The PNG copies are presentation derivatives of those SVG files. The raw JSON,
+not a chart pixel, remains the numeric authority.

@@ -1,0 +1,2871 @@
+{
+  "schema": 1,
+  "timestamp_utc": "2026-08-30T02:25:07.311066+00:00",
+  "scenario": "repository-compression",
+  "requested_context_tokens": 1024,
+  "dossier_body_tokens": 864,
+  "model": "Ornith 1.5 35b Q4 AB",
+  "origin": "http://127.0.0.1:1919",
+  "metrics": {
+    "wall_s": 20.9016716160113,
+    "ttft_s": 7.942385681002634,
+    "decode_window_s": 12.84097517002374,
+    "prompt_tokens": 1012,
+    "completion_tokens": 318,
+    "cached_tokens": 0,
+    "response_text": "Here's the compressed repository dossier:\n\n- **Target hardware & model:** RTX 2070 Mobile (8 GiB VRAM), Intel i7-8750H, 32 GiB DDR4, 1 TB NVMe; primary target is Ornith 1.5 35B A3B (MoE, CPU/RAM/NVMe-assisted expert offload via FreeToken).\n- **Runtime-stats endpoint & function:** `python/freetoken/server/control_api.py` exposes runtime stats (the read-only control API).\n- **Active TQ4 optimization:** native Turing-validated packed TQ4 QSA KV path (CUDA test passed on actual RTX 2070 SM75 with Qwen-width head geometry; KV storage/attention-cache path).\n- **Rejected optimization:** SM75 TQ4 split-K decode — 18 fixed splits vs 8 gave worse kernel time across 1K (-20.0%), 4K (-13.8%), 16K (-28.7%), 32K (-30.9%) at Ornith geometry (16 Q / 2 KV heads, D=256).\n- **Files to update after an experiment:** `TESTLOG.md` (command/config, hardware state, metrics, raw artifact path, limitations) and `CHANGELOG.md` (hypothesis, decision, code/config change, success/failure/unproven) — append atomically per AGENTS.md.",
+    "cache_observation": "inferred_zero_from_fresh_server_counters",
+    "new_prompt_tokens": 1012,
+    "is_cold_prefill": true,
+    "prefill_tps_estimate": 127.41763503384122,
+    "naive_total_prompt_over_ttft_tps": 127.41763503384122,
+    "decode_tps": 24.68659862687157
+  },
+  "quality": {
+    "required_anchors": [
+      "ornith",
+      "rtx 2070",
+      "control_api.py",
+      "build_stats",
+      "tq4"
+    ],
+    "found_anchors": [
+      "ornith",
+      "rtx 2070",
+      "control_api.py",
+      "tq4"
+    ],
+    "score": 4
+  },
+  "runtime_before": {
+    "stats": {
+      "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+      "model": {
+        "id": "Ornith 1.5 35b Q4 AB",
+        "ctx": 16384,
+        "attn": "hybrid_linear",
+        "moe": true,
+        "sampling": {
+          "temperature": 1.0,
+          "top_k": 20,
+          "top_p": 0.949999988079071
+        }
+      },
+      "uptime_s": 10,
+      "kv": null,
+      "mamba": null,
+      "swa": null,
+      "moe": null,
+      "vram_bytes": 0,
+      "gpus": [
+        {
+          "index": 0,
+          "name": "NVIDIA GeForce RTX 2070",
+          "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+          "total_bytes": 8172666880
+        }
+      ],
+      "throughput": {
+        "decode_tps": 0.0,
+        "prefill_tps": 0.0
+      },
+      "requests": {
+        "active": 0,
+        "completed": 0,
+        "p95_ms": 0,
+        "ttft_mean_ms": 0,
+        "prompt_tokens_total": 0,
+        "completion_tokens_total": 0
+      }
+    },
+    "cache": {
+      "state": "serving",
+      "last_rebuild": null,
+      "geometry": {
+        "num_pages": 16384,
+        "page_size": 1,
+        "moe_cache_size": 1429,
+        "num_mamba_slots": 8,
+        "num_experts": 256,
+        "num_moe_layers": 40,
+        "moe_cache_policy": "lru",
+        "unit_bytes": {
+          "kv_per_token": 10320,
+          "moe_per_expert": 2039808,
+          "mamba_per_slot": 64389120,
+          "swa_per_token": 0
+        },
+        "swa_full_tokens_ratio": 0.0,
+        "swa_page_size": 0,
+        "num_swa_pages": 0,
+        "cache_budget_bytes": 4763461222,
+        "reasoning": {
+          "gears": [
+            "off",
+            "on"
+          ],
+          "default": "on",
+          "kwargs": {
+            "off": {
+              "enable_thinking": false,
+              "thinking_mode": "disabled"
+            },
+            "on": {
+              "enable_thinking": true,
+              "thinking_mode": "enabled"
+            }
+          }
+        },
+        "limits": {
+          "kv_tokens": {
+            "min": 1,
+            "max": 461575
+          },
+          "moe_experts": {
+            "min": 256,
+            "max": 2335
+          },
+          "mamba_slots": {
+            "min": 4,
+            "max": 73
+          },
+          "swa_tokens": {
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "runtime_after": {
+    "stats": {
+      "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+      "model": {
+        "id": "Ornith 1.5 35b Q4 AB",
+        "ctx": 16384,
+        "attn": "hybrid_linear",
+        "moe": true,
+        "sampling": {
+          "temperature": 1.0,
+          "top_k": 20,
+          "top_p": 0.949999988079071
+        }
+      },
+      "uptime_s": 31,
+      "kv": {
+        "used_pages": 0,
+        "total_pages": 16384,
+        "page_size": 1,
+        "dtype": "int8"
+      },
+      "mamba": {
+        "used_slots": 0,
+        "total_slots": 8
+      },
+      "swa": null,
+      "moe": {
+        "miss": {
+          "layer_calls": 12720,
+          "active_per_layer": 8.0,
+          "missing_per_layer": 3.55188679245283,
+          "miss_rate": 0.44398584905660377,
+          "fetched_per_layer": 0.0,
+          "cpu_per_layer": 3.55188679245283,
+          "fetch_rate": 0.0,
+          "prefill_hit_rows": 0,
+          "prefill_rows": 0
+        },
+        "per_layer": [
+          {
+            "layer": 0,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 5.279874213836478,
+            "miss_rate": 0.6599842767295597,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 1,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 4.949685534591195,
+            "miss_rate": 0.6187106918238994,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 2,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 4.581761006289308,
+            "miss_rate": 0.5727201257861635,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 3,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 4.19496855345912,
+            "miss_rate": 0.52437106918239,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 4,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 4.028301886792453,
+            "miss_rate": 0.5035377358490566,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 5,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.559748427672956,
+            "miss_rate": 0.4449685534591195,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 6,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.3710691823899372,
+            "miss_rate": 0.42138364779874216,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 7,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.1666666666666665,
+            "miss_rate": 0.3958333333333333,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 8,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.0251572327044025,
+            "miss_rate": 0.3781446540880503,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 9,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.047169811320755,
+            "miss_rate": 0.38089622641509435,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 10,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.4654088050314464,
+            "miss_rate": 0.4331761006289308,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 11,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.6540880503144653,
+            "miss_rate": 0.45676100628930816,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 12,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.4654088050314464,
+            "miss_rate": 0.4331761006289308,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 13,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.119496855345912,
+            "miss_rate": 0.389937106918239,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 14,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.2767295597484276,
+            "miss_rate": 0.40959119496855345,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 15,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.3836477987421385,
+            "miss_rate": 0.4229559748427673,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 16,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.330188679245283,
+            "miss_rate": 0.41627358490566035,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 17,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.39937106918239,
+            "miss_rate": 0.42492138364779874,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 18,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.40251572327044,
+            "miss_rate": 0.425314465408805,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 19,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.289308176100629,
+            "miss_rate": 0.4111635220125786,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 20,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.2044025157232703,
+            "miss_rate": 0.4005503144654088,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 21,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.5628930817610063,
+            "miss_rate": 0.4453616352201258,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 22,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.7044025157232703,
+            "miss_rate": 0.4630503144654088,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 23,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.8050314465408803,
+            "miss_rate": 0.47562893081761004,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 24,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.157232704402516,
+            "miss_rate": 0.3946540880503145,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 25,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.0251572327044025,
+            "miss_rate": 0.3781446540880503,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 26,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.147798742138365,
+            "miss_rate": 0.3934748427672956,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 27,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.157232704402516,
+            "miss_rate": 0.3946540880503145,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 28,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.279874213836478,
+            "miss_rate": 0.4099842767295597,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 29,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.361635220125786,
+            "miss_rate": 0.4202044025157233,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 30,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.056603773584906,
+            "miss_rate": 0.38207547169811323,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 31,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.1949685534591197,
+            "miss_rate": 0.39937106918238996,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 32,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.556603773584906,
+            "miss_rate": 0.44457547169811323,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 33,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.5251572327044025,
+            "miss_rate": 0.4406446540880503,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 34,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.779874213836478,
+            "miss_rate": 0.4724842767295597,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 35,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.2327044025157234,
+            "miss_rate": 0.40408805031446543,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 36,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.60062893081761,
+            "miss_rate": 0.45007861635220126,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 37,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.7358490566037736,
+            "miss_rate": 0.4669811320754717,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 38,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 4.015723270440252,
+            "miss_rate": 0.5019654088050315,
+            "fetched_per_step": 0.0
+          },
+          {
+            "layer": 39,
+            "steps": 318,
+            "active_per_step": 8.0,
+            "missing_per_step": 3.981132075471698,
+            "miss_rate": 0.49764150943396224,
+            "fetched_per_step": 0.0
+          }
+        ],
+        "routing": {
+          "method": "stationary_per_layer_top_c"
+        },
+        "routing_frequency_enabled": false,
+        "trace": {
+          "prefill": {
+            "layers": [
+              {
+                "layer": 0,
+                "route_references": 8096,
+                "route_unique": 256,
+                "l1_hits": 0,
+                "l1_misses": 256,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 0
+              },
+              {
+                "layer": 1,
+                "route_references": 8096,
+                "route_unique": 256,
+                "l1_hits": 0,
+                "l1_misses": 256,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 2,
+                "route_references": 8096,
+                "route_unique": 255,
+                "l1_hits": 0,
+                "l1_misses": 255,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 3,
+                "route_references": 8096,
+                "route_unique": 248,
+                "l1_hits": 0,
+                "l1_misses": 248,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 4,
+                "route_references": 8096,
+                "route_unique": 241,
+                "l1_hits": 0,
+                "l1_misses": 241,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 5,
+                "route_references": 8096,
+                "route_unique": 233,
+                "l1_hits": 0,
+                "l1_misses": 233,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 6,
+                "route_references": 8096,
+                "route_unique": 232,
+                "l1_hits": 0,
+                "l1_misses": 232,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 7,
+                "route_references": 8096,
+                "route_unique": 221,
+                "l1_hits": 0,
+                "l1_misses": 221,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 8,
+                "route_references": 8096,
+                "route_unique": 218,
+                "l1_hits": 0,
+                "l1_misses": 218,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 9,
+                "route_references": 8096,
+                "route_unique": 216,
+                "l1_hits": 0,
+                "l1_misses": 216,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 10,
+                "route_references": 8096,
+                "route_unique": 240,
+                "l1_hits": 0,
+                "l1_misses": 240,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 11,
+                "route_references": 8096,
+                "route_unique": 238,
+                "l1_hits": 0,
+                "l1_misses": 238,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 12,
+                "route_references": 8096,
+                "route_unique": 223,
+                "l1_hits": 0,
+                "l1_misses": 223,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 13,
+                "route_references": 8096,
+                "route_unique": 220,
+                "l1_hits": 0,
+                "l1_misses": 220,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 14,
+                "route_references": 8096,
+                "route_unique": 213,
+                "l1_hits": 0,
+                "l1_misses": 213,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 15,
+                "route_references": 8096,
+                "route_unique": 226,
+                "l1_hits": 0,
+                "l1_misses": 226,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 16,
+                "route_references": 8096,
+                "route_unique": 221,
+                "l1_hits": 0,
+                "l1_misses": 221,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 17,
+                "route_references": 8096,
+                "route_unique": 234,
+                "l1_hits": 0,
+                "l1_misses": 234,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 18,
+                "route_references": 8096,
+                "route_unique": 231,
+                "l1_hits": 0,
+                "l1_misses": 231,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 19,
+                "route_references": 8096,
+                "route_unique": 237,
+                "l1_hits": 0,
+                "l1_misses": 237,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 20,
+                "route_references": 8096,
+                "route_unique": 236,
+                "l1_hits": 0,
+                "l1_misses": 236,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 21,
+                "route_references": 8096,
+                "route_unique": 233,
+                "l1_hits": 0,
+                "l1_misses": 233,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 22,
+                "route_references": 8096,
+                "route_unique": 237,
+                "l1_hits": 0,
+                "l1_misses": 237,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 23,
+                "route_references": 8096,
+                "route_unique": 242,
+                "l1_hits": 0,
+                "l1_misses": 242,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 24,
+                "route_references": 8096,
+                "route_unique": 237,
+                "l1_hits": 0,
+                "l1_misses": 237,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 25,
+                "route_references": 8096,
+                "route_unique": 229,
+                "l1_hits": 0,
+                "l1_misses": 229,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 26,
+                "route_references": 8096,
+                "route_unique": 238,
+                "l1_hits": 0,
+                "l1_misses": 238,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 27,
+                "route_references": 8096,
+                "route_unique": 237,
+                "l1_hits": 0,
+                "l1_misses": 237,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 28,
+                "route_references": 8096,
+                "route_unique": 226,
+                "l1_hits": 0,
+                "l1_misses": 226,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 29,
+                "route_references": 8096,
+                "route_unique": 234,
+                "l1_hits": 0,
+                "l1_misses": 234,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 30,
+                "route_references": 8096,
+                "route_unique": 224,
+                "l1_hits": 0,
+                "l1_misses": 224,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 31,
+                "route_references": 8096,
+                "route_unique": 223,
+                "l1_hits": 0,
+                "l1_misses": 223,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 32,
+                "route_references": 8096,
+                "route_unique": 216,
+                "l1_hits": 0,
+                "l1_misses": 216,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 33,
+                "route_references": 8096,
+                "route_unique": 217,
+                "l1_hits": 0,
+                "l1_misses": 217,
+                "copy_records": 512,
+                "copy_bytes": 452984832,
+                "evictions": 256
+              },
+              {
+                "layer": 34,
+                "route_references": 8096,
+                "route_unique": 212,
+                "l1_hits": 0,
+                "l1_misses": 212,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 35,
+                "route_references": 8096,
+                "route_unique": 220,
+                "l1_hits": 0,
+                "l1_misses": 220,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 36,
+                "route_references": 8096,
+                "route_unique": 194,
+                "l1_hits": 0,
+                "l1_misses": 194,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 37,
+                "route_references": 8096,
+                "route_unique": 197,
+                "l1_hits": 0,
+                "l1_misses": 197,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 38,
+                "route_references": 8096,
+                "route_unique": 180,
+                "l1_hits": 0,
+                "l1_misses": 180,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              },
+              {
+                "layer": 39,
+                "route_references": 8096,
+                "route_unique": 215,
+                "l1_hits": 0,
+                "l1_misses": 215,
+                "copy_records": 512,
+                "copy_bytes": 522190848,
+                "evictions": 256
+              }
+            ]
+          },
+          "decode": {
+            "layers": [
+              {
+                "layer": 0,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 865,
+                "l1_misses": 1679,
+                "copy_records": 3358,
+                "copy_bytes": 3424837632,
+                "evictions": 1630
+              },
+              {
+                "layer": 1,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 970,
+                "l1_misses": 1574,
+                "copy_records": 3148,
+                "copy_bytes": 3210657792,
+                "evictions": 1527
+              },
+              {
+                "layer": 2,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1087,
+                "l1_misses": 1457,
+                "copy_records": 2914,
+                "copy_bytes": 2972000256,
+                "evictions": 1417
+              },
+              {
+                "layer": 3,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1210,
+                "l1_misses": 1334,
+                "copy_records": 2668,
+                "copy_bytes": 2721103872,
+                "evictions": 1298
+              },
+              {
+                "layer": 4,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1263,
+                "l1_misses": 1281,
+                "copy_records": 2562,
+                "copy_bytes": 2612994048,
+                "evictions": 1250
+              },
+              {
+                "layer": 5,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1412,
+                "l1_misses": 1132,
+                "copy_records": 2264,
+                "copy_bytes": 2003042304,
+                "evictions": 1103
+              },
+              {
+                "layer": 6,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1472,
+                "l1_misses": 1072,
+                "copy_records": 2144,
+                "copy_bytes": 1896873984,
+                "evictions": 1048
+              },
+              {
+                "layer": 7,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1537,
+                "l1_misses": 1007,
+                "copy_records": 2014,
+                "copy_bytes": 2054086656,
+                "evictions": 978
+              },
+              {
+                "layer": 8,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1582,
+                "l1_misses": 962,
+                "copy_records": 1924,
+                "copy_bytes": 1702232064,
+                "evictions": 933
+              },
+              {
+                "layer": 9,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1575,
+                "l1_misses": 969,
+                "copy_records": 1938,
+                "copy_bytes": 1714618368,
+                "evictions": 936
+              },
+              {
+                "layer": 10,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1442,
+                "l1_misses": 1102,
+                "copy_records": 2204,
+                "copy_bytes": 2247868416,
+                "evictions": 1072
+              },
+              {
+                "layer": 11,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1382,
+                "l1_misses": 1162,
+                "copy_records": 2324,
+                "copy_bytes": 2056126464,
+                "evictions": 1128
+              },
+              {
+                "layer": 12,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1442,
+                "l1_misses": 1102,
+                "copy_records": 2204,
+                "copy_bytes": 1949958144,
+                "evictions": 1075
+              },
+              {
+                "layer": 13,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1552,
+                "l1_misses": 992,
+                "copy_records": 1984,
+                "copy_bytes": 2023489536,
+                "evictions": 964
+              },
+              {
+                "layer": 14,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1502,
+                "l1_misses": 1042,
+                "copy_records": 2084,
+                "copy_bytes": 1843789824,
+                "evictions": 1015
+              },
+              {
+                "layer": 15,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1468,
+                "l1_misses": 1076,
+                "copy_records": 2152,
+                "copy_bytes": 1903951872,
+                "evictions": 1050
+              },
+              {
+                "layer": 16,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1485,
+                "l1_misses": 1059,
+                "copy_records": 2118,
+                "copy_bytes": 2160156672,
+                "evictions": 1029
+              },
+              {
+                "layer": 17,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1463,
+                "l1_misses": 1081,
+                "copy_records": 2162,
+                "copy_bytes": 1912799232,
+                "evictions": 1059
+              },
+              {
+                "layer": 18,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1462,
+                "l1_misses": 1082,
+                "copy_records": 2164,
+                "copy_bytes": 1914568704,
+                "evictions": 1053
+              },
+              {
+                "layer": 19,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1498,
+                "l1_misses": 1046,
+                "copy_records": 2092,
+                "copy_bytes": 2133639168,
+                "evictions": 1020
+              },
+              {
+                "layer": 20,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1525,
+                "l1_misses": 1019,
+                "copy_records": 2038,
+                "copy_bytes": 1803091968,
+                "evictions": 992
+              },
+              {
+                "layer": 21,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1411,
+                "l1_misses": 1133,
+                "copy_records": 2266,
+                "copy_bytes": 2004811776,
+                "evictions": 1103
+              },
+              {
+                "layer": 22,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1366,
+                "l1_misses": 1178,
+                "copy_records": 2356,
+                "copy_bytes": 2402893824,
+                "evictions": 1149
+              },
+              {
+                "layer": 23,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1334,
+                "l1_misses": 1210,
+                "copy_records": 2420,
+                "copy_bytes": 2141061120,
+                "evictions": 1183
+              },
+              {
+                "layer": 24,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1540,
+                "l1_misses": 1004,
+                "copy_records": 2008,
+                "copy_bytes": 1776549888,
+                "evictions": 979
+              },
+              {
+                "layer": 25,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1582,
+                "l1_misses": 962,
+                "copy_records": 1924,
+                "copy_bytes": 1962295296,
+                "evictions": 937
+              },
+              {
+                "layer": 26,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1543,
+                "l1_misses": 1001,
+                "copy_records": 2002,
+                "copy_bytes": 1771241472,
+                "evictions": 980
+              },
+              {
+                "layer": 27,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1540,
+                "l1_misses": 1004,
+                "copy_records": 2008,
+                "copy_bytes": 1776549888,
+                "evictions": 981
+              },
+              {
+                "layer": 28,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1501,
+                "l1_misses": 1043,
+                "copy_records": 2086,
+                "copy_bytes": 2127519744,
+                "evictions": 1017
+              },
+              {
+                "layer": 29,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1475,
+                "l1_misses": 1069,
+                "copy_records": 2138,
+                "copy_bytes": 1891565568,
+                "evictions": 1046
+              },
+              {
+                "layer": 30,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1572,
+                "l1_misses": 972,
+                "copy_records": 1944,
+                "copy_bytes": 1719926784,
+                "evictions": 945
+              },
+              {
+                "layer": 31,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1528,
+                "l1_misses": 1016,
+                "copy_records": 2032,
+                "copy_bytes": 2072444928,
+                "evictions": 986
+              },
+              {
+                "layer": 32,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1413,
+                "l1_misses": 1131,
+                "copy_records": 2262,
+                "copy_bytes": 2001272832,
+                "evictions": 1100
+              },
+              {
+                "layer": 33,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1423,
+                "l1_misses": 1121,
+                "copy_records": 2242,
+                "copy_bytes": 1983578112,
+                "evictions": 1085
+              },
+              {
+                "layer": 34,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1342,
+                "l1_misses": 1202,
+                "copy_records": 2404,
+                "copy_bytes": 2451849216,
+                "evictions": 1168
+              },
+              {
+                "layer": 35,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1516,
+                "l1_misses": 1028,
+                "copy_records": 2056,
+                "copy_bytes": 2096922624,
+                "evictions": 996
+              },
+              {
+                "layer": 36,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1399,
+                "l1_misses": 1145,
+                "copy_records": 2290,
+                "copy_bytes": 2335580160,
+                "evictions": 1108
+              },
+              {
+                "layer": 37,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1356,
+                "l1_misses": 1188,
+                "copy_records": 2376,
+                "copy_bytes": 2423291904,
+                "evictions": 1155
+              },
+              {
+                "layer": 38,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1267,
+                "l1_misses": 1277,
+                "copy_records": 2554,
+                "copy_bytes": 2604834816,
+                "evictions": 1246
+              },
+              {
+                "layer": 39,
+                "route_references": 2544,
+                "route_unique": 2544,
+                "l1_hits": 1278,
+                "l1_misses": 1266,
+                "copy_records": 2532,
+                "copy_bytes": 2582396928,
+                "evictions": 1266
+              }
+            ]
+          }
+        },
+        "cache": {
+          "num_layers": 40,
+          "num_experts": 256,
+          "cache_size": 1429,
+          "policy": "lru",
+          "protected_slots_per_layer": 0,
+          "protected_slot_count": 0,
+          "transient_slots": 1429
+        }
+      },
+      "vram_bytes": 5867831296,
+      "gpus": [
+        {
+          "index": 0,
+          "name": "NVIDIA GeForce RTX 2070",
+          "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+          "total_bytes": 8172666880
+        }
+      ],
+      "throughput": {
+        "decode_tps": 23.5,
+        "prefill_tps": 0.0
+      },
+      "requests": {
+        "active": 0,
+        "completed": 1,
+        "p95_ms": 20879,
+        "ttft_mean_ms": 7920,
+        "prompt_tokens_total": 1012,
+        "completion_tokens_total": 318
+      }
+    },
+    "cache": {
+      "state": "serving",
+      "last_rebuild": null,
+      "geometry": {
+        "num_pages": 16384,
+        "page_size": 1,
+        "moe_cache_size": 1429,
+        "num_mamba_slots": 8,
+        "num_experts": 256,
+        "num_moe_layers": 40,
+        "moe_cache_policy": "lru",
+        "unit_bytes": {
+          "kv_per_token": 10320,
+          "moe_per_expert": 2039808,
+          "mamba_per_slot": 64389120,
+          "swa_per_token": 0
+        },
+        "swa_full_tokens_ratio": 0.0,
+        "swa_page_size": 0,
+        "num_swa_pages": 0,
+        "cache_budget_bytes": 4763461222,
+        "reasoning": {
+          "gears": [
+            "off",
+            "on"
+          ],
+          "default": "on",
+          "kwargs": {
+            "off": {
+              "enable_thinking": false,
+              "thinking_mode": "disabled"
+            },
+            "on": {
+              "enable_thinking": true,
+              "thinking_mode": "enabled"
+            }
+          }
+        },
+        "limits": {
+          "kv_tokens": {
+            "min": 1,
+            "max": 461575
+          },
+          "moe_experts": {
+            "min": 256,
+            "max": 2335
+          },
+          "mamba_slots": {
+            "min": 4,
+            "max": 73
+          },
+          "swa_tokens": {
+            "min": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "runtime_samples": [
+    {
+      "monotonic_s": 134078.818806301,
+      "gpu_util_percent": 0.0,
+      "gpu_memory_used_mib": 5926.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 66.0,
+      "gpu_power_w": 46.61,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2028670976,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15385690112,
+      "cpu_util_percent": null,
+      "cpu_iowait_percent": null,
+      "nvme_read_bytes_per_s": null,
+      "nvme_write_bytes_per_s": null,
+      "nvme_read_bytes_total": 5489147035648,
+      "nvme_write_bytes_total": 304202474496,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 11,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 0,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134079.869401054,
+      "gpu_util_percent": 2.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 70.0,
+      "gpu_power_w": 104.48,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2145423360,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15291469824,
+      "cpu_util_percent": 30.665610142630744,
+      "cpu_iowait_percent": 9.033280507131538,
+      "nvme_read_bytes_per_s": 159770529.5215882,
+      "nvme_write_bytes_per_s": 1840207.172625418,
+      "nvme_read_bytes_total": 5489314889728,
+      "nvme_write_bytes_total": 304204407808,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 12,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 1504.8
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134080.925176356,
+      "gpu_util_percent": 80.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 73.0,
+      "gpu_power_w": 122.06,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 1905631232,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15200858112,
+      "cpu_util_percent": 38.237671786580435,
+      "cpu_iowait_percent": 12.287793047696038,
+      "nvme_read_bytes_per_s": 99244390.16696717,
+      "nvme_write_bytes_per_s": 0.0,
+      "nvme_read_bytes_total": 5489419669504,
+      "nvme_write_bytes_total": 304204407808,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 13,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 591.8
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134081.962842807,
+      "gpu_util_percent": 99.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 73.0,
+      "gpu_power_w": 96.64,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2166505472,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15243911168,
+      "cpu_util_percent": 25.869037995149554,
+      "cpu_iowait_percent": 7.518189167340339,
+      "nvme_read_bytes_per_s": 25156260.93005031,
+      "nvme_write_bytes_per_s": 7894.637040655989,
+      "nvme_read_bytes_total": 5489445773312,
+      "nvme_write_bytes_total": 304204416000,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 14,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 368.7
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134082.997768441,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 86.54,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2106318848,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15320391680,
+      "cpu_util_percent": 38.18770226537217,
+      "cpu_iowait_percent": 8.656957928802589,
+      "nvme_read_bytes_per_s": 48063186.73077493,
+      "nvme_write_bytes_per_s": 391819.45704436087,
+      "nvme_read_bytes_total": 5489495515136,
+      "nvme_write_bytes_total": 304204821504,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 15,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 267.7
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134084.032759805,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 114.73,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2101706752,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15292493824,
+      "cpu_util_percent": 29.37853107344633,
+      "cpu_iowait_percent": 4.277643260694108,
+      "nvme_read_bytes_per_s": 7717165.841047835,
+      "nvme_write_bytes_per_s": 538222.8484012849,
+      "nvme_read_bytes_total": 5489503502336,
+      "nvme_write_bytes_total": 304205378560,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 16,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 210.2
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134085.068351491,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 75.0,
+      "gpu_power_w": 102.22,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2147557376,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15213748224,
+      "cpu_util_percent": 30.234438156831043,
+      "cpu_iowait_percent": 0.08084074373484236,
+      "nvme_read_bytes_per_s": 6237392.678340348,
+      "nvme_write_bytes_per_s": 557686.9801179385,
+      "nvme_read_bytes_total": 5489509961728,
+      "nvme_write_bytes_total": 304205956096,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 17,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134086.10085838,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 106.3,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2176294912,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15163691008,
+      "cpu_util_percent": 25.160771704180064,
+      "cpu_iowait_percent": 0.9646302250803859,
+      "nvme_read_bytes_per_s": 25337508.42619872,
+      "nvme_write_bytes_per_s": 0.0,
+      "nvme_read_bytes_total": 5489536122880,
+      "nvme_write_bytes_total": 304205956096,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 18,
+        "kv": null,
+        "mamba": null,
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 0,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 0.0,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 0
+        }
+      }
+    },
+    {
+      "monotonic_s": 134087.139167789,
+      "gpu_util_percent": 100.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 73.0,
+      "gpu_power_w": 80.47,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2145869824,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15183364096,
+      "cpu_util_percent": 26.205787781350484,
+      "cpu_iowait_percent": 1.2057877813504823,
+      "nvme_read_bytes_per_s": 41042471.18531673,
+      "nvme_write_bytes_per_s": 7889.748401637203,
+      "nvme_read_bytes_total": 5489578737664,
+      "nvme_write_bytes_total": 304205964288,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 19,
+        "kv": {
+          "used_pages": 1023,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 26.3,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 11
+        }
+      }
+    },
+    {
+      "monotonic_s": 134088.180285526,
+      "gpu_util_percent": 88.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 85.59,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2197979136,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15136112640,
+      "cpu_util_percent": 25.485436893203882,
+      "cpu_iowait_percent": 3.074433656957929,
+      "nvme_read_bytes_per_s": 65619076.086535044,
+      "nvme_write_bytes_per_s": 36844094.223298796,
+      "nvme_read_bytes_total": 5489647054848,
+      "nvme_write_bytes_total": 304244323328,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 20,
+        "kv": {
+          "used_pages": 1050,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 26.2,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 38
+        }
+      }
+    },
+    {
+      "monotonic_s": 134089.214593256,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 86.07,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2200551424,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15124672512,
+      "cpu_util_percent": 26.29032258064516,
+      "cpu_iowait_percent": 0.6451612903225806,
+      "nvme_read_bytes_per_s": 4328429.412371117,
+      "nvme_write_bytes_per_s": 0.0,
+      "nvme_read_bytes_total": 5489651531776,
+      "nvme_write_bytes_total": 304244323328,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 21,
+        "kv": {
+          "used_pages": 1076,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 25.7,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 64
+        }
+      }
+    },
+    {
+      "monotonic_s": 134090.24951177,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 83.33,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2226069504,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15088680960,
+      "cpu_util_percent": 30.8,
+      "cpu_iowait_percent": 1.68,
+      "nvme_read_bytes_per_s": 17814055.648562964,
+      "nvme_write_bytes_per_s": 0.0,
+      "nvme_read_bytes_total": 5489669967872,
+      "nvme_write_bytes_total": 304244323328,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 22,
+        "kv": {
+          "used_pages": 1103,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 25.8,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 91
+        }
+      }
+    },
+    {
+      "monotonic_s": 134091.294398347,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 87.0,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2247667712,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15041863680,
+      "cpu_util_percent": 32.84907183212268,
+      "cpu_iowait_percent": 0.48426150121065376,
+      "nvme_read_bytes_per_s": 28992635.819803532,
+      "nvme_write_bytes_per_s": 7840.085402867369,
+      "nvme_read_bytes_total": 5489700261888,
+      "nvme_write_bytes_total": 304244331520,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 23,
+        "kv": {
+          "used_pages": 1129,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 25.6,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 117
+        }
+      }
+    },
+    {
+      "monotonic_s": 134092.330646731,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 85.12,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2287665152,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15007092736,
+      "cpu_util_percent": 24.02912621359223,
+      "cpu_iowait_percent": 1.6181229773462784,
+      "nvme_read_bytes_per_s": 7933109.597125401,
+      "nvme_write_bytes_per_s": 2241192.3973941715,
+      "nvme_read_bytes_total": 5489708482560,
+      "nvme_write_bytes_total": 304246653952,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 24,
+        "kv": {
+          "used_pages": 1155,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 25.5,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 143
+        }
+      }
+    },
+    {
+      "monotonic_s": 134093.364491126,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 82.61,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2203033600,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15011471360,
+      "cpu_util_percent": 26.03071948261924,
+      "cpu_iowait_percent": 0.5658852061438965,
+      "nvme_read_bytes_per_s": 8930148.52573641,
+      "nvme_write_bytes_per_s": 7923.823004202671,
+      "nvme_read_bytes_total": 5489717714944,
+      "nvme_write_bytes_total": 304246662144,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 25,
+        "kv": {
+          "used_pages": 1180,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 25.2,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 168
+        }
+      }
+    },
+    {
+      "monotonic_s": 134094.39929724,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 75.0,
+      "gpu_power_w": 85.76,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2245046272,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15062376448,
+      "cpu_util_percent": 28.283642224012894,
+      "cpu_iowait_percent": 1.04754230459307,
+      "nvme_read_bytes_per_s": 46362741.147152446,
+      "nvme_write_bytes_per_s": 1480377.8015055934,
+      "nvme_read_bytes_total": 5489765691392,
+      "nvme_write_bytes_total": 304248194048,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 26,
+        "kv": {
+          "used_pages": 1206,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 25.1,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 194
+        }
+      }
+    },
+    {
+      "monotonic_s": 134095.43507579,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 76.08,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2270826496,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 15024132096,
+      "cpu_util_percent": 22.940226171243943,
+      "cpu_iowait_percent": 0.5654281098546042,
+      "nvme_read_bytes_per_s": 3250609.8913933192,
+      "nvme_write_bytes_per_s": 0.0,
+      "nvme_read_bytes_total": 5489769058304,
+      "nvme_write_bytes_total": 304248194048,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 27,
+        "kv": {
+          "used_pages": 1231,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 24.9,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 219
+        }
+      }
+    },
+    {
+      "monotonic_s": 134096.470400007,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 73.06,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2304196608,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 14980886528,
+      "cpu_util_percent": 28.674698795180724,
+      "cpu_iowait_percent": 0.321285140562249,
+      "nvme_read_bytes_per_s": 1993949.3021731607,
+      "nvme_write_bytes_per_s": 0.0,
+      "nvme_read_bytes_total": 5489771122688,
+      "nvme_write_bytes_total": 304248194048,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 28,
+        "kv": {
+          "used_pages": 1254,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 24.3,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 242
+        }
+      }
+    },
+    {
+      "monotonic_s": 134097.508173525,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 75.75,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2337144832,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 14955098112,
+      "cpu_util_percent": 30.241935483870968,
+      "cpu_iowait_percent": 0.4032258064516129,
+      "nvme_read_bytes_per_s": 2545757.7729201373,
+      "nvme_write_bytes_per_s": 0.0,
+      "nvme_read_bytes_total": 5489773764608,
+      "nvme_write_bytes_total": 304248194048,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 29,
+        "kv": {
+          "used_pages": 1277,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 23.8,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 265
+        }
+      }
+    },
+    {
+      "monotonic_s": 134098.544766513,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 77.57,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2291490816,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 14955065344,
+      "cpu_util_percent": 32.74478330658106,
+      "cpu_iowait_percent": 1.3643659711075442,
+      "nvme_read_bytes_per_s": 10866367.157258583,
+      "nvme_write_bytes_per_s": 27659.84367302185,
+      "nvme_read_bytes_total": 5489785028608,
+      "nvme_write_bytes_total": 304248222720,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 30,
+        "kv": {
+          "used_pages": 1303,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 23.9,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 291
+        }
+      }
+    },
+    {
+      "monotonic_s": 134099.585451033,
+      "gpu_util_percent": 98.0,
+      "gpu_memory_used_mib": 6046.0,
+      "gpu_memory_total_mib": 8192.0,
+      "gpu_temperature_c": 74.0,
+      "gpu_power_w": 74.05,
+      "mem_total_bytes": 33484845056,
+      "mem_available_bytes": 2258644992,
+      "swap_total_bytes": 33484173312,
+      "swap_free_bytes": 14952112128,
+      "cpu_util_percent": 29.283990345937248,
+      "cpu_iowait_percent": 0.4022526146419952,
+      "nvme_read_bytes_per_s": 11118835.514094349,
+      "nvme_write_bytes_per_s": 7871.7419568809555,
+      "nvme_read_bytes_total": 5489796599808,
+      "nvme_write_bytes_total": 304248230912,
+      "nvme_devices": [
+        "nvme0n1"
+      ],
+      "server_stats": {
+        "instance_id": "e83cf2f9-ff96-4244-b283-9b448d0b1139",
+        "model": {
+          "id": "Ornith 1.5 35b Q4 AB",
+          "ctx": 16384,
+          "attn": "hybrid_linear",
+          "moe": true,
+          "sampling": {
+            "temperature": 1.0,
+            "top_k": 20,
+            "top_p": 0.949999988079071
+          }
+        },
+        "uptime_s": 31,
+        "kv": {
+          "used_pages": 1329,
+          "total_pages": 16384,
+          "page_size": 1,
+          "dtype": "int8"
+        },
+        "mamba": {
+          "used_slots": 4,
+          "total_slots": 8
+        },
+        "swa": null,
+        "moe": null,
+        "vram_bytes": 5867831296,
+        "gpus": [
+          {
+            "index": 0,
+            "name": "NVIDIA GeForce RTX 2070",
+            "uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+            "total_bytes": 8172666880
+          }
+        ],
+        "throughput": {
+          "decode_tps": 23.8,
+          "prefill_tps": 0.0
+        },
+        "requests": {
+          "active": 1,
+          "completed": 0,
+          "p95_ms": 0,
+          "ttft_mean_ms": 0,
+          "prompt_tokens_total": 1012,
+          "completion_tokens_total": 317
+        }
+      }
+    }
+  ],
+  "slice": {
+    "series": "ornith35-weight-ab-int8-16k-system",
+    "label": "q4km-fixed1429-cold-system",
+    "git": {
+      "commit": "beda1ba4abfaf859e2fe1069f0bf8ff8f18bfc90",
+      "dirty": true,
+      "worktree_dirty": true,
+      "status": [
+        "M benchmarks/ornith_context_bench.py",
+        " M tests/benchmarks/test_ornith_context_bench.py",
+        "?? benchmarks/plot_context_results.py",
+        "?? benchmarks/results/ornith35-tq3-weight-ab-task7-v1/",
+        "?? tests/benchmarks/test_plot_context_results.py"
+      ],
+      "working_tree_diff_sha256": "4e88c7df9e3b9a2e48145fc6e21b4f5277cff20ee83d1c112e17d2fd53b704d3",
+      "untracked_sha256": {
+        "benchmarks/plot_context_results.py": "74403d738aa5008d3548b5d91c81c26e6caf2cd61d3f2eddc5f790cfc0f7138a",
+        "tests/benchmarks/test_plot_context_results.py": "71b66d1603b81cd72b2844f1586850f0807ac6b648a6c668900bebd53b520f8b"
+      }
+    },
+    "parameters": {
+      "weights": "Q4_K_M",
+      "kv": "int8",
+      "moe_slots": "1429",
+      "context": "16384",
+      "max_prefill": "1024",
+      "server_commit": "beda1ba4abfaf859e2fe1069f0bf8ff8f18bfc90"
+    },
+    "runtime_parameters": {
+      "context_budget_tokens": 16384,
+      "kv_dtype": "int8",
+      "kv_pages": 16384,
+      "moe_cache_slots": 1429,
+      "mamba_slots": 8
+    },
+    "sampling": {
+      "mode": "greedy-argmax",
+      "temperature": 0.0,
+      "seed": null
+    }
+  },
+  "provenance": {
+    "software": {
+      "python": "3.12.13",
+      "torch": "2.11.0+cu130",
+      "torch_cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "hardware": {
+      "gpu_name": "NVIDIA GeForce RTX 2070",
+      "gpu_uuid": "GPU-0e015e4f-ac81-587d-7dc8-704e6c694cb3",
+      "driver": "610.57.04",
+      "compute_capability": "7.5"
+    },
+    "model": {
+      "path": "/home/random/dev/qwen/models/ornith-15-35b-q4km/Ornith-1.5-35B-Q4_K_M.gguf",
+      "content_sha256": "42739874cc2ccfdb8523b23fbe52e29b2a7555c8176737ca9ca0b5d59859d41f",
+      "revision": "local-ornith-ai-q4km",
+      "files": [
+        {
+          "path": "/home/random/dev/qwen/models/ornith-15-35b-q4km/Ornith-1.5-35B-Q4_K_M.gguf",
+          "bytes": 21713463040,
+          "mtime_ns": 1787999490143082557
+        }
+      ]
+    },
+    "source_sha256": {
+      "benchmarks/ornith_context_bench.py": "eb07553320b54408d120429eda828404d14bbc232de5b7f49f750159c38125c5",
+      "python/freetoken/engine/engine.py": "617c22c03d3750f3188217527ce706ae4a857e5816a7d19da09e96550fc364f4",
+      "python/freetoken/attention/triton.py": "49516fa18a969d6675da8504cd2f3d24d9e59123d80d2e33bdc54263c1322058",
+      "python/freetoken/kvcache/mha_pool.py": "72b5f98086f4cb54e65df4d7c6e8dde9de3eb47e186df99539e9ad130ec37eb9",
+      "python/freetoken/models/qwen3_5_moe/gguf.py": "a01fc70f5fab601a8b6c69062fe481894b83af3e417c338234b28477b4a3c776",
+      "python/freetoken/kernel/gguf.py": "92a2fa3a31f31cdf780d912d64d84751340a2def7ae2f538e2649df64a3e09a8",
+      "python/freetoken/kernel/csrc/gguf/gguf_kernel.cu": "dfc9cef85645d8fed57bb6877737b96f5cb64d940751352ca8a44caf0e36aa90",
+      "python/freetoken/kernel/csrc/gguf/moe_vec.cuh": "f1f4a82aec97b76c310f0799b070fe5052a3c429ebfe7d39f6858661b2b1dadf",
+      "python/freetoken/kernel/csrc/gguf/vecdotq.cuh": "f12fe25f3948385b3d434ca6567adfa228fd517844866da3f715220e4152d3a7"
+    }
+  },
+  "artifact": "benchmarks/results/ornith35-tq3-weight-ab-task7-v2-system/q4km-fixed1429-cold/compression-1024.json"
+}
