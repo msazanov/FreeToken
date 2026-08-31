@@ -176,7 +176,7 @@ class BackendController:
                 return self._current
 
             if model_id is ModelId.ORNITH:
-                await self._stop_gemma_gpu_if_needed()
+                await self._stop_gemma_if_needed()
                 await self._rebuild_ornith(self.config.ornith_active_slots)
                 backend = ActiveBackend(
                     ModelId.ORNITH,
@@ -229,10 +229,14 @@ class BackendController:
         if self._current is not None and self._current.model_id is ModelId(model_id):
             return
 
-    async def _stop_gemma_gpu_if_needed(self) -> None:
-        if self._current is not None and self._current.runtime == "gemma-gpu":
+    async def _stop_gemma_if_needed(self) -> None:
+        if self._current is None:
+            return
+        if self._current.runtime == "gemma-gpu":
             await self.lifecycle.daemon_stop()
-            self._current = None
+        elif self._current.runtime == "gemma-cpu":
+            await self.lifecycle.cpu_stop(self.config.gemma_cpu_unit)
+        self._current = None
 
     async def _safe_daemon_stop(self) -> None:
         try:

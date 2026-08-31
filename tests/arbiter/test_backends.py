@@ -127,3 +127,29 @@ def test_failed_cpu_readiness_is_reported_without_faking_backend():
                 await controller.prepare(ModelId.GEMMA)
 
     asyncio.run(scenario())
+
+
+def test_switching_from_cpu_gemma_stops_cpu_fallback_before_ornith():
+    async def scenario():
+        requests: list[tuple[str, str, dict | None]] = []
+        lifecycle = RecordingLifecycle()
+        config = BackendConfig(
+            ornith_expected_model="backend-model",
+            gemma_expected_model="backend-model",
+        )
+
+        async with _client(_ready_handler(requests)) as client:
+            controller = BackendController(config, client, lifecycle=lifecycle)
+            await controller.prepare(ModelId.GEMMA)
+            # The test lifecycle's CPU path is the active Gemma backend.  Model it explicitly to
+            # exercise the resource-release branch that production reaches after GPU fallback.
+            controller._current = ActiveBackend(
+                ModelId.GEMMA, config.gemma_cpu_url, "backend-model", "gemma-cpu"
+            )
+            await controller.prepare(ModelId.ORNITH)
+
+        assert ("cpu_stop", config.gemma_cpu_unit) in lifecycle.events
+        assert controller.current is not None
+        assert controller.current.model_id is ModelId.ORNITH
+
+    asyncio.run(scenario())
