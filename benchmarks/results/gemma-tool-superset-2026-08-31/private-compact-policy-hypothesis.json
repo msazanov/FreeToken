@@ -1,0 +1,39 @@
+{
+  "endpoint": "http://127.0.0.1:19193/v1",
+  "hypothesis": "A compact policy listing only tools present in the recognized HuggingVoice superset restores native selection without text-intent routing.",
+  "temperature": 0.2,
+  "max_tokens": 128,
+  "results": [
+    {
+      "scenario": "remember_name_10",
+      "expected_tool": "speaker_memory_remember_name",
+      "successes": 5,
+      "runs": 5,
+      "prompt_tokens": 1057,
+      "completion_tokens": 39,
+      "latencies_s": [3.1234317849957733, 3.081460474000778, 3.1271517089990084, 3.447577567996632, 3.516744641994592],
+      "arguments_valid": true
+    },
+    {
+      "scenario": "web_search_10",
+      "expected_tool": "web_search",
+      "successes": 5,
+      "runs": 5,
+      "prompt_tokens": 1056,
+      "completion_tokens": 21,
+      "latencies_s": [3.2341514350046054, 3.227394232999359, 3.2191476119987783, 3.2354823290006607, 3.250445961006335],
+      "arguments": {"query": "актуальная погода в Москве"}
+    },
+    {
+      "scenario": "camera_snapshot_11",
+      "expected_tool": "camera_snapshot",
+      "successes": 5,
+      "runs": 5,
+      "prompt_tokens": 1130,
+      "completion_tokens": 9,
+      "latencies_s": [3.3919380320003256, 3.409063993996824, 3.4193099860058283, 3.428674401002354, 3.441843862994574],
+      "arguments": {}
+    }
+  ],
+  "passed": true
+}

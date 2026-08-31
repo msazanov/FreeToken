@@ -2772,3 +2772,90 @@ default cold timeout is 180 seconds, and deployment checks wait for
   `after-fix-ctx8192.json`, `after-review-scope-ctx8192.json`,
   `compact-full-policy-probe.json` and `arbiter-restart-readiness-race.json` under
   `benchmarks/results/gemma-tool-acceptance-2026-08-31/`.
+
+## 2026-08-31 — Gemma/HuggingVoice 10/11-tool production supersets
+
+### Root cause and unchanged baseline
+
+The browser's `activeToolDefs()` adds `web_search` when a Serper key is
+available, then optional `camera_snapshot`, then the nine memory tools from
+`/api/config`. HuggingVoice converts these flat Realtime definitions to nested
+Chat Completions functions before sending them to `:1919`. FreeToken's commit
+`975e16f` required exactly nine names, so the official prompt rewrite did not
+run for either real browser set. The parser and arbiter transport were not
+losing completed calls; the model never emitted one.
+
+The unchanged public baseline at temperature 0.2 and `max_tokens=128` was:
+
+| Scenario | Tools | Result | Latency |
+|---|---:|---|---:|
+| explicit `Меня зовут Марат` | 10 | text “Я запомнил”, no calls | 4.186 s |
+| explicit `Поищи...` | 10 | text “давай я проверю”, no calls | 4.239 s |
+| explicit `Посмотри... в камеру` | 11 | text “Я вижу”, no calls | 4.827 s |
+
+The immutable reduced record is
+`benchmarks/results/gemma-tool-superset-2026-08-31/baseline-975e16f.json`.
+
+### Hypothesis and implementation
+
+A direct private `:19193` probe replaced only the long system policy with a
+compact policy naming the tools available in that request. Without inspecting
+or routing on user text, it passed 5/5 for each of remember-name, web-search
+and camera-snapshot. This single-variable result is stored in
+`private-compact-policy-hypothesis.json`.
+
+The production guard now requires all nine official memory tool names and
+allows no extras except an optional subset of `{web_search,camera_snapshot}`.
+It rejects duplicate and malformed names and requires exactly one system
+message whose complete content matches the canonical HuggingVoice voice-policy
+SHA-256 `d7e82f2ca2f3538fc31f719c1491eb101ea2acd7f4c853285af4b3bf748c90f2`.
+A marker-like prompt with an appended security instruction is deliberately not
+rewritten. The guard replaces only the canonical match and preserves every
+other system or conversation message. The generated compact policy always
+includes the proven name rule, adds the search rule only with `web_search`,
+adds the visual rule only with `camera_snapshot`, and uses no text heuristics
+or forced tool choice. Exact-nine wording is unchanged.
+
+The first direct invocation of the new acceptance script failed before an HTTP
+request because file-path execution did not resolve the `benchmarks` namespace.
+A subprocess RED test reproduced the failure; package/direct import selection
+fixed it. This is an acceptance-tool defect, not a model result.
+
+### Public live acceptance
+
+The final script mirrors browser order: optional browser tools first, then the
+nine memory tools. Each scenario ran five times through public `:1919`:
+
+| Scenario | Success | Prompt / completion | p50 |
+|---|---:|---:|---:|
+| remember name, 10 tools | 5/5 | 1,070 / 42 tokens | 3.126 s |
+| web search, 10 tools | 5/5 | 1,069 / 21 tokens | 3.301 s |
+| camera snapshot, 11 tools | 5/5 | 1,143 / 9 tokens | 3.391 s |
+
+All 15 responses had exactly one expected native call, empty `content`,
+`finish_reason=tool_calls` and strictly decoded JSON-object arguments. Search
+queries contained both weather and Moscow; camera arguments were exactly `{}`;
+every name call carried the run-specific trusted `speaker_ref` and `Марат`.
+Missing, empty, malformed, array-valued and non-string camera arguments are
+covered as failures, as is a tool-call envelope whose type is not `function`.
+Full final responses and source provenance, including
+separate SHA-256 values for both executable source files, are in
+`final-public-ctx8192.json`; the two earlier review-stage runs remain in
+`after-review-public-ctx8192.json` and `after-fix-public-ctx8192.json`.
+
+The original exact-nine gate was then repeated unchanged after the SHA-256
+scope hardening: 3/3 native `speaker_memory_remember_name`, 3.151 s warm-only
+p50, 0.103 s short-Russian TTFT and 0.170 s total. Its final raw report is
+`after-review-exact9-regression.json`; the pre-review repeat is retained as
+`after-fix-exact9-regression.json`.
+
+### Verification
+
+- Superset guard RED: both 10- and 11-tool tests forwarded the original long
+  prompt; arbitrary-mixed control already stayed unchanged.
+- Superset guard GREEN: four focused arbiter cases passed, including exact9.
+- Acceptance CLI RED/GREEN: file-path launch failed with `ModuleNotFoundError`
+  and then passed via subprocess.
+- Changed-scope suite after independent review fixes: `125 passed, 1 skipped,
+  1 warning in 17.62s`.
+- Public model acceptance: 15/15 superset calls plus 3/3 exact-nine calls.

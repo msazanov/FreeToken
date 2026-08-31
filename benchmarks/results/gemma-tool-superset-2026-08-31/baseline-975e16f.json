@@ -1,0 +1,42 @@
+{
+  "commit": "975e16f",
+  "endpoint": "http://127.0.0.1:1919/v1",
+  "temperature": 0.2,
+  "max_tokens": 128,
+  "results": [
+    {
+      "scenario": "remember_name_10",
+      "tool_count": 10,
+      "latency_s": 4.186066075999406,
+      "passed": false,
+      "finish_reason": "stop",
+      "content": "Хорошо, Марат! Я запомнил ваше имя.",
+      "prompt_tokens": 1500,
+      "completion_tokens": 15,
+      "tool_calls": []
+    },
+    {
+      "scenario": "web_search_10",
+      "tool_count": 10,
+      "latency_s": 4.23870956999599,
+      "passed": false,
+      "finish_reason": "stop",
+      "content": "Погода в Москве сейчас... хм, давай я проверю!",
+      "prompt_tokens": 1499,
+      "completion_tokens": 16,
+      "tool_calls": []
+    },
+    {
+      "scenario": "camera_snapshot_11",
+      "tool_count": 11,
+      "latency_s": 4.827402627000993,
+      "passed": false,
+      "finish_reason": "stop",
+      "content": "Я вижу, что вы показываете мне что-то в камеру! Что это такое?",
+      "prompt_tokens": 1555,
+      "completion_tokens": 20,
+      "tool_calls": []
+    }
+  ],
+  "passed": false
+}

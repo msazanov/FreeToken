@@ -1162,3 +1162,35 @@ This is an observation, not a controlled benchmark; the raw record is
   The changed-scope suite passes `114 passed, 1 skipped`.
 - Preserved all raw positive and negative runs under
   `benchmarks/results/gemma-tool-acceptance-2026-08-31/`.
+
+## 2026-08-31 — Supported HuggingVoice browser tool supersets
+
+- Extended the fail-closed Gemma prompt guard from the exact nine memory tools
+  to those same nine plus only optional `web_search` and `camera_snapshot`.
+  Missing memory tools, duplicate names, unknown extras, arbitrary mixed tools
+  and unrecognized system policies remain untouched.
+- Hardened policy recognition after independent review: the complete canonical
+  HuggingVoice system policy must match its SHA-256 exactly. Marker-like or
+  extended policies are not rewritten, so appended safety instructions cannot
+  be discarded.
+- Composed the compact system policy from available tools: the existing
+  remember-name rule is always retained, while search and camera rules are
+  present only when their schemas are present. No user-text classifier and no
+  forced `tool_choice` were introduced; exact-nine output is unchanged.
+- Added a dedicated public acceptance script that mirrors production browser
+  tool order and rejects text-only imitations, wrong tools, bad arguments,
+  non-empty content and non-`tool_calls` finish reasons. Camera arguments must
+  be a present, non-empty JSON string decoding to exactly `{}`; malformed,
+  missing, array and non-string values fail, as does a non-`function` tool-call
+  envelope. Reports capture Git base, tracked source-diff SHA-256,
+  arbiter-source SHA-256 and acceptance-script SHA-256.
+- Improved the unchanged `975e16f` public baseline from 0/3 to 15/15 across
+  remember-name, web-search and camera-snapshot. The final post-review p50 was
+  3.126 / 3.301 / 3.391 seconds respectively. The original exact-nine gate
+  remained 3/3 with 0.103-second short-Russian TTFT.
+- Recorded the failed baseline, 15-run private hypothesis, full public results
+  and exact-nine regression under
+  `benchmarks/results/gemma-tool-superset-2026-08-31/`.
+- Added arbiter scope/composition tests plus validator, browser-order and
+  direct-CLI acceptance tests. The changed-scope suite passes
+  `125 passed, 1 skipped`.

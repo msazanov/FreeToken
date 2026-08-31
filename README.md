@@ -565,11 +565,12 @@ structured output; direct `:19193` and public `:1919` behavior matched, and
 FreeToken had already auto-selected its native `gemma4` parser.
 
 For Gemma requests with the exact nine HuggingVoice `speaker_memory_*` tools,
-the arbiter recognizes the official voice policy by its stable markers and
-replaces only that system message with the minimal policy proven on this
-checkpoint. Additional system messages are preserved. Subsets, arbitrary
-memory namespaces, other Gemma chat, mixed tool sets and all Ornith traffic
-remain unchanged. FreeToken also treats Gemma's `<|tool_response>` opener as EOG, as
+the arbiter recognizes the complete canonical voice policy by its SHA-256 and
+replaces only that matching system message with the minimal policy proven on
+this checkpoint. Additional system messages are preserved. A merely similar
+or extended policy, subsets, arbitrary memory namespaces, other Gemma chat,
+mixed tool sets and all Ornith traffic remain unchanged. FreeToken also treats
+Gemma's `<|tool_response>` opener as EOG, as
 documented in [upstream issue #201](https://github.com/FlashML-org/FreeToken/issues/201),
 so a successful call ends with empty `content` instead of leaking the raw
 marker. The live 8K gate returned the correct name and per-request
@@ -600,3 +601,45 @@ PYTHONPATH=python python benchmarks/gemma_speaker_memory_acceptance.py \
   --runs 5 --max-tokens 128 --timeout 180 \
   --output benchmarks/results/gemma-tool-acceptance-2026-08-31/live.json
 ```
+
+### HuggingVoice browser tool supersets
+
+The production browser does not send only the nine memory schemas. It places
+`web_search` first when Serper is available, optionally follows it with
+`camera_snapshot`, and then appends the nine server-provided memory tools.
+The original fail-closed exact-nine guard therefore intentionally skipped the
+real 10/11-tool requests. On commit `975e16f`, three public `:1919` controls all
+returned HTTP 200 but no structured call: Gemma claimed it remembered the name,
+promised to check the weather and claimed it could see the camera.
+
+The guard now accepts only the complete official memory set plus a subset of
+the two known browser tools. It additionally requires an exact SHA-256 match
+of HuggingVoice's complete canonical system policy. Duplicate names, missing
+memory tools, malformed schemas, unknown extras, mixed arbitrary tools and
+unrecognized, similar or extended system policies remain unchanged. The
+compact policy mentions `web_search` and `camera_snapshot` only when each tool
+is actually present; no keyword router or forced `tool_choice` was added. The
+original exact-nine compact prompt remains byte-for-byte unchanged.
+
+The browser-order public acceptance passed 15/15 calls on Gemma 4 E2B:
+
+| Tool set and request | Native call | Warm p50 |
+|---|---:|---:|
+| 9 memory + web, explicit name | 5/5 `speaker_memory_remember_name` | 3.126 s |
+| 9 memory + web, explicit search | 5/5 `web_search` | 3.301 s |
+| 9 memory + web + camera, visual request | 5/5 `camera_snapshot` | 3.391 s |
+
+Every result had empty text content, `finish_reason=tool_calls` and strictly
+decoded JSON-object arguments. A separate exact-nine regression remained 3/3,
+with 0.103 s short Russian TTFT. The final report also records the base Git
+revision, tracked source-diff SHA-256, arbiter source SHA-256 and acceptance
+script SHA-256. Run the full public gate with:
+
+```bash
+PYTHONPATH=python python benchmarks/gemma_huggingvoice_tool_superset_acceptance.py \
+  --runs 5 --max-tokens 128 --timeout 180 \
+  --output benchmarks/results/gemma-tool-superset-2026-08-31/live.json
+```
+
+Baseline, private hypothesis and full public responses are under
+`benchmarks/results/gemma-tool-superset-2026-08-31/`.

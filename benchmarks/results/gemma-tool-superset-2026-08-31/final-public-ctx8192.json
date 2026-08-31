@@ -1,0 +1,672 @@
+{
+  "endpoint": "http://127.0.0.1:1919/v1",
+  "model": "gemma-4-e2b",
+  "source": {
+    "git_head": "975e16f37d572af265dd6a602d10de7439e69373",
+    "tracked_source_diff_sha256": "a7a63d6dba863a714f9f8f2cdce1d4bb8868df505153b966c9ec3478743bb8c9",
+    "arbiter_proxy_sha256": "03a45f182c872747fce486e6b5f35e293a34fbd1dd82a1b436c1278d1197b25c",
+    "acceptance_script_sha256": "05bf1256487ac11d58f91ad57cb088b4a206b9ecfbdb67adc5721cb86c88db7c",
+    "source_paths": [
+      "python/freetoken/arbiter/proxy.py",
+      "benchmarks/gemma_huggingvoice_tool_superset_acceptance.py"
+    ]
+  },
+  "runs_per_scenario": 5,
+  "temperature": 0.2,
+  "max_tokens": 128,
+  "scenarios": [
+    {
+      "scenario": "remember_name_10",
+      "expected_tool": "speaker_memory_remember_name",
+      "tool_count": 10,
+      "successes": 5,
+      "latency_p50_s": 3.1263789699951303,
+      "runs": [
+        {
+          "run": 1,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.178867041999183,
+          "speaker_ref": "sr_superset_remember_name_10_001",
+          "arguments": {
+            "name": "Марат",
+            "speaker_ref": "sr_superset_remember_name_10_001"
+          },
+          "response": {
+            "id": "chatcmpl-119",
+            "object": "chat.completion",
+            "created": 1788207494,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_speaker-memory-remember-_0_e622f611",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "speaker_memory_remember_name",
+                        "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_superset_remember_name_10_001\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1070,
+              "completion_tokens": 42,
+              "total_tokens": 1112
+            }
+          }
+        },
+        {
+          "run": 2,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.0874486480024643,
+          "speaker_ref": "sr_superset_remember_name_10_002",
+          "arguments": {
+            "name": "Марат",
+            "speaker_ref": "sr_superset_remember_name_10_002"
+          },
+          "response": {
+            "id": "chatcmpl-120",
+            "object": "chat.completion",
+            "created": 1788207497,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_speaker-memory-remember-_0_f2764310",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "speaker_memory_remember_name",
+                        "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_superset_remember_name_10_002\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1070,
+              "completion_tokens": 42,
+              "total_tokens": 1112
+            }
+          }
+        },
+        {
+          "run": 3,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.107143510998867,
+          "speaker_ref": "sr_superset_remember_name_10_003",
+          "arguments": {
+            "name": "Марат",
+            "speaker_ref": "sr_superset_remember_name_10_003"
+          },
+          "response": {
+            "id": "chatcmpl-121",
+            "object": "chat.completion",
+            "created": 1788207501,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_speaker-memory-remember-_0_43422bd3",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "speaker_memory_remember_name",
+                        "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_superset_remember_name_10_003\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1070,
+              "completion_tokens": 42,
+              "total_tokens": 1112
+            }
+          }
+        },
+        {
+          "run": 4,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.1263789699951303,
+          "speaker_ref": "sr_superset_remember_name_10_004",
+          "arguments": {
+            "name": "Марат",
+            "speaker_ref": "sr_superset_remember_name_10_004"
+          },
+          "response": {
+            "id": "chatcmpl-122",
+            "object": "chat.completion",
+            "created": 1788207504,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_speaker-memory-remember-_0_63d2b6eb",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "speaker_memory_remember_name",
+                        "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_superset_remember_name_10_004\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1070,
+              "completion_tokens": 42,
+              "total_tokens": 1112
+            }
+          }
+        },
+        {
+          "run": 5,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.144991964996734,
+          "speaker_ref": "sr_superset_remember_name_10_005",
+          "arguments": {
+            "name": "Марат",
+            "speaker_ref": "sr_superset_remember_name_10_005"
+          },
+          "response": {
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "created": 1788207507,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_speaker-memory-remember-_0_065e6a4c",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "speaker_memory_remember_name",
+                        "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_superset_remember_name_10_005\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1070,
+              "completion_tokens": 42,
+              "total_tokens": 1112
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "web_search_10",
+      "expected_tool": "web_search",
+      "tool_count": 10,
+      "successes": 5,
+      "latency_p50_s": 3.3007593840011396,
+      "runs": [
+        {
+          "run": 1,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.217523566003365,
+          "speaker_ref": "sr_superset_web_search_10_001",
+          "arguments": {
+            "query": "актуальная погода в Москве"
+          },
+          "response": {
+            "id": "chatcmpl-124",
+            "object": "chat.completion",
+            "created": 1788207510,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_web-search_0_64097adf",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "web_search",
+                        "arguments": "{\"query\": \"актуальная погода в Москве\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1069,
+              "completion_tokens": 21,
+              "total_tokens": 1090
+            }
+          }
+        },
+        {
+          "run": 2,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.310142795999127,
+          "speaker_ref": "sr_superset_web_search_10_002",
+          "arguments": {
+            "query": "актуальная погода в Москве"
+          },
+          "response": {
+            "id": "chatcmpl-125",
+            "object": "chat.completion",
+            "created": 1788207513,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_web-search_0_7ba77edc",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "web_search",
+                        "arguments": "{\"query\": \"актуальная погода в Москве\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1069,
+              "completion_tokens": 21,
+              "total_tokens": 1090
+            }
+          }
+        },
+        {
+          "run": 3,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.3007593840011396,
+          "speaker_ref": "sr_superset_web_search_10_003",
+          "arguments": {
+            "query": "актуальная погода в Москве"
+          },
+          "response": {
+            "id": "chatcmpl-126",
+            "object": "chat.completion",
+            "created": 1788207517,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_web-search_0_e7122bde",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "web_search",
+                        "arguments": "{\"query\": \"актуальная погода в Москве\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1069,
+              "completion_tokens": 21,
+              "total_tokens": 1090
+            }
+          }
+        },
+        {
+          "run": 4,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.301449122001941,
+          "speaker_ref": "sr_superset_web_search_10_004",
+          "arguments": {
+            "query": "актуальная погода в Москве"
+          },
+          "response": {
+            "id": "chatcmpl-127",
+            "object": "chat.completion",
+            "created": 1788207520,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_web-search_0_277e6cdd",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "web_search",
+                        "arguments": "{\"query\": \"актуальная погода в Москве\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1069,
+              "completion_tokens": 21,
+              "total_tokens": 1090
+            }
+          }
+        },
+        {
+          "run": 5,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.292498215996602,
+          "speaker_ref": "sr_superset_web_search_10_005",
+          "arguments": {
+            "query": "актуальная погода в Москве"
+          },
+          "response": {
+            "id": "chatcmpl-128",
+            "object": "chat.completion",
+            "created": 1788207523,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_web-search_0_4181e6ee",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "web_search",
+                        "arguments": "{\"query\": \"актуальная погода в Москве\"}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1069,
+              "completion_tokens": 21,
+              "total_tokens": 1090
+            }
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "camera_snapshot_11",
+      "expected_tool": "camera_snapshot",
+      "tool_count": 11,
+      "successes": 5,
+      "latency_p50_s": 3.39088432599965,
+      "runs": [
+        {
+          "run": 1,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.3864623659974313,
+          "speaker_ref": "sr_superset_camera_snapshot_11_001",
+          "arguments": {},
+          "response": {
+            "id": "chatcmpl-129",
+            "object": "chat.completion",
+            "created": 1788207527,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_camera-snapshot_0_29116b16",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "camera_snapshot",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1143,
+              "completion_tokens": 9,
+              "total_tokens": 1152
+            }
+          }
+        },
+        {
+          "run": 2,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.39088432599965,
+          "speaker_ref": "sr_superset_camera_snapshot_11_002",
+          "arguments": {},
+          "response": {
+            "id": "chatcmpl-130",
+            "object": "chat.completion",
+            "created": 1788207530,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_camera-snapshot_0_afc189e6",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "camera_snapshot",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1143,
+              "completion_tokens": 9,
+              "total_tokens": 1152
+            }
+          }
+        },
+        {
+          "run": 3,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.3906586110024364,
+          "speaker_ref": "sr_superset_camera_snapshot_11_003",
+          "arguments": {},
+          "response": {
+            "id": "chatcmpl-131",
+            "object": "chat.completion",
+            "created": 1788207533,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_camera-snapshot_0_934247db",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "camera_snapshot",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1143,
+              "completion_tokens": 9,
+              "total_tokens": 1152
+            }
+          }
+        },
+        {
+          "run": 4,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.407414098001027,
+          "speaker_ref": "sr_superset_camera_snapshot_11_004",
+          "arguments": {},
+          "response": {
+            "id": "chatcmpl-132",
+            "object": "chat.completion",
+            "created": 1788207537,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_camera-snapshot_0_626d7b6b",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "camera_snapshot",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1143,
+              "completion_tokens": 9,
+              "total_tokens": 1152
+            }
+          }
+        },
+        {
+          "run": 5,
+          "passed": true,
+          "http_status": 200,
+          "latency_s": 3.4187475470025674,
+          "speaker_ref": "sr_superset_camera_snapshot_11_005",
+          "arguments": {},
+          "response": {
+            "id": "chatcmpl-133",
+            "object": "chat.completion",
+            "created": 1788207540,
+            "model": "gemma-4-e2b",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_camera-snapshot_0_fe92ca66",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "camera_snapshot",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 1143,
+              "completion_tokens": 9,
+              "total_tokens": 1152
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "passed": true
+}
