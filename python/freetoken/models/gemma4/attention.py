@@ -85,8 +85,12 @@ class Gemma4Attention(BaseOP):
         if positions.device != q.device or positions.dtype != torch.long:
             positions = positions.to(device=q.device, dtype=torch.long)
         q_view = q.contiguous().view(q.shape[0], -1)
-        # rotary.forward rotates q and k together; pass q as both when we only need q.
-        self.rotary.forward(positions, q_view, q_view)
+        # rotary.forward uses an in-place fused Q/K kernel.  The shared-KV path only needs Q,
+        # but aliasing Q as K makes that kernel rotate the same storage twice (once as Q and
+        # once as K).  Keep a distinct, disposable K buffer; its contents are irrelevant because
+        # shared-KV layers do not consume the generated K.
+        k_scratch = torch.empty_like(q_view)
+        self.rotary.forward(positions, q_view, k_scratch)
         return q_view.view_as(q)
 
     def _apply_rope(

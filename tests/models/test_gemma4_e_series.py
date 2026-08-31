@@ -8,6 +8,7 @@ features that distinguish E2B from the older Gemma-4 MoE parser.
 from __future__ import annotations
 
 import pytest
+import torch
 
 from freetoken.models.gguf.config import GgufConfigShim
 
@@ -144,3 +145,21 @@ def test_non_shared_e2b_layer_remains_fused_qkv(monkeypatch: pytest.MonkeyPatch)
     assert not hasattr(layer, "q_proj")
     assert hasattr(layer, "k_norm")
     assert hasattr(layer, "v_norm")
+
+
+def test_shared_rope_uses_distinct_query_and_key_buffers(monkeypatch: pytest.MonkeyPatch):
+    """The fused in-place RoPE kernel writes Q and K in one call; aliasing would rotate Q twice."""
+    from freetoken.models.gemma4.attention import Gemma4Attention
+
+    class RecordingRotary:
+        def forward(self, positions, query, key):
+            assert query.data_ptr() != key.data_ptr()
+            key.copy_(query)
+
+    layer = object.__new__(Gemma4Attention)
+    layer.rotary = RecordingRotary()
+    q = torch.ones((2, 1, 4), dtype=torch.float32)
+
+    result = layer._apply_rope_q(torch.tensor([0, 1]), q)
+
+    torch.testing.assert_close(result, q)
