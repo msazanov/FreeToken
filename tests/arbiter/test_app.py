@@ -13,10 +13,14 @@ from freetoken.arbiter.model import ModelId
 class FakeController:
     def __init__(self) -> None:
         self.calls: list[ModelId] = []
+        self.releases: list[ModelId] = []
 
     async def prepare(self, model_id: ModelId) -> ActiveBackend:
         self.calls.append(model_id)
         return ActiveBackend(model_id, "http://backend.test", "backend-model", "fake")
+
+    async def release(self, model_id: ModelId) -> None:
+        self.releases.append(model_id)
 
 
 def _upstream_handler(seen: list[dict]):
@@ -75,8 +79,44 @@ def test_request_model_is_rewritten_and_lease_is_released_after_buffered_respons
 
     assert response.status_code == 200
     assert controller.calls == [ModelId.ORNITH]
+    assert controller.releases == [ModelId.ORNITH]
     assert seen == [{
         "model": "backend-model",
         "messages": [{"role": "user", "content": "hi"}],
         "stream": False,
     }]
+
+
+def test_streaming_response_releases_lease_after_sse_body_is_consumed():
+    controller = FakeController()
+    seen: list[dict] = []
+
+    def streaming_handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=httpx.ByteStream(
+                b"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"
+            ),
+        )
+
+    upstream = httpx.AsyncClient(transport=httpx.MockTransport(streaming_handler))
+    app = build_arbiter_app(ArbiterConfig(queue_timeout_s=1.0), controller, upstream)
+    with TestClient(app) as client:
+        with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            json={
+                "model": "gemma-4-e2b",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": True,
+            },
+        ) as response:
+            chunks = list(response.iter_bytes())
+
+    assert response.status_code == 200
+    assert b"[DONE]" in b"".join(chunks)
+    assert seen[0]["model"] == "backend-model"
+    assert controller.releases == [ModelId.GEMMA]

@@ -14,6 +14,7 @@ Commands:
   shell       Chat with a FreeToken server in the terminal
   ctl         Query and manage a running FreeToken server
   daemon      Run the FreeToken supervisor (persistent engine service)
+  arbiter     Serve Ornith and Gemma behind one OpenAI-compatible endpoint
   launch      Configure and launch an agent against a FreeToken server
   checkpoint  Convert an HF safetensors checkpoint to FTW
   bench       Run a micro-benchmark (e.g. "bench bw" = CPU vs PCIe bandwidth)
@@ -61,6 +62,12 @@ def _run_daemon(argv: list[str]) -> int:
     return main(argv, prog="ft daemon")
 
 
+def _run_arbiter(argv: list[str]) -> int:
+    from freetoken.arbiter.server import main
+
+    return main(argv, prog="ft arbiter")
+
+
 def _print_bench_help(file: TextIO) -> None:
     print(
         """usage: ft bench <subcommand> [args]
@@ -95,6 +102,7 @@ COMMANDS = {
     "shell": "_run_shell",
     "ctl": "_run_ctl",
     "daemon": "_run_daemon",
+    "arbiter": "_run_arbiter",
     "launch": "_run_launch",
     "checkpoint": "_run_checkpoint",
     "bench": "_run_bench",
