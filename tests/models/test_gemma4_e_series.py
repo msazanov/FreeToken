@@ -116,8 +116,11 @@ def test_e2b_scalar_kv_metadata_and_layer_geometry(monkeypatch: pytest.MonkeyPat
 
 def test_shared_kv_layers_build_q_only_attention(monkeypatch: pytest.MonkeyPatch):
     from freetoken.models.gemma4.attention import Gemma4Attention
+    from freetoken.distributed import set_tp_info, try_get_tp_info
     from freetoken.models.gemma4.gguf import parse_gguf_config
 
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
     config = parse_gguf_config(_e2b_shim(monkeypatch))
     layer = Gemma4Attention(config, layer_id=34)
 
@@ -129,8 +132,11 @@ def test_shared_kv_layers_build_q_only_attention(monkeypatch: pytest.MonkeyPatch
 
 def test_non_shared_e2b_layer_remains_fused_qkv(monkeypatch: pytest.MonkeyPatch):
     from freetoken.models.gemma4.attention import Gemma4Attention
+    from freetoken.distributed import set_tp_info, try_get_tp_info
     from freetoken.models.gemma4.gguf import parse_gguf_config
 
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
     config = parse_gguf_config(_e2b_shim(monkeypatch))
     layer = Gemma4Attention(config, layer_id=14)
 
@@ -138,4 +144,3 @@ def test_non_shared_e2b_layer_remains_fused_qkv(monkeypatch: pytest.MonkeyPatch)
     assert not hasattr(layer, "q_proj")
     assert hasattr(layer, "k_norm")
     assert hasattr(layer, "v_norm")
-
