@@ -66,6 +66,19 @@ def build_arbiter_app(
     app.state.http_client = client
     app.state.started_at = time.time()
     app.state.counters = {"requests": 0, "completed": 0, "errors": 0}
+    app.state.reconcile_lock = asyncio.Lock()
+    app.state.reconciled = False
+
+    async def ensure_reconciled() -> None:
+        if app.state.reconciled:
+            return
+        async with app.state.reconcile_lock:
+            if app.state.reconciled:
+                return
+            reconcile = getattr(controller, "reconcile", None)
+            if reconcile is not None:
+                await reconcile()
+            app.state.reconciled = True
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -115,6 +128,14 @@ def build_arbiter_app(
             return _error(404, "model must be one of ornith-35b or gemma-4-e2b", code="model_not_found")
 
         app.state.counters["requests"] += 1
+        try:
+            await ensure_reconciled()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - do not route traffic on ambiguous state
+            app.state.counters["errors"] += 1
+            return _error(503, f"backend state is not reconciled: {exc}", code="state_ambiguous")
+
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         try:
             lease = await scheduler.acquire(
@@ -131,16 +152,25 @@ def build_arbiter_app(
 
         try:
             backend = await controller.prepare(model_id)
+        except asyncio.CancelledError:
+            await asyncio.shield(lease.release())
+            raise
         except Exception as exc:  # noqa: BLE001 - translate lifecycle errors at API boundary
-            await lease.release()
+            await asyncio.shield(lease.release())
             app.state.counters["errors"] += 1
             return _error(503, f"model backend is not ready: {exc}", code="backend_not_ready")
 
+        released = False
+
         async def release_all() -> None:
+            nonlocal released
+            if released:
+                return
             try:
                 await controller.release(model_id)
             finally:
                 await lease.release()
+                released = True
             app.state.counters["completed"] += 1
 
         try:
@@ -150,8 +180,11 @@ def build_arbiter_app(
                 client,
                 on_complete=release_all,
             )
+        except asyncio.CancelledError:
+            await asyncio.shield(release_all())
+            raise
         except Exception as exc:  # noqa: BLE001 - never leak a lease on proxy errors
-            await release_all()
+            await asyncio.shield(release_all())
             app.state.counters["errors"] += 1
             return _error(502, f"backend proxy failed: {exc}", code="proxy_failed")
 

@@ -11,7 +11,7 @@ ExecStart=/opt/llama-cpp/bin/llama-server.real \
   --model /home/random/dev/huggingvoice-llm-bench/models/gemma4-e2b/gemma-4-E2B_q4_0-it.gguf \
   --alias gemma-4-e2b \
   --host 127.0.0.1 \
-  --port 19193 \
+  --port 19195 \
   --ctx-size 4096 \
   --gpu-layers 0 \
   --fit off \
@@ -33,4 +33,3 @@ RestartSec=3
 TimeoutStartSec=300
 TimeoutStopSec=90
 KillSignal=SIGTERM
-

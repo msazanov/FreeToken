@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
 
@@ -92,7 +93,7 @@ async def proxy_openai(
         upstream = await client.send(upstream_request, stream=True)
     except httpx.HTTPError as exc:
         if on_complete is not None:
-            await on_complete()
+            await asyncio.shield(on_complete())
         return JSONResponse(
             status_code=503,
             content={
@@ -114,7 +115,7 @@ async def proxy_openai(
             await upstream.aclose()
         finally:
             if on_complete is not None:
-                await on_complete()
+                await asyncio.shield(on_complete())
 
     if not body.get("stream", False):
         try:
