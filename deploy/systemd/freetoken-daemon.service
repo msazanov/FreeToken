@@ -1,0 +1,27 @@
+[Unit]
+Description=FreeToken engine supervisor for the Gemma GPU fallback
+After=network-online.target
+Wants=network-online.target
+ConditionFileIsExecutable=/home/random/freetoken-turing/.venv/bin/ft
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/random/dev/qwen/freetoken
+Environment=PYTHONPATH=/home/random/dev/qwen/freetoken/python:/home/random/dev/qwen/freetoken
+Environment=PYTHONUNBUFFERED=1
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/home/random/freetoken-turing/.venv/bin/ft daemon \
+  --host 127.0.0.1 \
+  --port 1900 \
+  --serve-python /home/random/freetoken-turing/.venv/bin/python \
+  --state-dir /home/random/.freetoken/daemon
+Restart=always
+RestartSec=1
+# The daemon must be restartable without killing a serve child it already owns.
+KillMode=process
+KillSignal=SIGTERM
+OOMScoreAdjust=-1000
+
+[Install]
+WantedBy=default.target

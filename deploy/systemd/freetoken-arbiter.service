@@ -1,0 +1,32 @@
+[Unit]
+Description=FreeToken Ornith/Gemma single-endpoint model arbiter
+Requires=freetoken-ornith.service freetoken-daemon.service
+After=freetoken-ornith.service freetoken-daemon.service network-online.target
+Wants=network-online.target
+ConditionFileIsExecutable=/home/random/freetoken-turing/.venv/bin/ft
+
+[Service]
+Type=simple
+WorkingDirectory=/home/random/dev/qwen/freetoken
+Environment=PYTHONPATH=/home/random/dev/qwen/freetoken/python:/home/random/dev/qwen/freetoken
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/random/freetoken-turing/.venv/bin/ft arbiter \
+  --host 0.0.0.0 \
+  --port 1919 \
+  --ornith-url http://127.0.0.1:19191 \
+  --gemma-gpu-url http://127.0.0.1:19192 \
+  --gemma-cpu-url http://127.0.0.1:19193 \
+  --daemon-url http://127.0.0.1:1900 \
+  --gemma-model-path /home/random/dev/huggingvoice-llm-bench/models/gemma4-e2b/gemma-4-E2B_q4_0-it.gguf \
+  --gemma-cpu-unit llama-gemma-cpu.service \
+  --queue-timeout 1800 \
+  --max-queue-depth 16 \
+  --request-timeout 1800
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=300
+TimeoutStopSec=90
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target

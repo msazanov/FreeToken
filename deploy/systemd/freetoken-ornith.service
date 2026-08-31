@@ -1,0 +1,48 @@
+[Unit]
+Description=FreeToken Ornith 1.5 35B TQ3_4S private backend (64K, RTX 2070)
+After=network-online.target
+Wants=network-online.target
+ConditionFileIsExecutable=/home/random/freetoken-turing/.venv/bin/ft
+ConditionPathExists=/home/random/dev/qwen/models/ornith-15-35b-tq3-4s/Ornith-1.5-35B-A3B-TQ3_4S.gguf
+
+[Service]
+Type=simple
+WorkingDirectory=/home/random/dev/qwen/freetoken
+Environment=PYTHONPATH=/home/random/dev/qwen/freetoken/python:/home/random/dev/qwen/freetoken
+Environment=PYTHONUNBUFFERED=1
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/home/random/freetoken-turing/.venv/bin/ft serve \
+  --model-path /home/random/dev/qwen/models/ornith-15-35b-tq3-4s/Ornith-1.5-35B-A3B-TQ3_4S.gguf \
+  --served-model-name "Ornith 1.5 35b" \
+  --host 127.0.0.1 \
+  --port 19191 \
+  --dtype bfloat16 \
+  --moe-backend offload \
+  --expert-load serial \
+  --memory-ratio 0.85 \
+  --max-running-requests 1 \
+  --max-seq-len-override 65536 \
+  --num-tokens 65536 \
+  --kv-reserve-tokens 65536 \
+  --kv-cache-dtype int8 \
+  --moe-cache-auto \
+  --moe-cache-policy lru \
+  --disable-moe-prefill-overlap \
+  --max-prefill-length 2560 \
+  --cuda-graph-max-bs 1 \
+  --disable-pynccl \
+  --cache-type radix \
+  --enable-cache-report \
+  --attention-backend triton \
+  --tool-call-parser qwen25 \
+  --reasoning-parser qwen3 \
+  --sampling-defaults model \
+  --moe-collect-stats
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=90
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target
