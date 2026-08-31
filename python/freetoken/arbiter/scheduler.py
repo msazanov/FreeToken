@@ -13,6 +13,7 @@ class Lease:
         self._scheduler = scheduler
         self._request = request
         self._released = False
+        self._release_lock = asyncio.Lock()
 
     @property
     def model_id(self) -> ModelId:
@@ -27,10 +28,11 @@ class Lease:
         return self._request.sequence
 
     async def release(self) -> None:
-        if self._released:
-            return
-        self._released = True
-        await self._scheduler._release(self)
+        async with self._release_lock:
+            if self._released:
+                return
+            await self._scheduler._release(self)
+            self._released = True
 
     async def __aenter__(self) -> Lease:
         return self
@@ -74,7 +76,11 @@ class LeaseScheduler:
 
         async with self._condition:
             queue = self._queues[model_id]
-            if self._max_queue_depth is not None and len(queue) >= self._max_queue_depth:
+            if (
+                self._max_queue_depth is not None
+                and len(queue) >= self._max_queue_depth
+                and (self._active_request is not None or any(self._queues.values()))
+            ):
                 raise asyncio.QueueFull
             queue.append(request)
             if self._active_request is None:
@@ -90,7 +96,11 @@ class LeaseScheduler:
                             raise asyncio.TimeoutError
                         await asyncio.wait_for(self._condition.wait(), remaining)
             except (asyncio.CancelledError, asyncio.TimeoutError):
-                if request in queue:
+                if self._active_request is request:
+                    self._active_request = None
+                    self._state = LeaseState.IDLE
+                    self._grant_next_locked(preferred=model_id)
+                elif request in queue:
                     queue.remove(request)
                     self._condition.notify_all()
                 raise

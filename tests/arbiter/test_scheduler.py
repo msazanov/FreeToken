@@ -117,6 +117,66 @@ def test_queue_limit_rejects_only_excess_waiters():
     _run(scenario())
 
 
+def test_zero_queue_depth_still_allows_one_active_lease():
+    async def scenario():
+        scheduler = LeaseScheduler(max_queue_depth=0)
+        first = await scheduler.acquire(ModelId.GEMMA, "g1")
+
+        with pytest.raises(asyncio.QueueFull):
+            await scheduler.acquire(ModelId.GEMMA, "g2")
+
+        assert scheduler.snapshot()["active_count"] == 1
+        await first.release()
+
+    _run(scenario())
+
+
+def test_cancelled_granted_waiter_does_not_leave_active_lease_stuck():
+    async def scenario():
+        scheduler = LeaseScheduler()
+        first = await scheduler.acquire(ModelId.GEMMA, "g1")
+        waiting = asyncio.create_task(scheduler.acquire(ModelId.ORNITH, "o1"))
+        await asyncio.sleep(0)
+
+        await first.release()
+        assert scheduler.snapshot()["owner"] is ModelId.ORNITH
+
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+
+        assert scheduler.snapshot() == {
+            "owner": None,
+            "state": LeaseState.IDLE,
+            "active_count": 0,
+            "queue_depths": {
+                ModelId.ORNITH: 0,
+                ModelId.GEMMA: 0,
+            },
+        }
+
+    _run(scenario())
+
+
+def test_cancelled_release_can_be_retried_after_handoff_cancellation():
+    async def scenario():
+        scheduler = LeaseScheduler()
+        first = await scheduler.acquire(ModelId.GEMMA, "g1")
+        release_task = asyncio.create_task(first.release())
+        await asyncio.sleep(0)
+        assert not release_task.done()
+
+        release_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await release_task
+
+        assert scheduler.snapshot()["owner"] is ModelId.GEMMA
+        await first.release()
+        assert scheduler.snapshot()["state"] is LeaseState.IDLE
+
+    _run(scenario())
+
+
 def test_waiter_timeout_is_removed_from_snapshot():
     async def scenario():
         scheduler = LeaseScheduler()
