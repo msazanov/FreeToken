@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -39,10 +41,11 @@ def _client(handler):
 def _ready_handler(requests: list[tuple[str, str, dict | None]], *, cpu_ok: bool = True):
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        url = str(request.url)
         payload = None
         if request.content:
             payload = httpx.Response(200, content=request.content).json()
-        requests.append((request.method, path, payload))
+        requests.append((request.method, url, payload))
         if path.endswith("/cache/rebuild"):
             return httpx.Response(
                 200,
@@ -62,54 +65,65 @@ def _ready_handler(requests: list[tuple[str, str, dict | None]], *, cpu_ok: bool
     return handler
 
 
-@pytest.mark.asyncio
-async def test_gemma_gpu_failure_selects_cpu_backend_before_readiness_commit():
-    requests: list[tuple[str, str, dict | None]] = []
-    lifecycle = RecordingLifecycle(gpu_start_error=RuntimeError("SM75 GPU admission failed"))
-    config = BackendConfig(
-        gemma_expected_model="backend-model",
-        gemma_model_path="/models/gemma.gguf",
-        gemma_gpu_args=("--ctx-size", "4096"),
-    )
+def test_gemma_gpu_failure_selects_cpu_backend_before_readiness_commit():
+    async def scenario():
+        requests: list[tuple[str, str, dict | None]] = []
+        lifecycle = RecordingLifecycle(gpu_start_error=RuntimeError("SM75 GPU admission failed"))
+        config = BackendConfig(
+            gemma_expected_model="backend-model",
+            gemma_model_path="/models/gemma.gguf",
+            gemma_gpu_args=("--ctx-size", "4096"),
+        )
 
-    async with _client(_ready_handler(requests)) as client:
-        controller = BackendController(config, client, lifecycle=lifecycle)
-        backend = await controller.prepare(ModelId.GEMMA)
+        async with _client(_ready_handler(requests)) as client:
+            controller = BackendController(config, client, lifecycle=lifecycle)
+            backend = await controller.prepare(ModelId.GEMMA)
 
-    assert backend == ActiveBackend(ModelId.GEMMA, config.gemma_cpu_url, "backend-model", "gemma-cpu")
-    assert [name for name, _ in lifecycle.events] == ["gpu_start", "gpu_stop", "cpu_start"]
-    assert any(path.endswith("/health") and "19193" in path for _, path, _ in requests)
+        assert backend == ActiveBackend(ModelId.GEMMA, config.gemma_cpu_url, "backend-model", "gemma-cpu")
+        assert [name for name, _ in lifecycle.events] == ["gpu_start", "gpu_stop", "cpu_start"]
+        assert any(path.endswith("/health") and "19193" in path for _, path, _ in requests)
 
-
-@pytest.mark.asyncio
-async def test_ornith_park_is_moe_only_and_preserves_kv_geometry():
-    requests: list[tuple[str, str, dict | None]] = []
-    config = BackendConfig(
-        ornith_expected_model="backend-model",
-        ornith_active_slots=2311,
-        ornith_parked_slots=256,
-        ornith_kv_tokens=65536,
-    )
-
-    async with _client(_ready_handler(requests)) as client:
-        controller = BackendController(config, client, lifecycle=RecordingLifecycle())
-        await controller.prepare(ModelId.GEMMA)
-
-    rebuilds = [(method, path, payload) for method, path, payload in requests if path.endswith("/cache/rebuild")]
-    assert rebuilds
-    payload = rebuilds[0][2]
-    assert payload == {"moe_cache_size": 256, "mode": "if_idle", "timeout": config.rebuild_timeout_s}
-    assert "num_pages" not in payload
-    assert "num_mamba_slots" not in payload
+    asyncio.run(scenario())
 
 
-@pytest.mark.asyncio
-async def test_failed_cpu_readiness_is_reported_without_faking_backend():
-    requests: list[tuple[str, str, dict | None]] = []
-    lifecycle = RecordingLifecycle(gpu_start_error=RuntimeError("gpu unavailable"))
-    config = BackendConfig(gemma_expected_model="backend-model")
+def test_ornith_park_is_moe_only_and_preserves_kv_geometry():
+    async def scenario():
+        requests: list[tuple[str, str, dict | None]] = []
+        config = BackendConfig(
+            ornith_expected_model="backend-model",
+            gemma_expected_model="backend-model",
+            ornith_active_slots=2311,
+            ornith_parked_slots=256,
+            ornith_kv_tokens=65536,
+        )
 
-    async with _client(_ready_handler(requests, cpu_ok=False)) as client:
-        controller = BackendController(config, client, lifecycle=lifecycle)
-        with pytest.raises(BackendError, match="gemma-cpu"):
+        async with _client(_ready_handler(requests)) as client:
+            controller = BackendController(config, client, lifecycle=RecordingLifecycle())
             await controller.prepare(ModelId.GEMMA)
+
+        rebuilds = [(method, path, payload) for method, path, payload in requests if path.endswith("/cache/rebuild")]
+        assert rebuilds
+        payload = rebuilds[0][2]
+        assert payload == {"moe_cache_size": 256, "mode": "if_idle", "timeout": config.rebuild_timeout_s}
+        assert "num_pages" not in payload
+        assert "num_mamba_slots" not in payload
+
+    asyncio.run(scenario())
+
+
+def test_failed_cpu_readiness_is_reported_without_faking_backend():
+    async def scenario():
+        requests: list[tuple[str, str, dict | None]] = []
+        lifecycle = RecordingLifecycle(gpu_start_error=RuntimeError("gpu unavailable"))
+        config = BackendConfig(
+            gemma_expected_model="backend-model",
+            readiness_timeout_s=0.01,
+            poll_interval_s=0.001,
+        )
+
+        async with _client(_ready_handler(requests, cpu_ok=False)) as client:
+            controller = BackendController(config, client, lifecycle=lifecycle)
+            with pytest.raises(BackendError, match="gemma-cpu"):
+                await controller.prepare(ModelId.GEMMA)
+
+    asyncio.run(scenario())
