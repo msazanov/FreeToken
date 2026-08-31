@@ -13,7 +13,7 @@ ExecStart=/opt/llama-cpp/bin/llama-server \
   --alias gemma-4-e2b \
   --host 127.0.0.1 \
   --port 19195 \
-  --ctx-size 4096 \
+  --ctx-size 8192 \
   --gpu-layers 0 \
   --fit off \
   --flash-attn off \

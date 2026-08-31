@@ -552,3 +552,51 @@ arbiter restart adopted that Gemma process in 0.207 s without auto-starting
 Ornith or creating a second GPU owner; both model IDs remain visible at
 `GET /v1/models`. This observation is recorded separately in
 `benchmarks/results/two-model-arbiter-2026-08-31/post-reboot-reconcile-observation.json`.
+
+### Reliable Gemma speaker-memory tool calls and 8K context
+
+The public `:1919` acceptance gate now requires a real OpenAI
+`speaker_memory_remember_name` call; a sentence claiming that the name was
+remembered is an explicit failure. With HuggingVoice's original long voice
+policy and all nine schemas, the unchanged runtime failed 3/3 in the recorded
+baseline (and 6/6 during diagnosis): Gemma returned ordinary Russian text even
+for `tool_choice=required` and a named tool choice. The arbiter was not dropping
+structured output; direct `:19193` and public `:1919` behavior matched, and
+FreeToken had already auto-selected its native `gemma4` parser.
+
+For Gemma requests with the exact nine HuggingVoice `speaker_memory_*` tools,
+the arbiter recognizes the official voice policy by its stable markers and
+replaces only that system message with the minimal policy proven on this
+checkpoint. Additional system messages are preserved. Subsets, arbitrary
+memory namespaces, other Gemma chat, mixed tool sets and all Ornith traffic
+remain unchanged. FreeToken also treats Gemma's `<|tool_response>` opener as EOG, as
+documented in [upstream issue #201](https://github.com/FlashML-org/FreeToken/issues/201),
+so a successful call ends with empty `content` instead of leaking the raw
+marker. The live 8K gate returned the correct name and per-request
+`speaker_ref` in 5/5 runs with `finish_reason=tool_calls`; after the final scope
+review, warm-only median latency was 2.675 s. The separate short Russian
+streaming probe reached its first content token in 0.078 s and completed in
+0.125 s. The faster final repeat used a more thoroughly warmed model and is not
+claimed as a causal gain from prompt scoping.
+
+Gemma's context/KV budget is now 8,192 tokens for both the FreeToken GPU path
+and llama.cpp CPU fallback. On the RTX 2070, FreeToken reports a 0.18 GiB BF16
+KV allocation, 3.75 GiB free after CUDA-graph capture and about 4.17 GiB live
+process VRAM. This did not regress the 4K control (3.146 s tool median and
+0.102 s short-RU TTFT). `max_tokens=128` is accepted and used by the gate, but
+the server does not override a smaller request limit; short voice turns remain
+client-controlled.
+
+This is not a blanket claim that Gemma E2B reliably chooses all nine memory
+tools. A concise policy containing every safety/action rule achieved only 3/6
+on the same `remember_name` probe, so the narrower policy and its exact
+acceptance case remain deliberate. Raw before/after responses, including the
+negative policy probe and an arbiter-readiness race, are under
+`benchmarks/results/gemma-tool-acceptance-2026-08-31/`. Run the non-mocked gate
+with:
+
+```bash
+PYTHONPATH=python python benchmarks/gemma_speaker_memory_acceptance.py \
+  --runs 5 --max-tokens 128 --timeout 180 \
+  --output benchmarks/results/gemma-tool-acceptance-2026-08-31/live.json
+```

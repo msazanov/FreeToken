@@ -41,7 +41,10 @@ _TOKENIZER_ARCH = {
 # vocab-specific -- gemma4 ends a turn with <turn|>, Qwen with <|im_end|>. An arch absent
 # here falls back to tokenizer.ggml.eos_token_id alone.
 _STOP_TOKENS: dict[str, tuple[str, ...]] = {
-    "gemma4": ("<turn|>", "<eos>"),
+    # Gemma emits the tool-response opener after a complete tool call to hand control back to
+    # the caller. llama.cpp treats it as EOG for the same GGUF; without it FreeToken leaks the
+    # raw marker into message.content and may keep sampling until max_tokens (upstream #201).
+    "gemma4": ("<turn|>", "<eos>", "<|tool_response>"),
     "qwen35moe": ("<|im_end|>", "<|endoftext|>"),
     # Dense sibling: same vocab and same chat markers as the MoE variant.
     "qwen35": ("<|im_end|>", "<|endoftext|>"),

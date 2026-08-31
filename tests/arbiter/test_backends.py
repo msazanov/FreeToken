@@ -163,6 +163,10 @@ def test_gemma_gpu_transition_stops_ornith_before_starting_gpu_model():
             "ornith_stop",
             "gpu_start",
         ]
+        _, (_model_path, _port, args) = controller.lifecycle.events[1]
+        assert args[args.index("--max-seq-len-override") + 1] == "8192"
+        assert args[args.index("--num-tokens") + 1] == "8192"
+        assert args[args.index("--kv-reserve-tokens") + 1] == "8192"
 
     asyncio.run(scenario())
 

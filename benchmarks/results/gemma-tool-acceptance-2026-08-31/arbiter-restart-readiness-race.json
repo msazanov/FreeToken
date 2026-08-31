@@ -1,0 +1,11 @@
+{
+  "timestamp_local": "2026-08-31T21:47:00+03:00",
+  "endpoint": "http://127.0.0.1:1919/v1",
+  "trigger": "acceptance started immediately after systemctl restart and is-active",
+  "result": "failed_before_report_write",
+  "exit_code": 1,
+  "observed_error": "httpx.ConnectError: [Errno 111] Connection refused",
+  "location": "streaming TTFT probe",
+  "interpretation": "systemd active did not yet imply that the arbiter TCP listener was ready",
+  "follow_up": "Acceptance now converts both buffered and streaming transport errors into failed results; live reruns wait for GET /v1/models readiness."
+}

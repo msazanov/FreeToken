@@ -1,0 +1,106 @@
+{
+  "endpoint": "http://127.0.0.1:1919/v1",
+  "model": "gemma-4-e2b",
+  "runs": 3,
+  "temperature": 0.2,
+  "max_tokens": 128,
+  "tool_successes": 0,
+  "tool_success_rate": 0.0,
+  "tool_latency_mean_s": 4.014695523666887,
+  "tool_latency_p50_s": 4.016506308998942,
+  "tool_latency_max_s": 4.035794314000668,
+  "tool_runs": [
+    {
+      "run": 1,
+      "passed": false,
+      "http_status": 200,
+      "latency_s": 4.016506308998942,
+      "expected_speaker_ref": "sr_acceptance_001",
+      "response": {
+        "id": "chatcmpl-251",
+        "object": "chat.completion",
+        "created": 1788200384,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Хорошо, Марат! Я запомнил ваше имя."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 1418,
+          "completion_tokens": 15,
+          "total_tokens": 1433
+        }
+      }
+    },
+    {
+      "run": 2,
+      "passed": false,
+      "http_status": 200,
+      "latency_s": 3.991785948001052,
+      "expected_speaker_ref": "sr_acceptance_002",
+      "response": {
+        "id": "chatcmpl-252",
+        "object": "chat.completion",
+        "created": 1788200388,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Хорошо, Марат! Я запомнил ваше имя."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 1418,
+          "completion_tokens": 15,
+          "total_tokens": 1433
+        }
+      }
+    },
+    {
+      "run": 3,
+      "passed": false,
+      "http_status": 200,
+      "latency_s": 4.035794314000668,
+      "expected_speaker_ref": "sr_acceptance_003",
+      "response": {
+        "id": "chatcmpl-253",
+        "object": "chat.completion",
+        "created": 1788200392,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Хорошо, Марат! Я запомнил ваше имя."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 1418,
+          "completion_tokens": 15,
+          "total_tokens": 1433
+        }
+      }
+    }
+  ],
+  "ru_ttft": {
+    "passed": true,
+    "http_status": 200,
+    "ttft_s": 0.11614281199945253,
+    "total_s": 0.1727916939998977,
+    "content": "Столица России — Москва."
+  },
+  "passed": false
+}

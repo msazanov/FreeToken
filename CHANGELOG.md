@@ -1134,3 +1134,31 @@ arbiter was then restarted after the no-auto-start change: Gemma remained ready,
 Ornith was not started, and a warm public request returned HTTP 200 in 0.207 s.
 This is an observation, not a controlled benchmark; the raw record is
 `benchmarks/results/two-model-arbiter-2026-08-31/post-reboot-reconcile-observation.json`.
+
+## 2026-08-31 — Fixed Gemma speaker-memory calls and raised context to 8K
+
+- Added a narrowly scoped Gemma arbiter policy for the exact nine official
+  HuggingVoice `speaker_memory_*` tools and recognizable voice-policy markers.
+  It replaces only that one system message with the checkpoint-specific
+  minimal instruction; extra system messages, subsets, arbitrary same-prefix
+  tools, ordinary chat, mixed tools and Ornith are unchanged.
+- Added `<|tool_response>` to Gemma 4 GGUF EOG tokens, matching FreeToken
+  upstream issue #201 and preventing the marker from leaking into content after
+  a parsed native call.
+- Added a non-mocked public `:1919` acceptance program with the real nine tool
+  schemas. Textual claims of memory without structured `tool_calls` fail.
+- Raised Gemma GPU KV/context and llama.cpp CPU-fallback context from 4,096 to
+  8,192 tokens. The BF16 KV allocation is 0.18 GiB and leaves 3.75 GiB free
+  VRAM after graphs on RTX 2070; response length remains request-controlled.
+- Improved the real gate from 0/3 to 5/5. At 8K, the final reviewed warm repeat
+  measured 2.675 s warm-only tool-call p50 and 0.078 s short-Russian streaming
+  TTFT. A broader compact policy only reached 3/6, so reliability of the other
+  eight tool choices is not claimed.
+- Made the acceptance gate reproducible across cold 82-89 second switches with
+  a 180-second default timeout and controlled JSON failures for transport,
+  non-JSON, malformed arguments and streaming errors. A real post-restart
+  connection-refused race is preserved as a negative artifact.
+- Added unit coverage for prompt scoping, Gemma EOG and both 8K launch paths.
+  The changed-scope suite passes `114 passed, 1 skipped`.
+- Preserved all raw positive and negative runs under
+  `benchmarks/results/gemma-tool-acceptance-2026-08-31/`.

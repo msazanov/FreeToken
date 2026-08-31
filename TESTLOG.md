@@ -2681,3 +2681,94 @@ interrupted before a final report after unrelated failures appeared; therefore
 it is not reported as green. The authoritative changed-scope gates are the
 30-test arbiter/deploy suite, the 74-test arbiter/deploy/Turing-kernel suite,
 and the 56-test Gemma/dispatch/daemon suite listed above.
+
+## 2026-08-31 — Gemma 4 E2B native tool-call acceptance and 8K KV
+
+### Failure localization
+
+The exact HuggingVoice system prompt, all nine `speaker_memory_*` function
+schemas and the utterance `Меня зовут Марат. Запомни моё имя.` were sent through
+the public `http://127.0.0.1:1919/v1` endpoint. The recorded pre-fix gate failed
+3/3 and an earlier diagnosis series failed 6/6: each response said that the
+name was remembered but contained no `tool_calls`. `tool_choice=required`, a
+named tool choice, a stronger user instruction and temperature zero did not
+repair the long policy. The model stopped after 12-17 text tokens, proving that
+neither the 4,096-token context nor the 128-token output allowance was the
+limiting condition.
+
+Direct private `:19193` and public `:1919` probes behaved alike. Startup
+arguments showed `tool_call_parser='gemma4'`, so neither the arbiter nor a
+missing parser caused the selection failure. A minimal policy produced 8/8
+correct calls during diagnosis. A second compact policy retaining rules for all
+nine tools achieved only 3/6; its negative result is preserved in
+`benchmarks/results/gemma-tool-acceptance-2026-08-31/compact-full-policy-probe.json`.
+This supports a checkpoint instruction-attention limitation rather than an API
+budget problem. Related upstream evidence is FreeToken
+[issue #201](https://github.com/FlashML-org/FreeToken/issues/201) for Gemma's
+missing tool-response stop marker and Google Gemma
+[PR #732](https://github.com/google-deepmind/gemma/pull/732) for reported system
+instruction non-adherence; the latter does not constitute a runtime fix.
+
+### Implemented behavior
+
+- The arbiter compacts only Gemma requests carrying the exact nine official
+  HuggingVoice `speaker_memory_*` tools and a voice policy containing its
+  stable HuggingVoice/Silero/block-voice markers. It replaces that one system
+  message with the short proven rule and preserves every other message.
+- Tool subsets, arbitrary same-prefix tools, mixed/non-memory Gemma tools,
+  ordinary Gemma chat and Ornith requests do not enter this path.
+- Gemma GGUF EOG now includes `<|tool_response>`, preventing the handoff marker
+  from appearing in `message.content` after a parsed call.
+- The GPU and CPU-fallback Gemma contexts were raised from 4,096 to 8,192. The
+  output cap remains request-controlled; the acceptance gate uses 128 tokens.
+- `benchmarks/gemma_speaker_memory_acceptance.py` is a non-mocked public gate:
+  exact tool name, exact dynamic `speaker_ref`, exact name, empty content and
+  `finish_reason=tool_calls` are all mandatory. It also measures streamed RU
+  TTFT independently.
+
+### Live results
+
+| Series | Context | Real tool calls | Cold max | Warm p50 | Short RU TTFT / total |
+|---|---:|---:|---:|---:|---:|
+| before | 4,096 | 0/3 | 4.036 s | 4.017 s | 0.116 / 0.173 s |
+| fixed | 4,096 | 5/5 | 89.332 s | 3.146 s | 0.102 / 0.161 s |
+| fixed | 8,192 | 5/5 | 82.348 s | 3.123 s | 0.101 / 0.161 s |
+| reviewed scope, warm | 8,192 | 5/5 | n/a | 2.675 s | 0.078 / 0.125 s |
+
+Cold maxima include GGUF loading, model initialization, CUDA-graph capture and
+warmup and therefore are not decode latency. Every successful 8K response had
+963 prompt tokens, 34 completion tokens, empty content, the expected
+`speaker_memory_remember_name` arguments and `finish_reason=tool_calls`.
+FreeToken allocated 0.18 GiB for 8,192-token BF16 KV, left 3.79 GiB after model
+initialization and 3.75 GiB after graph capture. The observed process used
+4,172 MiB VRAM and about 2,606,652 KiB RSS while idle.
+
+The runtime logs also showed `#cached-token: 0` for each similar 963-token tool
+request. Prefix-cache reuse is therefore not claimed by this result and remains
+a separate TTFT investigation. OpenAI `stream=true` streams generated output,
+not request input; token-at-a-time context ingestion would require a stateful
+append/rollback session API. Today the practical incremental path is a stable
+prompt prefix plus Radix/SWA reuse of the changed tail once that zero-hit issue
+is understood.
+
+Starting the acceptance command immediately after `systemctl restart` exposed
+a separate readiness race: systemd reported the arbiter active before `:1919`
+was listening. Buffered probes correctly returned controlled failures, but the
+streaming TTFT probe initially raised `ConnectError`. Both paths now convert
+transport/non-JSON/malformed-argument failures into failed JSON results, the
+default cold timeout is 180 seconds, and deployment checks wait for
+`GET /v1/models`. The failed observation is retained as
+`arbiter-restart-readiness-race.json`.
+
+### Verification
+
+- Focused TDD gate: `2 passed` after both tests first failed against the old
+  prompt and stop-token behavior.
+- 8K configuration TDD gate: `2 passed` after both assertions first reported
+  the old 4,096 values.
+- Changed-scope regression suite: `114 passed, 1 skipped, 1 warning in 5.79s`.
+- Live public acceptance at 8K: `5/5`, exit zero.
+- Raw JSON: `baseline-before.json`, `after-fix.json`,
+  `after-fix-ctx8192.json`, `after-review-scope-ctx8192.json`,
+  `compact-full-policy-probe.json` and `arbiter-restart-readiness-race.json` under
+  `benchmarks/results/gemma-tool-acceptance-2026-08-31/`.

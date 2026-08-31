@@ -43,6 +43,23 @@ def _client(controller: FakeController, seen: list[dict]) -> TestClient:
     return TestClient(app)
 
 
+_SPEAKER_MEMORY_TOOL_NAMES = (
+    "speaker_memory_inspect",
+    "speaker_memory_remember_name",
+    "speaker_memory_confirm",
+    "speaker_memory_reject",
+    "speaker_memory_block_voice",
+    "speaker_memory_unblock_voice",
+    "speaker_memory_remember_fact",
+    "speaker_memory_recall",
+    "speaker_memory_forget",
+)
+
+
+def _function_tool(name: str) -> dict:
+    return {"type": "function", "function": {"name": name, "parameters": {}}}
+
+
 def test_models_always_lists_both_public_ids():
     controller = FakeController()
     with _client(controller, []) as client:
@@ -85,6 +102,81 @@ def test_request_model_is_rewritten_and_lease_is_released_after_buffered_respons
         "messages": [{"role": "user", "content": "hi"}],
         "stream": False,
     }]
+
+
+def test_gemma_speaker_memory_request_replaces_diluted_system_prompt():
+    """Catch regressions that let the long voice prompt suppress native tool selection."""
+
+    controller = FakeController()
+    seen: list[dict] = []
+    verbose_system = (
+        "Ты голосовой помощник. Silero v5.5 RU. "
+        "Работа с памятью голосов HuggingVoice: после явного представления "
+        "вызови speaker_memory_remember_name и при необходимости "
+        "speaker_memory_block_voice. "
+        + "Подробное правило оформления ответа. " * 80
+    )
+    caller_system = "Never reveal credentials."
+    with _client(controller, seen) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gemma-4-e2b",
+                "messages": [
+                    {"role": "system", "content": caller_system},
+                    {"role": "system", "content": verbose_system},
+                    {
+                        "role": "user",
+                        "content": (
+                            '<huggingvoice_speaker_context>{"speaker_ref":"sr_test",'
+                            '"state":"unknown"}</huggingvoice_speaker_context>\n'
+                            "Меня зовут Марат. Запомни моё имя."
+                        ),
+                    },
+                ],
+                "tools": [_function_tool(name) for name in _SPEAKER_MEMORY_TOOL_NAMES],
+                "tool_choice": "auto",
+            },
+        )
+
+    assert response.status_code == 200
+    assert seen[0]["messages"][0] == {"role": "system", "content": caller_system}
+    assert seen[0]["messages"][1] == {
+        "role": "system",
+        "content": (
+            "Ты голосовой ассистент. Работа с памятью голосов HuggingVoice: "
+            "после явного представления обязательно вызови "
+            "speaker_memory_remember_name. Используй speaker_ref только из доверенного "
+            "контекста. Не говори, что запомнил, пока инструмент не выполнен."
+        ),
+    }
+
+
+def test_speaker_memory_prompt_rewrite_is_limited_to_gemma_and_memory_only_tools():
+    original_system = "Keep this caller policy unchanged."
+    memory_tool = _function_tool("speaker_memory_remember_name")
+    foreign_tool = _function_tool("get_weather")
+    full_memory_tools = [_function_tool(name) for name in _SPEAKER_MEMORY_TOOL_NAMES]
+
+    for model, tools in (
+        ("ornith-35b", [memory_tool]),
+        ("gemma-4-e2b", [memory_tool, foreign_tool]),
+        ("gemma-4-e2b", full_memory_tools),
+    ):
+        controller = FakeController()
+        seen: list[dict] = []
+        with _client(controller, seen) as client:
+            response = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "system", "content": original_system}],
+                    "tools": tools,
+                },
+            )
+
+        assert response.status_code == 200
+        assert seen[0]["messages"] == [{"role": "system", "content": original_system}]
 
 
 def test_streaming_response_releases_lease_after_sse_body_is_consumed():

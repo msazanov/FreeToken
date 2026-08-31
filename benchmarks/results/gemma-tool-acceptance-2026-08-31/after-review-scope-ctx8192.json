@@ -1,0 +1,218 @@
+{
+  "endpoint": "http://127.0.0.1:1919/v1",
+  "model": "gemma-4-e2b",
+  "runs": 5,
+  "temperature": 0.2,
+  "max_tokens": 128,
+  "tool_successes": 5,
+  "tool_success_rate": 1.0,
+  "tool_latency_mean_s": 2.6840251213987356,
+  "tool_latency_p50_s": 2.683639820999815,
+  "tool_latency_warm_p50_s": 2.6750737834991014,
+  "tool_latency_max_s": 2.724210958000185,
+  "tool_runs": [
+    {
+      "run": 1,
+      "passed": true,
+      "http_status": 200,
+      "latency_s": 2.724210958000185,
+      "expected_speaker_ref": "sr_acceptance_001",
+      "response": {
+        "id": "chatcmpl-12",
+        "object": "chat.completion",
+        "created": 1788202272,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "call_speaker-memory-remember-_0_d5b63336",
+                  "index": 0,
+                  "type": "function",
+                  "function": {
+                    "name": "speaker_memory_remember_name",
+                    "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_acceptance_001\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 963,
+          "completion_tokens": 34,
+          "total_tokens": 997
+        }
+      }
+    },
+    {
+      "run": 2,
+      "passed": true,
+      "http_status": 200,
+      "latency_s": 2.6519708709965926,
+      "expected_speaker_ref": "sr_acceptance_002",
+      "response": {
+        "id": "chatcmpl-13",
+        "object": "chat.completion",
+        "created": 1788202275,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "call_speaker-memory-remember-_0_4a1597af",
+                  "index": 0,
+                  "type": "function",
+                  "function": {
+                    "name": "speaker_memory_remember_name",
+                    "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_acceptance_002\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 963,
+          "completion_tokens": 34,
+          "total_tokens": 997
+        }
+      }
+    },
+    {
+      "run": 3,
+      "passed": true,
+      "http_status": 200,
+      "latency_s": 2.6665077459983877,
+      "expected_speaker_ref": "sr_acceptance_003",
+      "response": {
+        "id": "chatcmpl-14",
+        "object": "chat.completion",
+        "created": 1788202278,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "call_speaker-memory-remember-_0_d2ccb47b",
+                  "index": 0,
+                  "type": "function",
+                  "function": {
+                    "name": "speaker_memory_remember_name",
+                    "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_acceptance_003\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 963,
+          "completion_tokens": 34,
+          "total_tokens": 997
+        }
+      }
+    },
+    {
+      "run": 4,
+      "passed": true,
+      "http_status": 200,
+      "latency_s": 2.683639820999815,
+      "expected_speaker_ref": "sr_acceptance_004",
+      "response": {
+        "id": "chatcmpl-15",
+        "object": "chat.completion",
+        "created": 1788202280,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "call_speaker-memory-remember-_0_72763d96",
+                  "index": 0,
+                  "type": "function",
+                  "function": {
+                    "name": "speaker_memory_remember_name",
+                    "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_acceptance_004\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 963,
+          "completion_tokens": 34,
+          "total_tokens": 997
+        }
+      }
+    },
+    {
+      "run": 5,
+      "passed": true,
+      "http_status": 200,
+      "latency_s": 2.6937962109986984,
+      "expected_speaker_ref": "sr_acceptance_005",
+      "response": {
+        "id": "chatcmpl-16",
+        "object": "chat.completion",
+        "created": 1788202283,
+        "model": "gemma-4-e2b",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "call_speaker-memory-remember-_0_ef1eca8b",
+                  "index": 0,
+                  "type": "function",
+                  "function": {
+                    "name": "speaker_memory_remember_name",
+                    "arguments": "{\"name\": \"Марат\", \"speaker_ref\": \"sr_acceptance_005\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 963,
+          "completion_tokens": 34,
+          "total_tokens": 997
+        }
+      }
+    }
+  ],
+  "ru_ttft": {
+    "passed": true,
+    "http_status": 200,
+    "ttft_s": 0.07832839200273156,
+    "total_s": 0.12478206800005864,
+    "content": "Столица России — Москва."
+  },
+  "passed": true
+}
