@@ -1,6 +1,6 @@
 [Unit]
 Description=FreeToken Ornith/Gemma single-endpoint model arbiter
-Requires=freetoken-ornith.service freetoken-daemon.service
+Requires=freetoken-daemon.service
 Conflicts=huggingvoice-gemma.service
 After=freetoken-ornith.service freetoken-daemon.service network-online.target
 Before=huggingvoice-gemma.service

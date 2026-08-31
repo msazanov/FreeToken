@@ -2439,3 +2439,245 @@ source hashes, exact SVG coordinates/provenance, raw-log reconstruction,
 portable no-log rendering, and byte-identical SVG output. It found no P0, P2,
 or P3 issue. Its sole P1 observation was that the new portable ledger was still
 untracked during review; the ledger is included explicitly in the final commit.
+
+## 2026-08-30 — Single production model service: Ornith TQ3_4S, 64K, p2560
+
+### Service audit and consolidation
+
+The user and system unit inventories, process table and listening ports were
+audited before deployment. Two enabled user runtimes were broken restart loops:
+`ornith-q6.service` referenced a missing 9B llama.cpp checkpoint and had about
+800 starts, while `opencua-official-gateway.service` referenced a missing
+executable and had about 1,780 starts. Both were stopped before deletion.
+
+The following obsolete user model/runtime units were archived and removed:
+`bonsai-llama`, `llama-gemma4`, `llama-proxy-8080`, `llama-server-gemma4`,
+`occ-rag-llama`, `ollama-cpu`, `ollama-gemma4-warmup`, `ornith-q6`,
+`smolvlm2-gui-llama`, `smolvlm2-gui-shim`, `opencua-official-gateway`,
+`opencua-gateway`, `opencua-exl2` and `xinference`. Three obsolete custom
+system Ollama/Gemma units were also archived and removed. The package-managed
+`llama-cpp.service` and `ollama.service` definitions were retained but masked.
+The recoverable archive is
+`/home/random/.local/share/systemd-model-unit-archive/2026-08-30/removed-model-units.tar.gz`
+with SHA-256
+`65108ab90a579a918d28328283e9a593a91c836f4ddbf4bd0c1f8618eab191a1`.
+OmniRoute, DeepSeek Harness, Open WebUI and the Telegram client were preserved;
+none of those retained components loads model weights itself.
+
+### Selected persistent profile
+
+The source-controlled user unit is
+`deploy/systemd/freetoken-ornith.service`, installed as
+`~/.config/systemd/user/freetoken-ornith.service`, enabled for
+`default.target`, and protected by `Restart=on-failure`. User linger is enabled,
+so the service can start without an interactive login. It serves
+`Ornith 1.5 35b` on `0.0.0.0:1919` using checkpoint revision
+`d63085fd25f49c274d04a3eac503b3ab23958f36` and content SHA-256
+`07ec68966341e3915d7fde699cbf70af11f1b1e01a26a45692a1399420473740`.
+
+The material runtime controls are:
+
+```text
+weights=TQ3_4S  compute=bfloat16  KV=int8
+max_seq_len=num_tokens=kv_reserve_tokens=65536
+max_prefill_length=2560  max_running_requests=1
+moe_cache=auto  policy=lru  backend=offload  expert_load=serial
+cache_type=radix  attention=triton  cuda_graph_max_bs=1
+```
+
+This combines the fastest measured weight/cache candidate with the best
+previously measured prefill-block point while enforcing the requested 64K
+capacity. It is a new combined deployment profile rather than a claim that a
+full 64K TQ3/p2560 benchmark existed beforehand.
+
+Startup took approximately 94 s from systemd activation to backend readiness.
+The resolved geometry was 65,536 INT8 KV pages (0.63 GiB), 2,311 automatic
+expert slots, eight selected experts per token and one Mamba slot group of
+eight. Free VRAM was 1.10 GiB after initialization and 1.07 GiB after graph
+capture. Prefill warm-up lengths 80 and 128 completed in 11.913 s.
+`GET /v1/models` returned HTTP 200 with both `max_model_len` and
+`context_length` equal to 65,536, and the Open WebUI container reached the same
+endpoint through `host.docker.internal:1919`.
+
+### Live smoke results
+
+| Request | Input | Output | Wall | TTFT | Decode | Result |
+|---|---:|---:|---:|---:|---:|---|
+| arithmetic `17*6` | 36 | 4 | 2.478 s | — | — | HTTP 200, exact answer `102` |
+| real repository dossier | 4,084 | 127 | 28.824 s | 24.873 s | 31.898 tok/s | HTTP 200, no OOM |
+
+The repository request sampled 28 runtime intervals. Mean/max GPU utilization
+was 85.93/100%, peak VRAM 7,282 MiB, peak temperature 82 C and peak board power
+130.32 W. Minimum available RAM was 3,088,396,288 bytes and minimum free swap
+15,377,469,440 bytes. The post-request MoE miss rate was 31.784%. The first
+complete 2,560-token prefill block reported 32.06 tok/s; the short residual
+block's quotient is not treated as a comparable full-block rate. Clean decode
+windows reached 33.98 and 30.63 tok/s.
+
+The deliberately capped answer found 2/5 lexical anchors. That value is not a
+quality score and must not be compared with uncapped benchmark responses. This
+run validates startup, API compatibility, the p2560 execution path and a 4K
+request within the 64K allocation. A filled-context 64K throughput and quality
+run remains unmeasured.
+
+A final direct API check also retained one negative boundary result. With only
+eight completion tokens, a 24-token `19*7` prompt returned HTTP 200 but consumed
+all seven emitted tokens in hidden reasoning, leaving visible content empty and
+ending with `finish_reason=length`. This is expected for the configured
+`qwen3` reasoning parser and proves that an extremely small output budget is not
+a valid health/quality probe. A separate 27-token `23*9` prompt with a 96-token
+budget returned HTTP 200, visible content `207`, reasoning content
+`23 * 9 = 207.`, and `finish_reason=stop`; it used 20 completion tokens and
+finished in 2.340 s.
+
+Raw evidence:
+
+- `benchmarks/results/ornith35-tq3-systemd-64k-p2560-smoke/compression-4096.json`
+- `benchmarks/results/ornith35-tq3-systemd-64k-p2560-smoke/slices.jsonl`
+- `benchmarks/results/ornith35-tq3-systemd-64k-p2560-smoke/deployment.json`
+
+The systemd contract was developed with a failing missing-unit check and a
+second deliberate validation failure for the invalid
+`ConditionPathIsExecutable` spelling. The final unit uses
+`ConditionFileIsExecutable`; its focused tests and `systemd-analyze verify`
+are the repository gates for future edits.
+
+## 2026-08-31 — upstream Turing sync and live sequential-offload gate
+
+### Scope and upstream evidence
+
+Hardware: RTX 2070 8 GiB (`compute capability 7.5`), i7-8750H and 32 GiB RAM.
+The tested source branch is `feat/qwen4exp-gguf-turing`. Upstream `main`
+(`3a20a79`) and Turing [PR #24](https://github.com/FlashML-org/FreeToken/pull/24)
+(`35668da`) were merged as `429cf02`. The PR adds the SM75 build target,
+disables optional Ampere-only kernels and selects Turing-safe attention tiles.
+
+The following upstream work was reviewed before changing the runtime:
+
+| Upstream item | Decision for this machine |
+|---|---|
+| [PR #24](https://github.com/FlashML-org/FreeToken/pull/24), SM75/Turing | merged and tested |
+| [PR #185](https://github.com/FlashML-org/FreeToken/pull/185), MoE GEMV grid-z guard | not merged; local `9952a39` already chunks by token to avoid the same limit |
+| [PR #300](https://github.com/FlashML-org/FreeToken/pull/300), KV ladder | held for Qwen-only A/B; conflicts with the fixed Ornith KV contract |
+| [PR #309](https://github.com/FlashML-org/FreeToken/pull/309), quantized KV | held as experimental; not validated on SM75 |
+| [PR #311](https://github.com/FlashML-org/FreeToken/pull/311), disk-backed Qwen PLE | relevant to Qwen3.8/NVMe, irrelevant to dense Gemma and not enabled |
+
+### Red result — cache parking did not free enough memory
+
+The initial Gemma attempt reduced Ornith to 256 MoE slots but left the Ornith
+process and its base allocations resident. Gemma's 3.2 GiB Q4_0 file reached a
+state with roughly 3.7 GiB available RAM and roughly 27 GiB swap already used,
+but it never reached readiness during the 300-second arbiter timeout. No model
+generation happened. This disproves cache-only parking as a safe sequential
+offload strategy for a dense model on 32 GiB RAM.
+
+### Green result — full systemd sequential switch
+
+The arbiter was changed to use one lease and explicit ownership transitions:
+
+```text
+public arbiter       0.0.0.0:1919
+Ornith private       127.0.0.1:19191
+Gemma FreeToken GPU  127.0.0.1:19193
+Gemma llama.cpp CPU  127.0.0.1:19195
+daemon               127.0.0.1:1900
+```
+
+On a Gemma request the controller checks the Ornith unit and endpoint, stops the
+whole `freetoken-ornith.service`, waits for that stop to complete and only then
+starts the Gemma daemon. On an Ornith request it stops the Gemma daemon, starts
+Ornith and verifies the model endpoint plus cache geometry. Reconciliation now
+rejects any two-GPU-owner state, including a ready “parked” Ornith process.
+
+#### Gemma GPU, cold sequential transition
+
+| Measurement | Value |
+|---|---:|
+| Ornith stop requested / inactive | 12:28:25 / 12:28:28 |
+| Gemma process / ready | 12:28:28 / 12:29:40 |
+| request complete | 12:29:51 |
+| prompt / completion | 52 / 7 tokens |
+| wall time | 85.555 s |
+| result | HTTP 200, `Столица России — Москва.` |
+| FreeToken prefill report | 4.81 tok/s |
+| Gemma context / KV | 4096 / BF16 |
+| free VRAM after init / graphs | 3.87 / 3.81 GiB |
+| CUDA attention / graphs | Triton / batch 1 |
+
+The time includes loading the 3.2 GiB GGUF, initialization, one CUDA graph,
+prefill warmup and the 52-token request. The log explicitly reports Gemma as a
+dense model and ignores MoE options; no MoE benefit is being claimed.
+
+#### Return to Ornith
+
+| Measurement | Value |
+|---|---:|
+| Gemma stop requested | 12:30:13 |
+| Ornith ready and active cache verified | 12:31:32 |
+| prompt / completion | 53 / 7 tokens |
+| wall time | 82.659 s |
+| result | HTTP 200, `Столица России — Москва.` |
+| KV | 65,536 pages, INT8 |
+| MoE / Mamba / SWA | 2,311 / 8 / 0 |
+
+The post-switch `/v1/cache/status` was also checked: `num_pages=65536`,
+`moe_cache_size=2311`, `num_mamba_slots=8`, `num_swa_pages=0`.
+
+#### CPU fallback after runtime-library fix
+
+The source-controlled CPU unit previously launched
+`/opt/llama-cpp/bin/llama-server.real` without its library directory and
+entered a restart loop. It now launches `/opt/llama-cpp/bin/llama-server` and
+sets `LD_LIBRARY_PATH=/opt/llama-cpp/lib`. A direct private-endpoint test passed:
+
+| Measurement | Value |
+|---|---:|
+| endpoint | `127.0.0.1:19195` |
+| wall time | 4.827 s |
+| prompt / completion | 53 / 7 tokens |
+| prompt speed | 13.126 tok/s |
+| decode speed | 9.051 tok/s |
+| result | HTTP 200, `Столица России — Москва.` |
+
+The CPU unit was stopped after the check; no competing model service remains.
+
+### Verification
+
+- `tests/arbiter tests/deploy`: `29 passed, 1 warning`.
+- `python -m py_compile` for the changed arbiter and deployment tests: passed.
+- `git diff --check`: passed.
+- `systemd-analyze verify --user deploy/systemd/*.service`: passed; only the
+  intentionally retired `huggingvoice-gemma.service` reference is reported as
+  missing.
+- Final live state: `freetoken-arbiter`, `freetoken-daemon` and
+  `freetoken-ornith` active; `llama-gemma-cpu` and Gemma GPU child stopped;
+  public arbiter counters `requests=2`, `completed=2`, `errors=0`.
+
+Machine-readable evidence:
+`benchmarks/results/two-model-arbiter-2026-08-31/sequential-offload.json`.
+
+### Post-reboot and restart-reconcile observation
+
+The host had a new boot ID during a later read-only inspection. HuggingVoice
+started while Ornith was still loading; before the reconcile-wait fix its five
+warmup attempts received `503 state_ambiguous`, and the service restarted. Once
+the Gemma GPU child reached readiness, a subsequent HuggingVoice warmup reached
+HTTP 200. No response payload was captured for that ambient request.
+
+After removing `Wants=freetoken-ornith.service`, the arbiter itself was restarted
+at 12:58:50 while Gemma was ready. It did not auto-start Ornith, adopted the
+existing Gemma child on the next request, and returned the fixed Russian probe
+in 0.207 s. Current observation state: public `:1919` and daemon active, Gemma
+GPU on `:19193`, Ornith and CPU fallback stopped, scheduler idle. The new unit
+test `test_reconcile_waits_for_active_ornith_to_finish_loading` covers the
+opposite boot race: an active Ornith service is awaited until ready instead of
+being exposed as a transient 503.
+
+This is not mixed into the controlled sequential benchmark. Its raw evidence is
+`benchmarks/results/two-model-arbiter-2026-08-31/post-reboot-reconcile-observation.json`.
+
+The repository-wide `pytest -q` was also attempted, but the long run was
+interrupted before a final report after unrelated failures appeared; therefore
+it is not reported as green. The authoritative changed-scope gates are the
+30-test arbiter/deploy suite, the 74-test arbiter/deploy/Turing-kernel suite,
+and the 56-test Gemma/dispatch/daemon suite listed above.

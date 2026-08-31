@@ -24,7 +24,10 @@ def test_arbiter_topology_has_one_public_port_and_private_backends() -> None:
     assert "--ornith-url http://127.0.0.1:19191" in arbiter
     assert "--gemma-gpu-url http://127.0.0.1:19193" in arbiter
     assert "--gemma-cpu-url http://127.0.0.1:19195" in arbiter
-    assert "Requires=freetoken-ornith.service freetoken-daemon.service" in arbiter
+    assert "Requires=freetoken-daemon.service" in arbiter
+    assert "Wants=network-online.target" in arbiter
+    assert "Wants=network-online.target freetoken-ornith.service" not in arbiter
+    assert "Requires=freetoken-ornith.service" not in arbiter
     assert "Conflicts=huggingvoice-gemma.service" in arbiter
     assert "Before=huggingvoice-gemma.service" in arbiter
 
@@ -44,6 +47,8 @@ def test_arbiter_topology_has_one_public_port_and_private_backends() -> None:
     assert "--port 19195" in cpu
     assert "--gpu-layers 0" in cpu
     assert "--alias gemma-4-e2b" in cpu
+    assert "Environment=LD_LIBRARY_PATH=/opt/llama-cpp/lib" in cpu
+    assert "ExecStart=/opt/llama-cpp/bin/llama-server" in cpu
 
 
 def test_all_source_controlled_units_pass_systemd_verify() -> None:

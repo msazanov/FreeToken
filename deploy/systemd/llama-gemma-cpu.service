@@ -7,7 +7,8 @@ ConditionPathExists=/home/random/dev/huggingvoice-llm-bench/models/gemma4-e2b/ge
 [Service]
 Type=simple
 WorkingDirectory=/home/random/dev/qwen/freetoken
-ExecStart=/opt/llama-cpp/bin/llama-server.real \
+Environment=LD_LIBRARY_PATH=/opt/llama-cpp/lib
+ExecStart=/opt/llama-cpp/bin/llama-server \
   --model /home/random/dev/huggingvoice-llm-bench/models/gemma4-e2b/gemma-4-E2B_q4_0-it.gguf \
   --alias gemma-4-e2b \
   --host 127.0.0.1 \

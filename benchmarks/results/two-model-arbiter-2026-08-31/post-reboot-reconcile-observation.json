@@ -1,0 +1,47 @@
+{
+  "observation": "post-reboot arbiter reconciliation and HuggingVoice warmup",
+  "date": "2026-08-31",
+  "not_a_benchmark": true,
+  "source": "systemd journal, process table, arbiter metrics",
+  "boot_observation": {
+    "arbiter_started": "12:52:35",
+    "huggingvoice_warmup_started": "12:54:28",
+    "note": "The host had a new boot ID before this observation; reboot cause was not attributed to the code change."
+  },
+  "pre_fix_race_observed": {
+    "requests": 5,
+    "result": "503 while Ornith service was active but its endpoint was still loading",
+    "error": "state_ambiguous",
+    "effect": "HuggingVoice restarted during warmup"
+  },
+  "eventual_huggingvoice_request": {
+    "started_after_gemma_ready": true,
+    "http_status": 200,
+    "arbiter_active_backend": "gemma-4-e2b/gemma-gpu",
+    "scheduler_after_request": "idle",
+    "details": "HuggingVoice warmup reached the arbiter successfully at 12:56:01; no response payload was captured by this read-only observation."
+  },
+  "post_fix_restart_check": {
+    "arbiter_restarted": "12:58:50",
+    "ornith_auto_started_by_arbiter": false,
+    "gemma_gpu_remained_ready": true,
+    "warm_reconcile_request": {
+      "http_status": 200,
+      "wall_seconds": 0.207476447,
+      "response": "Столица России — Москва."
+    }
+  },
+  "state_at_capture": {
+    "public": "0.0.0.0:1919",
+    "ornith": "stopped",
+    "gemma_gpu": "active on 127.0.0.1:19193",
+    "gemma_cpu": "stopped",
+    "daemon": "active",
+    "arbiter_metrics": {
+      "requests": 1,
+      "completed": 1,
+      "errors": 0,
+      "queue_owner": null
+    }
+  }
+}

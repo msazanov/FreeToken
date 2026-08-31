@@ -22,6 +22,34 @@ FreeToken is an edge-native Mixture-of-Experts (MoE) serving engine designed for
 - **Elastic Memory Management**: Supports dynamic, runtime VRAM re-allocation between expert caches and KV memory without engine restarts or weight reloading.  
 - **Broad MoE & Ecosystem Support**: Supports frontier open-weight MoE models (e.g., DeepSeek-V4-Flash, Qwen3.6-35B-A3B, GLM-5.2) across various parameter scales and quantization formats (e.g., MXFP4, NVFP4, FP8, BF16), with Anthropic/OpenAI-compatible APIs for seamless integration with real-world coding and tool-calling agents (e.g., Codex, Claude Code, OpenCode, OpenClaw, DeepSeek Harness). 
 
+## Active RTX 2070 model service
+
+This machine now has one persistent model-runtime service:
+[`deploy/systemd/freetoken-ornith.service`](deploy/systemd/freetoken-ornith.service).
+It serves `Ornith 1.5 35b` on `0.0.0.0:1919` from the pinned TQ3_4S checkpoint,
+with an exact 65,536-token total/KV budget, INT8 KV, automatic LRU expert-cache
+sizing, one concurrent request and a 2,560-token maximum prefill block. At
+startup FreeToken resolved 2,311 resident expert slots and 65,536 KV pages
+(0.63 GiB), leaving 1.07 GiB VRAM after CUDA-graph capture.
+
+The first end-to-end repository smoke used 4,084 input and 127 output tokens.
+It completed in 28.824 s with 24.873 s TTFT and 31.898 decode tok/s; sampled GPU
+utilization averaged 85.9% and reached 100%, while peak VRAM was 7,282 MiB. This
+proves the combined TQ3_4S/INT8-KV/p2560 service path and the configured 64K
+capacity, but it is **not** a full-context 64K throughput result. Raw evidence
+is under
+[`benchmarks/results/ornith35-tq3-systemd-64k-p2560-smoke/`](benchmarks/results/ornith35-tq3-systemd-64k-p2560-smoke/).
+The live telemetry endpoint is `/v1/stats` (`/v1/runtime` is not implemented by
+this build). A deliberately undersized eight-token thinking probe ended with an
+empty visible answer and `finish_reason=length`; the 96-token control returned
+`207` for `23*9` in 2.340 s, with reasoning and visible content separated.
+
+Obsolete user-level llama.cpp, Ollama, OpenCUA and alternate FreeToken/model
+units were archived and removed. Distribution-provided `llama-cpp.service` and
+`ollama.service` remain installed but are masked, so they cannot compete for
+RAM or VRAM. OmniRoute, DeepSeek Harness and Open WebUI are retained as gateway,
+agent harness and UI rather than additional model runtimes.
+
 ## RTX 2070 Qwen3.8 research status
 
 This fork keeps reproducible Turing results for Qwen3.8 Flash Next on RTX 2070
@@ -487,3 +515,40 @@ the portable `model-context-speed-live.jsonl` plus
 `benchmarks/comparison_cohorts.json` by `benchmarks/plot_context_results.py`;
 all 21 runs and 900 stable live decode samples are visible, while the lone
 non-matched run remains a separately labeled short trace.
+
+### Synced upstream Turing support and verified sequential Gemma offload
+
+The fork now contains upstream `main` (`3a20a79`) and the Turing support from
+[FreeToken PR #24](https://github.com/FlashML-org/FreeToken/pull/24), merged as
+`429cf02`. That PR is the relevant SM75 baseline: it gates Ampere-only kernels,
+adds Turing-safe attention tiles and includes the `sm_75` kernel-cache target.
+The local fork also already contains the token-aligned GEMV grid-limit fix
+equivalent to [PR #185](https://github.com/FlashML-org/FreeToken/pull/185), so
+that PR was audited rather than duplicated. The Qwen-specific KV-ladder,
+quantized-KV and disk-PLE changes in [PR #300](https://github.com/FlashML-org/FreeToken/pull/300),
+[PR #309](https://github.com/FlashML-org/FreeToken/pull/309) and
+[PR #311](https://github.com/FlashML-org/FreeToken/pull/311) remain isolated
+experiments; they are not silently enabled for Ornith or Gemma.
+
+The public arbiter is now a true sequential resource switch, not a MoE-cache
+parking trick. Before starting Gemma on the GPU it stops the full Ornith
+systemd service; before returning to Ornith it stops the Gemma daemon and starts
+Ornith again, then verifies its 65,536-token INT8 KV geometry and 2,311 active
+expert slots. The arbiter remains independent of Ornith in systemd so this stop
+does not terminate the public endpoint. CPU fallback uses the llama.cpp wrapper
+with `/opt/llama-cpp/lib` in its runtime library path.
+
+The live gate on the RTX 2070 passed in both directions. Gemma Q4_0 loaded after
+Ornith was stopped and returned a correct Russian answer through `:1919` in
+85.555 s including cold load/warmup; the return transition restored Ornith and
+returned the same answer in 82.659 s including reload. Direct CPU fallback also
+returned HTTP 200 with 13.13 prompt tok/s and 9.05 decode tok/s. The detailed,
+machine-readable record is
+`benchmarks/results/two-model-arbiter-2026-08-31/sequential-offload.json`.
+
+After a later host boot, HuggingVoice selected Gemma and left it warm, so the
+current live state may legitimately be Gemma GPU with Ornith stopped. A warm
+arbiter restart adopted that Gemma process in 0.207 s without auto-starting
+Ornith or creating a second GPU owner; both model IDs remain visible at
+`GET /v1/models`. This observation is recorded separately in
+`benchmarks/results/two-model-arbiter-2026-08-31/post-reboot-reconcile-observation.json`.

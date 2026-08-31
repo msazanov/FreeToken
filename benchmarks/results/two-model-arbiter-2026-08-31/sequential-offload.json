@@ -1,0 +1,124 @@
+{
+  "experiment": "two-model sequential GPU arbitration live gate",
+  "date": "2026-08-31",
+  "repository": {
+    "branch": "feat/qwen4exp-gguf-turing",
+    "upstream_main_merged": "3a20a79",
+    "turing_pr_24_head": "35668da",
+    "merge_commit_before_arbiter_fix": "429cf02",
+    "notes": [
+      "upstream PR #24 was merged into the local fork",
+      "PR #185 was compared; the fork already contains equivalent token-aligned GEMV chunking in 9952a39",
+      "PRs #300, #309 and #311 remain separate experiments and were not merged into this runtime"
+    ]
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2070",
+    "compute_capability": "7.5",
+    "vram_gib": 8,
+    "cpu": "Intel Core i7-8750H",
+    "ram_gib": 32,
+    "storage": "NVMe"
+  },
+  "topology": {
+    "public": "0.0.0.0:1919",
+    "ornith_private": "127.0.0.1:19191",
+    "gemma_gpu_private": "127.0.0.1:19193",
+    "gemma_cpu_private": "127.0.0.1:19195",
+    "daemon": "127.0.0.1:1900",
+    "policy": "one request lease; Ornith priority; no simultaneous GPU model owners"
+  },
+  "previous_park_only_attempt": {
+    "result": "failed",
+    "failure": "Gemma did not reach readiness within 300 seconds while Ornith was only resized to 256 MoE slots",
+    "observed": {
+      "gemma_file": "3.2 GiB",
+      "available_ram": "about 3.7 GiB",
+      "swap_used": "about 27 GiB",
+      "ornith_process_remained_resident": true,
+      "generation": false
+    }
+  },
+  "sequential_gpu_gemma": {
+    "result": "success",
+    "ornith_stop_requested": "12:28:25",
+    "ornith_inactive": "12:28:28",
+    "gemma_process_started": "12:28:28",
+    "gemma_ready": "12:29:40",
+    "request_finished": "12:29:51",
+    "request_wall_seconds": 85.554556,
+    "request": {
+      "model": "gemma-4-e2b",
+      "prompt_tokens": 52,
+      "completion_tokens": 7,
+      "max_tokens": 32,
+      "temperature": 0.2,
+      "thinking": "disabled",
+      "response": "Столица России — Москва.",
+      "http_status": 200
+    },
+    "runtime": {
+      "kv_dtype": "bf16",
+      "context_tokens": 4096,
+      "attention_backend": "triton",
+      "cuda_graph_max_bs": 1,
+      "prefill_warmup_seconds": 2.812,
+      "prefill_log_tok_per_second": 4.81,
+      "free_vram_after_init_gib": 3.87,
+      "free_vram_after_graphs_gib": 3.81,
+      "dense_model": true,
+      "moe_settings_ignored": true
+    }
+  },
+  "sequential_return_ornith": {
+    "result": "success",
+    "gemma_stop_requested": "12:30:13",
+    "ornith_ready": "12:31:32",
+    "request_wall_seconds": 82.659002,
+    "request": {
+      "model": "ornith-35b",
+      "upstream_model": "Ornith 1.5 35b",
+      "prompt_tokens": 53,
+      "completion_tokens": 7,
+      "response": "Столица России — Москва.",
+      "http_status": 200
+    },
+    "runtime": {
+      "kv_tokens": 65536,
+      "kv_dtype": "int8",
+      "moe_slots": 2311,
+      "mamba_slots": 8,
+      "swa_pages": 0,
+      "gpu": "RTX 2070"
+    }
+  },
+  "cpu_fallback_direct": {
+    "result": "success",
+    "service": "llama-gemma-cpu.service",
+    "port": 19195,
+    "request_wall_seconds": 4.826756,
+    "request": {
+      "prompt_tokens": 53,
+      "completion_tokens": 7,
+      "response": "Столица России — Москва.",
+      "http_status": 200
+    },
+    "timings": {
+      "prompt_tokens_per_second": 13.126151479255356,
+      "decode_tokens_per_second": 9.050686429917949
+    },
+    "final_state": "CPU unit stopped after the direct check"
+  },
+  "final_state": {
+    "arbiter": "active on 0.0.0.0:1919",
+    "ornith": "active on 127.0.0.1:19191",
+    "gemma_gpu": "stopped",
+    "gemma_cpu": "stopped",
+    "daemon": "active supervisor with no child model",
+    "arbiter_metrics": {
+      "requests": 2,
+      "completed": 2,
+      "errors": 0
+    }
+  }
+}

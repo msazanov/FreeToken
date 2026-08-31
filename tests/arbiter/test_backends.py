@@ -27,6 +27,12 @@ class RecordingLifecycle:
     async def daemon_stop(self) -> None:
         self.events.append(("gpu_stop", None))
 
+    async def ornith_start(self, unit: str) -> None:
+        self.events.append(("ornith_start", unit))
+
+    async def ornith_stop(self, unit: str) -> None:
+        self.events.append(("ornith_stop", unit))
+
     async def cpu_start(self, unit: str) -> None:
         self.events.append(("cpu_start", unit))
 
@@ -126,13 +132,18 @@ def test_gemma_gpu_failure_selects_cpu_backend_before_readiness_commit():
             backend = await controller.prepare(ModelId.GEMMA)
 
         assert backend == ActiveBackend(ModelId.GEMMA, config.gemma_cpu_url, "backend-model", "gemma-cpu")
-        assert [name for name, _ in lifecycle.events] == ["gpu_start", "gpu_stop", "cpu_start"]
+        assert [name for name, _ in lifecycle.events] == [
+            "ornith_stop",
+            "gpu_start",
+            "gpu_stop",
+            "cpu_start",
+        ]
         assert any(path.endswith("/health") and "19195" in path for _, path, _ in requests)
 
     asyncio.run(scenario())
 
 
-def test_ornith_park_is_moe_only_and_preserves_kv_geometry():
+def test_gemma_gpu_transition_stops_ornith_before_starting_gpu_model():
     async def scenario():
         requests: list[tuple[str, str, dict | None]] = []
         config = BackendConfig(
@@ -145,14 +156,13 @@ def test_ornith_park_is_moe_only_and_preserves_kv_geometry():
 
         async with _client(_ready_handler(requests)) as client:
             controller = BackendController(config, client, lifecycle=RecordingLifecycle())
-            await controller.prepare(ModelId.GEMMA)
+            backend = await controller.prepare(ModelId.GEMMA)
 
-        rebuilds = [(method, path, payload) for method, path, payload in requests if path.endswith("/cache/rebuild")]
-        assert rebuilds
-        payload = rebuilds[0][2]
-        assert payload == {"moe_cache_size": 256, "mode": "if_idle", "timeout": config.rebuild_timeout_s}
-        assert "num_pages" not in payload
-        assert "num_mamba_slots" not in payload
+        assert backend.runtime == "gemma-gpu"
+        assert [name for name, _ in controller.lifecycle.events][:2] == [
+            "ornith_stop",
+            "gpu_start",
+        ]
 
     asyncio.run(scenario())
 
@@ -202,7 +212,7 @@ def test_switching_from_cpu_gemma_stops_cpu_fallback_before_ornith():
     asyncio.run(scenario())
 
 
-def test_reconcile_adopts_exact_running_gemma_gpu_with_parked_ornith():
+def test_reconcile_adopts_exact_running_gemma_gpu_when_ornith_is_stopped():
     async def scenario():
         requests: list[tuple[str, str, dict | None]] = []
         config = BackendConfig(
@@ -215,10 +225,10 @@ def test_reconcile_adopts_exact_running_gemma_gpu_with_parked_ornith():
             _ready_handler(
                 requests,
                 cpu_ok=False,
+                ornith_ok=False,
                 daemon_running=True,
                 daemon_model="/models/gemma.gguf",
                 daemon_port=config.gemma_gpu_port,
-                moe_size=config.ornith_parked_slots,
             )
         ) as client:
             controller = BackendController(config, client, lifecycle=RecordingLifecycle())
@@ -226,6 +236,52 @@ def test_reconcile_adopts_exact_running_gemma_gpu_with_parked_ornith():
 
         assert controller.current == ActiveBackend(
             ModelId.GEMMA, config.gemma_gpu_url, "backend-model", "gemma-gpu"
+        )
+
+    asyncio.run(scenario())
+
+
+def test_reconcile_waits_for_active_ornith_to_finish_loading():
+    async def scenario():
+        requests: list[tuple[str, str, dict | None]] = []
+        ornith_health_checks = 0
+        config = BackendConfig(
+            ornith_expected_model="backend-model",
+            gemma_expected_model="backend-model",
+            ornith_active_slots=256,
+            ornith_parked_slots=128,
+            readiness_timeout_s=0.05,
+            poll_interval_s=0.001,
+        )
+        base_handler = _ready_handler(
+            requests,
+            cpu_ok=False,
+            gemma_gpu_ok=False,
+            moe_size=config.ornith_active_slots,
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal ornith_health_checks
+            if "19191" in str(request.url) and request.url.path.endswith("/health"):
+                ornith_health_checks += 1
+                if ornith_health_checks == 1:
+                    return httpx.Response(503, json={"status": "loading"})
+            return base_handler(request)
+
+        lifecycle = RecordingLifecycle()
+
+        async def unit_is_active(unit: str) -> bool:
+            return unit == config.ornith_unit
+
+        lifecycle.unit_is_active = unit_is_active
+
+        async with _client(handler) as client:
+            controller = BackendController(config, client, lifecycle=lifecycle)
+            await controller.reconcile()
+
+        assert ornith_health_checks >= 2
+        assert controller.current == ActiveBackend(
+            ModelId.ORNITH, config.ornith_url, "backend-model", "ornith-gpu"
         )
 
     asyncio.run(scenario())
@@ -305,13 +361,13 @@ def test_reconcile_keeps_ornith_active_when_only_cpu_gemma_is_ready():
     asyncio.run(scenario())
 
 
-def test_cache_geometry_mismatch_is_rejected():
+def test_ornith_cache_geometry_mismatch_is_rejected():
     async def scenario():
         requests: list[tuple[str, str, dict | None]] = []
         config = BackendConfig(
             ornith_expected_model="backend-model",
             gemma_expected_model="backend-model",
-            ornith_parked_slots=256,
+            ornith_active_slots=2311,
         )
 
         async with _client(
@@ -319,6 +375,52 @@ def test_cache_geometry_mismatch_is_rejected():
         ) as client:
             controller = BackendController(config, client, lifecycle=RecordingLifecycle())
             with pytest.raises(BackendError, match="MoE cache rebuild verification"):
-                await controller.prepare(ModelId.GEMMA)
+                await controller.prepare(ModelId.ORNITH)
+
+    asyncio.run(scenario())
+
+
+def test_ornith_is_started_again_when_returning_from_gemma_gpu():
+    async def scenario():
+        requests: list[tuple[str, str, dict | None]] = []
+        ornith_ready = True
+        lifecycle = RecordingLifecycle()
+        config = BackendConfig(
+            ornith_expected_model="backend-model",
+            gemma_expected_model="backend-model",
+        )
+        base_handler = _ready_handler(requests)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if (
+                "19191" in str(request.url)
+                and request.url.path.endswith("/health")
+                and not ornith_ready
+            ):
+                return httpx.Response(503, json={"status": "error"})
+            return base_handler(request)
+
+        async def ornith_stop(unit: str) -> None:
+            nonlocal ornith_ready
+            ornith_ready = False
+            lifecycle.events.append(("ornith_stop", unit))
+
+        async def ornith_start(unit: str) -> None:
+            nonlocal ornith_ready
+            ornith_ready = True
+            lifecycle.events.append(("ornith_start", unit))
+
+        lifecycle.ornith_stop = ornith_stop
+        lifecycle.ornith_start = ornith_start
+
+        async with _client(handler) as client:
+            controller = BackendController(config, client, lifecycle=lifecycle)
+            await controller.prepare(ModelId.GEMMA)
+            await controller.prepare(ModelId.ORNITH)
+
+        assert ("ornith_start", config.ornith_unit) in lifecycle.events
+        assert ("gpu_stop", None) in lifecycle.events
+        assert controller.current is not None
+        assert controller.current.model_id is ModelId.ORNITH
 
     asyncio.run(scenario())

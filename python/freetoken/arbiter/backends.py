@@ -35,6 +35,7 @@ class BackendConfig:
 
     ornith_url: str = "http://127.0.0.1:19191"
     ornith_expected_model: str = "Ornith 1.5 35b"
+    ornith_unit: str = "freetoken-ornith.service"
     # FreeToken binds an internal ZMQ endpoint at serve_port + 1, so 19192 is already owned by
     # the Ornith server on 19191.  Keep the second FreeToken server two ports away.
     gemma_gpu_url: str = "http://127.0.0.1:19193"
@@ -86,6 +87,12 @@ class BackendConfig:
 
 
 class BackendLifecycle(Protocol):
+    async def ornith_start(self, unit: str) -> None: ...
+
+    async def ornith_stop(self, unit: str) -> None: ...
+
+    async def unit_is_active(self, unit: str) -> bool: ...
+
     async def daemon_start(self, model_path: str, port: int, args: list[str]) -> None: ...
 
     async def daemon_stop(self) -> None: ...
@@ -128,6 +135,37 @@ class SystemBackendLifecycle:
             response.raise_for_status()
         except (httpx.HTTPError, OSError) as exc:
             raise BackendError(f"Gemma GPU stop failed: {exc}") from exc
+
+    async def ornith_start(self, unit: str) -> None:
+        await self._systemctl("start", unit)
+
+    async def ornith_stop(self, unit: str) -> None:
+        await self._systemctl("stop", unit)
+
+    async def unit_is_active(self, unit: str) -> bool:
+        proc = await asyncio.create_subprocess_exec(
+            "systemctl",
+            "--user",
+            "is-active",
+            "--quiet",
+            unit,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=self._config.lifecycle_timeout_s)
+        except asyncio.CancelledError:
+            proc.kill()
+            await proc.communicate()
+            raise
+        except asyncio.TimeoutError as exc:
+            proc.kill()
+            await proc.communicate()
+            raise BackendError(
+                f"systemctl --user is-active {unit} timed out after "
+                f"{self._config.lifecycle_timeout_s}s"
+            ) from exc
+        return proc.returncode == 0
 
     async def _systemctl(self, verb: str, unit: str) -> None:
         proc = await asyncio.create_subprocess_exec(
@@ -237,13 +275,34 @@ class BackendController:
             ornith_ready = await self._is_ready(
                 self.config.ornith_url, self.config.ornith_expected_model
             )
+            ornith_unit_active = await self._unit_is_active_or_none(self.config.ornith_unit)
+            if ornith_unit_active is True and not ornith_ready:
+                loading_ornith = ActiveBackend(
+                    ModelId.ORNITH,
+                    self.config.ornith_url,
+                    self.config.ornith_expected_model,
+                    "ornith-gpu",
+                )
+                try:
+                    await self._wait_ready(loading_ornith)
+                except BackendError as exc:
+                    raise BackendError(
+                        "Ornith service is active but its endpoint did not become ready; "
+                        "refusing to infer a safe GPU owner"
+                    ) from exc
+                ornith_ready = True
+            if ornith_unit_active is False and ornith_ready:
+                raise BackendError(
+                    "Ornith endpoint is ready while its service is inactive; "
+                    "refusing to adopt a stale GPU process"
+                )
             ornith_geometry = await self._ornith_cache_geometry() if ornith_ready else None
             ornith_moe = None if ornith_geometry is None else self._geometry_moe(ornith_geometry)
 
             if gemma_gpu_ready:
-                if ornith_ready and ornith_moe != self.config.ornith_parked_slots:
+                if ornith_ready:
                     raise BackendError(
-                        "Gemma GPU and active Ornith overlap; refusing to adopt ambiguous state"
+                        "Gemma GPU and Ornith overlap; refusing to adopt two GPU owners"
                     )
                 self._current = ActiveBackend(
                     ModelId.GEMMA,
@@ -298,6 +357,7 @@ class BackendController:
             if model_id is ModelId.ORNITH:
                 await self._stop_gemma_if_needed()
                 try:
+                    await self._ensure_ornith_ready()
                     await self._rebuild_ornith(self.config.ornith_active_slots)
                 except Exception:
                     self._current = None
@@ -312,13 +372,12 @@ class BackendController:
                 self._current = backend
                 return backend
 
-            previous = self._current
-            parked = False
             try:
-                parked = await self._park_ornith_if_ready()
+                ornith_was_active = await self._stop_ornith_for_gemma()
             except Exception:
                 self._current = None
                 raise
+            self._current = None
             try:
                 await self.lifecycle.daemon_start(
                     self.config.gemma_model_path,
@@ -336,6 +395,13 @@ class BackendController:
                 return gpu
             except Exception as gpu_exc:  # noqa: BLE001 - CPU is the explicit pre-commit fallback
                 await self._safe_daemon_stop()
+                restored_ornith: ActiveBackend | None = None
+                restore_exc: Exception | None = None
+                if ornith_was_active:
+                    try:
+                        restored_ornith = await self._restore_ornith_active()
+                    except Exception as exc:  # noqa: BLE001 - retain the GPU and restore causes
+                        restore_exc = exc
                 try:
                     await self.lifecycle.cpu_start(self.config.gemma_cpu_unit)
                     cpu = ActiveBackend(
@@ -347,18 +413,12 @@ class BackendController:
                     await self._wait_ready(cpu)
                 except Exception as cpu_exc:  # noqa: BLE001 - preserve both causes
                     await self._safe_cpu_stop()
-                    rollback_exc = None
-                    if parked and previous is not None and previous.model_id is ModelId.ORNITH:
-                        try:
-                            await self._rebuild_ornith(self.config.ornith_active_slots)
-                        except Exception as exc:  # noqa: BLE001 - fail closed if rollback is unsafe
-                            rollback_exc = exc
-                    self._current = previous if rollback_exc is None else None
-                    if rollback_exc is not None:
+                    self._current = restored_ornith
+                    if restore_exc is not None:
                         raise BackendError(
-                            f"Gemma GPU and CPU readiness failed and Ornith rollback failed; "
-                            f"gpu={gpu_exc}; cpu={cpu_exc}; rollback={rollback_exc}"
-                        ) from rollback_exc
+                            f"Gemma GPU and CPU readiness failed and Ornith restore failed; "
+                            f"gpu={gpu_exc}; cpu={cpu_exc}; restore={restore_exc}"
+                        ) from restore_exc
                     raise BackendError(
                         f"Gemma GPU and CPU readiness failed; gpu={gpu_exc}; cpu={cpu_exc}"
                     ) from cpu_exc
@@ -380,6 +440,58 @@ class BackendController:
         elif self._current.runtime == "gemma-cpu":
             await self.lifecycle.cpu_stop(self.config.gemma_cpu_unit)
         self._current = None
+
+    async def _unit_is_active_or_none(self, unit: str) -> bool | None:
+        probe = getattr(self.lifecycle, "unit_is_active", None)
+        if probe is None:
+            return None
+        return bool(await probe(unit))
+
+    async def _stop_ornith_for_gemma(self) -> bool:
+        """Stop Ornith completely before giving its GPU and RAM to Gemma.
+
+        A cache resize is intentionally not used here.  Gemma is dense and its load path needs
+        the memory occupied by the Ornith process itself, not merely its expert cache.  The
+        service state probe also prevents us from starting Gemma over a stale endpoint.
+        """
+        unit_active = await self._unit_is_active_or_none(self.config.ornith_unit)
+        endpoint_ready = await self._is_ready(
+            self.config.ornith_url, self.config.ornith_expected_model
+        )
+        if unit_active is False:
+            if endpoint_ready:
+                raise BackendError(
+                    "Ornith endpoint is ready while its service is inactive; refusing Gemma start"
+                )
+            return False
+        if unit_active is None and not endpoint_ready:
+            return False
+        await self.lifecycle.ornith_stop(self.config.ornith_unit)
+        return True
+
+    async def _ensure_ornith_ready(self) -> None:
+        if await self._is_ready(self.config.ornith_url, self.config.ornith_expected_model):
+            return
+        await self.lifecycle.ornith_start(self.config.ornith_unit)
+        backend = ActiveBackend(
+            ModelId.ORNITH,
+            self.config.ornith_url,
+            self.config.ornith_expected_model,
+            "ornith-gpu",
+        )
+        await self._wait_ready(backend)
+
+    async def _restore_ornith_active(self) -> ActiveBackend:
+        await self._ensure_ornith_ready()
+        await self._rebuild_ornith(self.config.ornith_active_slots)
+        backend = ActiveBackend(
+            ModelId.ORNITH,
+            self.config.ornith_url,
+            self.config.ornith_expected_model,
+            "ornith-gpu",
+        )
+        await self._wait_ready(backend)
+        return backend
 
     async def _safe_cpu_stop(self) -> None:
         try:
@@ -408,12 +520,6 @@ class BackendController:
             return document
         except (httpx.HTTPError, ValueError, OSError) as exc:
             raise BackendError(f"could not reconcile Gemma daemon: {exc}") from exc
-
-    async def _park_ornith_if_ready(self) -> bool:
-        if not await self._is_ready(self.config.ornith_url, self.config.ornith_expected_model):
-            raise BackendError("Ornith is not ready; refusing to start Gemma over an unknown GPU state")
-        await self._rebuild_ornith(self.config.ornith_parked_slots)
-        return True
 
     async def _rebuild_ornith(self, slots: int) -> None:
         payload = {

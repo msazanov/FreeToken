@@ -1043,3 +1043,94 @@ Full report: `.superpowers/sdd/2026-08-29-qwen38-reap256-ple-iq4nl-geometry/task
 - Rebased stale absolute artifact paths onto the current checkout whenever the
   declared artifact exists there, and convert runtime `used_pages` to tokens by
   multiplying by `page_size` (the recorded production samples use page size 1).
+
+### Deployed — one persistent Ornith TQ3_4S 64K model service
+
+- Audited user/system systemd units, processes and ports. Archived and removed
+  14 obsolete user-level model runtimes plus three custom system Ollama/Gemma
+  units; the recoverable archive SHA-256 is recorded in `TESTLOG.md` and the
+  deployment artifact. Retained package units `llama-cpp.service` and
+  `ollama.service` are masked.
+- Added the source-controlled `deploy/systemd/freetoken-ornith.service` and its
+  systemd contract tests. It is the sole enabled model-runtime unit and serves
+  the pinned Ornith 1.5 35B TQ3_4S checkpoint at `0.0.0.0:1919`.
+- Fixed total context, token storage and KV reserve to exactly 65,536 tokens;
+  retained INT8 KV, radix prompt cache, automatic LRU expert sizing, one running
+  request and the measured p2560 prefill candidate. Startup resolved 65,536 KV
+  pages, 2,311 expert slots and 1.07 GiB free VRAM after graph capture.
+- Recorded a fresh end-to-end 4,084-input/127-output repository smoke:
+  24.873 s TTFT, 31.898 decode tok/s, 7,282 MiB peak VRAM, 100% maximum GPU and
+  no OOM. This validates the combined service path, not full-context 64K speed.
+- Recorded the output-budget boundary for the default thinking model: an
+  eight-token cap produced only parsed reasoning and empty visible content,
+  while a 96-token control returned the exact `23*9 = 207` result in 2.340 s.
+- Preserved OmniRoute, DeepSeek Harness and Open WebUI because they are gateway,
+  harness and UI layers rather than competing model runtimes.
+
+## 2026-08-31 — Synced Turing upstream and verified sequential two-model runtime
+
+### Upstream audit
+
+- Merged upstream `main` at `3a20a79` and [FreeToken PR #24](https://github.com/FlashML-org/FreeToken/pull/24)
+  at `35668da` into `feat/qwen4exp-gguf-turing`; merge commit: `429cf02`.
+- PR #24 supplies the SM75 build gate, Turing-safe Triton attention tile
+  choices and the Turing kernel-cache architecture needed by RTX 2070.
+- Compared [PR #185](https://github.com/FlashML-org/FreeToken/pull/185): its
+  long-prefill `gridDim.z` protection is already covered by local
+  token-aligned GEMV chunking (`9952a39`), so it was not merged twice.
+- Kept [PR #300](https://github.com/FlashML-org/FreeToken/pull/300) (KV
+  ladder), [PR #309](https://github.com/FlashML-org/FreeToken/pull/309)
+  (quantized KV) and [PR #311](https://github.com/FlashML-org/FreeToken/pull/311)
+  (disk-backed Qwen PLE) as separate references. They target Qwen3.8 or newer
+  KV paths and are not safe defaults for the current Ornith/Gemma profile.
+
+### Implemented — full sequential GPU ownership
+
+- Replaced the old Ornith MoE-only parking transition with an actual systemd
+  stop/start lifecycle. Gemma GPU is started only after `freetoken-ornith.service`
+  is inactive; returning to Ornith starts the service and verifies readiness plus
+  the fixed `KV=65536`, `Mamba=8`, `SWA=0`, `MoE=2311` geometry.
+- Removed the arbiter's hard `Requires=freetoken-ornith.service`; it now keeps
+  the daemon as a requirement and Ornith as a wanted dependency. This permits
+  the arbiter to stop Ornith without taking down the public `0.0.0.0:1919`
+  endpoint.
+- Reconciliation now fails closed on an active Ornith service with no ready
+  endpoint, a stale ready endpoint from an inactive service, or any simultaneous
+  Gemma-GPU/Ornith ownership. A parked-but-resident Ornith process is no longer
+  accepted as safe alongside Gemma GPU.
+- Fixed the CPU fallback unit to invoke the llama.cpp wrapper and set
+  `LD_LIBRARY_PATH=/opt/llama-cpp/lib`; the previous direct `.real` invocation
+  failed with `libllama-server-impl.so: cannot open shared object file`.
+
+### Live results
+
+- The previous park-only attempt remained loading until the 300-second timeout:
+  with Ornith still resident, only about 3.7 GiB RAM was available and Gemma
+  never reached readiness. No generation occurred.
+- With full sequential stop, Gemma Q4_0 on FreeToken/RTX 2070 reached readiness
+  at 12:29:40 and returned `Столица России — Москва.` through the public arbiter:
+  52 prompt tokens, 7 completion tokens, HTTP 200, 85.555 s wall time including
+  cold load/warmup. FreeToken logged 4.81 prefill tok/s for the short request;
+  its dense model ignored MoE flags, used BF16 KV and had 3.81 GiB free VRAM
+  after CUDA-graph capture.
+- The reverse transition stopped the Gemma daemon, started Ornith, rebuilt
+  active cache capacity and verified `65536` INT8 KV pages, `2311` MoE slots and
+  `8` Mamba slots. The same short answer returned HTTP 200 in 82.659 s including
+  reload.
+- A direct CPU fallback check returned HTTP 200 in 4.827 s warm, with 13.126
+  prompt tok/s and 9.051 decode tok/s; the CPU service was stopped afterwards.
+- Final state is clean: arbiter, daemon and Ornith active; Gemma GPU/CPU stopped;
+  arbiter counters `requests=2`, `completed=2`, `errors=0`.
+
+The complete raw record, timestamps, topology and final-state evidence are in
+`benchmarks/results/two-model-arbiter-2026-08-31/sequential-offload.json`.
+
+### Post-reboot reconciliation observation
+
+After a later host boot, HuggingVoice selected Gemma. Five early warmup attempts
+hit the old boot-race behavior (`503 state_ambiguous`) while Ornith was still
+loading; the eventual warmup reached HTTP 200 once Gemma became ready. The
+arbiter was then restarted after the no-auto-start change: Gemma remained ready,
+Ornith was not started, and a warm public request returned HTTP 200 in 0.207 s.
+This is an observation, not a controlled benchmark; the raw record is
+`benchmarks/results/two-model-arbiter-2026-08-31/post-reboot-reconcile-observation.json`.
