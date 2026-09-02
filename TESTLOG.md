@@ -2869,3 +2869,24 @@ p50, 0.103 s short-Russian TTFT and 0.170 s total. Its final raw report is
   `model_meta.py`, `arbiter/backends.py`, and focused tests.
 - Live proof is intentionally recorded after the service restart below; a
   parser-only unit pass is not considered proof that the model emits thought.
+### Live rollout evidence (2026-09-02)
+
+- Stopped the adopted old engine through `POST http://127.0.0.1:1900/engine/stop`
+  and triggered a fresh Gemma start through the public arbiter. Both
+  `freetoken-daemon.service` and `freetoken-arbiter.service` are active.
+- Verified child command contains `--reasoning-parser gemma4`.
+- Public `:1919/v1/chat/completions`, same short RU prompt, `max_tokens=32`,
+  temperature 0, non-streaming:
+  - `thinking_mode=adaptive`: `content="Четыре."`, no `reasoning_content`, total
+    wall time 12.503 s (cold/reload request).
+  - `thinking_mode=disabled`: `content="Четыре."`, no `reasoning_content`, total
+    wall time 0.234 s (warm request).
+  - `thinking_mode=enabled`: `content=""`,
+    `reasoning_content="Четыре."`, total wall time 0.290 s.
+  - `reasoning_effort=auto`: `content="Москва"`, no `reasoning_content` (HTTP
+    200), proving the alias is accepted and forwarded as adaptive mode.
+- Conclusion: FreeToken now preserves and routes adaptive/auto and correctly
+  separates Gemma thought output when it is explicitly enabled. The current
+  Gemma template/model does not independently emit a thought channel in
+  adaptive mode for these prompts; this is not evidence that adaptive model
+  selection exists. No HuggingVoice files were changed.

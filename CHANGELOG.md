@@ -1207,3 +1207,12 @@ This is an observation, not a controlled benchmark; the raw record is
   to `--reasoning-parser gemma4`, enabling the separation at the API boundary.
 - This enables adaptive plumbing; whether Gemma chooses to think remains a
   model/template behavior and requires live verification after restart.
+### Live rollout (2026-09-02)
+
+- Replaced the adopted Gemma child with a fresh engine using
+  `--reasoning-parser gemma4`; arbiter and daemon are active.
+- Live API proof: adaptive/auto produce normal content, enabled produces a
+  separate `reasoning_content` field, and disabled produces no reasoning field.
+- Adaptive remains a pass-through/default-selection mode: the observed model
+  did not emit thought in adaptive requests, so the model/template does not
+  currently demonstrate autonomous per-turn thinking selection.
