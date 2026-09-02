@@ -24,15 +24,14 @@ logger = init_logger(__name__)
 
 
 def resolve_thinking_mode(chat_template_kwargs: dict[str, Any] | None, tools: Any | None) -> str:
-    """Resolve the thinking mode (``"thinking"`` or ``"chat"``) for a chat request.
+    """Resolve ``chat``, ``thinking`` or ``adaptive`` for a chat request.
 
     The single source of truth for this decision: the encode side
     (``_apply_dsv4_chat_encoder`` below) uses it to pick the prompt the model
     sees, and the frontend parse side (``server/openai_api.py``) imports it to
     decide whether the model's output begins inside a reasoning block. Keeping
-    one implementation prevents the two sides from disagreeing. Thinking is on
-    when tools are offered (dsv4 only emits well-formed tool calls in thinking
-    mode) or when the caller requests it via ``chat_template_kwargs``.
+    one implementation prevents the two sides from disagreeing. Explicit modes
+    win; tools force thinking only when no mode was supplied.
     """
     ctk = chat_template_kwargs or {}
     raw_mode = ctk.get("thinking_mode")
