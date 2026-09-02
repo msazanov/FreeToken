@@ -2859,3 +2859,13 @@ p50, 0.103 s short-Russian TTFT and 0.170 s total. Its final raw report is
 - Changed-scope suite after independent review fixes: `125 passed, 1 skipped,
   1 warning in 17.62s`.
 - Public model acceptance: 15/15 superset calls plus 3/3 exact-nine calls.
+## 2026-09-02 — Gemma adaptive reasoning plumbing
+
+- Baseline inspection: live `freetoken-daemon` child was running with
+  `--reasoning-parser off`; public `GET /v1/models` on Gemma returned HTTP 200.
+- Code verification: `PYTHONPATH=python /home/random/freetoken-turing/.venv/bin/python -m pytest -q tests/tokenizer/test_resolve_thinking_mode.py tests/server/test_effort_dialect.py tests/server/test_reasoning_parser_all_models.py`
+  => `43 passed, 1 warning` in 6.51s.
+- Changed files: `tokenize.py`, `generation.py`, `openai_api.py`,
+  `model_meta.py`, `arbiter/backends.py`, and focused tests.
+- Live proof is intentionally recorded after the service restart below; a
+  parser-only unit pass is not considered proof that the model emits thought.

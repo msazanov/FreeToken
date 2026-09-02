@@ -358,10 +358,11 @@ def _make_reasoning_parser(spec: GenSpec, state: Any) -> ReasoningParser | None:
         # empty thought channel before generation. Do not let Codex tool definitions make all
         # visible text look like hidden reasoning.
         ctk = spec.chat_template_kwargs or {}
+        mode = ctk.get("thinking_mode")
         force_reasoning = (
-            ctk.get("thinking_mode") == "thinking"
-            or bool(ctk.get("enable_thinking"))
-            or bool(ctk.get("thinking"))
+            mode in ("thinking", "enabled", "on")
+            or ctk.get("enable_thinking") is True
+            or ctk.get("thinking") is True
         )
     elif parser_name == "minimax_m3":
         # M3's template pre-opens <mm:think> only in thinking_mode "enabled" (the

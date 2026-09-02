@@ -24,5 +24,14 @@ def test_explicit_chat_mode():
     assert resolve_thinking_mode({"thinking_mode": "chat"}, None) == "chat"
 
 
+def test_explicit_adaptive_mode_is_preserved_even_with_tools():
+    assert resolve_thinking_mode({"thinking_mode": "adaptive"}, [{"type": "function"}]) == "adaptive"
+    assert resolve_thinking_mode({"thinking_mode": "auto"}, None) == "adaptive"
+
+
+def test_explicit_disabled_mode_wins_over_tools():
+    assert resolve_thinking_mode({"thinking_mode": "disabled"}, [{"type": "function"}]) == "chat"
+
+
 def test_invalid_mode_falls_back_to_chat():
     assert resolve_thinking_mode({"thinking_mode": "bogus"}, None) == "chat"

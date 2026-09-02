@@ -124,6 +124,15 @@ def test_gemma_thought_split():
     assert content == "visible answer"
 
 
+def test_gemma_adaptive_parser_does_not_assume_reasoning_but_detects_channel():
+    parser = ReasoningParser("gemma4", force_reasoning=False)
+    reasoning, content = parser.parse_non_stream(
+        "<|channel>thought\nmy private thought<channel|>visible answer"
+    )
+    assert reasoning == "my private thought"
+    assert content == "visible answer"
+
+
 # ------------------------------------------------------- build_reasoning_parser
 from types import SimpleNamespace
 

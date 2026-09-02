@@ -99,6 +99,11 @@ def test_explicit_template_kwargs_still_win_wholesale():
     assert ctk == {"enable_thinking": False}
 
 
+def test_adaptive_effort_is_forwarded_as_adaptive_template_mode():
+    assert effort_toggle_kwargs("adaptive", {}) == {"thinking_mode": "adaptive"}
+    assert effort_toggle_kwargs("auto", {}) == {"thinking_mode": "adaptive"}
+
+
 # --------------------------------------------------------------------------- #
 # handle_chat_completion: superset validation and the pre-stream render check.
 # --------------------------------------------------------------------------- #

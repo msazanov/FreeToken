@@ -1194,3 +1194,16 @@ This is an observation, not a controlled benchmark; the raw record is
 - Added arbiter scope/composition tests plus validator, browser-order and
   direct-CLI acceptance tests. The changed-scope suite passes
   `125 passed, 1 skipped`.
+## 2026-09-02 — Gemma adaptive reasoning plumbing
+
+- Preserved explicit `thinking_mode=adaptive`/`auto` in the shared resolver; an
+  explicit mode now wins over tool-presence heuristics.
+- Accepted `reasoning_effort=adaptive`/`auto` and translated both to
+  `chat_template_kwargs: {thinking_mode: adaptive}`.
+- Made the Gemma4 output parser strict about explicit thinking: adaptive mode
+  does not assume the stream starts in thought, but still separates emitted
+  `<|channel>thought ... <channel|>` into `reasoning_content`.
+- Changed the arbiter's Gemma GPU launch profile from `--reasoning-parser off`
+  to `--reasoning-parser gemma4`, enabling the separation at the API boundary.
+- This enables adaptive plumbing; whether Gemma chooses to think remains a
+  model/template behavior and requires live verification after restart.

@@ -70,7 +70,7 @@ class BackendConfig:
         "--attention-backend",
         "triton",
         "--reasoning-parser",
-        "off",
+        "gemma4",
     )
     gemma_cpu_unit: str = "llama-gemma-cpu.service"
     ornith_active_slots: int = 2311

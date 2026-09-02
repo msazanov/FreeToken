@@ -41,7 +41,7 @@ from .generation import (
 
 #: The wire superset plus "off", DeepSeek's disable synonym that
 #: effort_toggle_kwargs has always honored.
-_ACCEPTED_EFFORTS = (*KNOWN_REASONING_EFFORTS, "off")
+_ACCEPTED_EFFORTS = (*KNOWN_REASONING_EFFORTS, "off", "adaptive", "auto")
 
 
 def _thinking_type(req: Any) -> str | None:

@@ -107,6 +107,10 @@ def effort_toggle_kwargs(
         return ctk
     if isinstance(effort, str):
         effort = effort.strip().lower()
+    if effort in ("adaptive", "auto"):
+        mapped = dict(THINKING_ADAPTIVE_KWARGS)
+        mapped.update(ctk)
+        return mapped
     disabled = effort in _DISABLE_EFFORTS
     if thinking_type == "disabled":
         disabled = True

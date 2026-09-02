@@ -35,12 +35,21 @@ def resolve_thinking_mode(chat_template_kwargs: dict[str, Any] | None, tools: An
     mode) or when the caller requests it via ``chat_template_kwargs``.
     """
     ctk = chat_template_kwargs or {}
-    mode = str(ctk.get("thinking_mode") or "chat")
-    if tools or ctk.get("enable_thinking") or ctk.get("thinking"):
-        mode = "thinking"
-    if mode not in ("chat", "thinking"):
-        mode = "chat"
-    return mode
+    raw_mode = ctk.get("thinking_mode")
+    if isinstance(raw_mode, str):
+        aliases = {
+            "disabled": "chat", "off": "chat", "chat": "chat",
+            "enabled": "thinking", "on": "thinking", "thinking": "thinking",
+            "adaptive": "adaptive", "auto": "adaptive",
+        }
+        mode = raw_mode.strip().lower()
+        if mode in aliases:
+            return aliases[mode]
+    if ctk.get("enable_thinking") is True or ctk.get("thinking") is True:
+        return "thinking"
+    if ctk.get("enable_thinking") is False or ctk.get("thinking") is False:
+        return "chat"
+    return "thinking" if tools else "chat"
 
 
 _EFFORT_PROBE_MESSAGES = [{"role": "user", "content": "ping"}]
