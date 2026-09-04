@@ -310,6 +310,12 @@ def build_app(
     async def engine_logs(request: Request, since: int = 0):
         return _log_stream(request, ring, since)
 
+    @app.get("/engine/logs/tail", dependencies=auth)
+    async def engine_logs_tail(since: int = 0):
+        """JSON polling companion for clients that cannot keep an SSE stream open."""
+        events, cursor = ring.since(max(0, since))
+        return {"events": events, "cursor": cursor}
+
     # ---- checkpoint (phase 3; optional) ----
 
     if checkpoints is not None:

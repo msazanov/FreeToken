@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from dataclasses import dataclass
@@ -16,6 +17,9 @@ from .backends import BackendController
 from .model import ModelId
 from .proxy import proxy_openai
 from .scheduler import LeaseScheduler
+
+logger = logging.getLogger("uvicorn.error")
+logger.setLevel(logging.INFO)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +145,7 @@ def build_arbiter_app(
             return _error(503, f"backend state is not reconciled: {exc}", code="state_ambiguous")
 
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        logger.info("request.lease_wait request_id=%s model=%s", request_id, model_id.value)
         try:
             lease = await scheduler.acquire(
                 model_id,
@@ -154,6 +159,8 @@ def build_arbiter_app(
             app.state.counters["errors"] += 1
             return _error(429, "model queue is full", code="queue_full")
 
+        logger.info("request.lease_granted request_id=%s model=%s", request_id, model_id.value)
+
         try:
             backend = await controller.prepare(model_id)
         except asyncio.CancelledError:
@@ -163,6 +170,13 @@ def build_arbiter_app(
             await asyncio.shield(lease.release())
             app.state.counters["errors"] += 1
             return _error(503, f"model backend is not ready: {exc}", code="backend_not_ready")
+
+        logger.info(
+            "request.backend_ready request_id=%s model=%s runtime=%s",
+            request_id,
+            model_id.value,
+            backend.runtime,
+        )
 
         released = False
 

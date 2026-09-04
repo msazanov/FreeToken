@@ -1229,3 +1229,11 @@ This is an observation, not a controlled benchmark; the raw record is
 
 The checkpoint was converted and quantized outside the repository; see the
 matching append-only evidence entry in `TESTLOG.md`.
+
+### Diagnostic logging
+
+- Added arbiter lifecycle timing records and a JSON polling endpoint for the
+  daemon's captured model-process log ring, allowing the UI to distinguish
+  queue, model readiness and generation delays.
+- A live Gemma switch measured `113.8 s` from daemon start acceptance to
+  readiness; this is the current cold-start bottleneck.

@@ -8,6 +8,7 @@ change is made only while the scheduler owns the model lease.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -15,6 +16,9 @@ from typing import Protocol
 import httpx
 
 from .model import ModelId
+
+logger = logging.getLogger("uvicorn.error")
+logger.setLevel(logging.INFO)
 
 
 class BackendError(RuntimeError):
@@ -378,9 +382,16 @@ class BackendController:
     async def prepare(self, model_id: ModelId) -> ActiveBackend:
         """Return a ready backend, switching resources only when the requested model changes."""
         model_id = ModelId(model_id)
+        started = self._monotonic()
+        logger.info("prepare.start model=%s", model_id.value)
         async with self._lock:
             if self._current is not None and self._current.model_id is model_id:
                 if await self._is_ready(self._current.base_url, self._current.upstream_model):
+                    logger.info(
+                        "prepare.warm model=%s elapsed_ms=%.1f",
+                        model_id.value,
+                        (self._monotonic() - started) * 1000,
+                    )
                     return self._current
                 if self._current.runtime == "gemma-gpu":
                     await self._safe_daemon_stop()
@@ -410,10 +421,12 @@ class BackendController:
                 return backend
 
             if model_id is ModelId.LFM:
+                logger.info("prepare.stop_previous model=%s", model_id.value)
                 await self._stop_gemma_if_needed()
                 try:
                     await self._stop_ornith_for_gemma()
                     self._current = None
+                    logger.info("prepare.start_unit model=%s unit=%s", model_id.value, self.config.lfm_unit)
                     await self.lifecycle.lfm_start(self.config.lfm_unit)
                     backend = ActiveBackend(
                         ModelId.LFM,
@@ -685,8 +698,18 @@ class BackendController:
 
     async def _wait_ready(self, backend: ActiveBackend) -> None:
         deadline = self._monotonic() + self.config.readiness_timeout_s
+        wait_started = self._monotonic()
+        probes = 0
         while self._monotonic() < deadline:
+            probes += 1
             if await self._is_ready(backend.base_url, backend.upstream_model):
+                logger.info(
+                    "backend.ready model=%s runtime=%s probes=%d elapsed_ms=%.1f",
+                    backend.model_id.value,
+                    backend.runtime,
+                    probes,
+                    (self._monotonic() - wait_started) * 1000,
+                )
                 return
             await self._sleep(self.config.poll_interval_s)
         raise BackendError(
