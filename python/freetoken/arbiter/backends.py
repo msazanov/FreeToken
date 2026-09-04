@@ -447,6 +447,10 @@ class BackendController:
             except Exception:
                 self._current = None
                 raise
+            # LFM2.5 and Gemma are both GPU owners.  Stop LFM even when it was
+            # adopted after an arbiter restart, otherwise switching models can
+            # leave two ready GPU backends and make the next request unsafe.
+            await self._safe_lfm_stop()
             self._current = None
             try:
                 await self.lifecycle.daemon_start(
