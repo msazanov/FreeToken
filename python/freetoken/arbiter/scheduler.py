@@ -56,6 +56,7 @@ class LeaseScheduler:
         self._queues: dict[ModelId, Deque[QueuedRequest]] = {
             ModelId.ORNITH: deque(),
             ModelId.GEMMA: deque(),
+            ModelId.LFM: deque(),
         }
         self._sequence = count()
         self._active_request: QueuedRequest | None = None

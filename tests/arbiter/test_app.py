@@ -71,7 +71,11 @@ def test_models_always_lists_both_public_ids():
         response = client.get("/v1/models")
 
     assert response.status_code == 200
-    assert [model["id"] for model in response.json()["data"]] == ["ornith-35b", "gemma-4-e2b"]
+    assert [model["id"] for model in response.json()["data"]] == [
+        "ornith-35b",
+        "gemma-4-e2b",
+        "LFM2.5-2.6B",
+    ]
 
 
 def test_unknown_model_is_404_without_backend_transition():

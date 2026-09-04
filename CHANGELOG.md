@@ -1216,3 +1216,16 @@ This is an observation, not a controlled benchmark; the raw record is
 - Adaptive remains a pass-through/default-selection mode: the observed model
   did not emit thought in adaptive requests, so the model/template does not
   currently demonstrate autonomous per-turn thinking selection.
+
+## 2026-09-04
+
+### Accepted — LFM2.5 model backend
+
+- Added `LFM2.5-2.6B` to the FreeToken public model registry and lease scheduler.
+- Added an exclusive GPU lifecycle using local llama.cpp `llama-server` and
+  `llama-lfm25.service`; switching to LFM stops Gemma and Ornith before
+  readiness is committed.
+- Verified the public arbiter path with a live chat completion on the RTX 2070.
+
+The checkpoint was converted and quantized outside the repository; see the
+matching append-only evidence entry in `TESTLOG.md`.

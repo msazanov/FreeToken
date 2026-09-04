@@ -31,7 +31,7 @@ class ActiveBackend:
 
 @dataclass(frozen=True, slots=True)
 class BackendConfig:
-    """Paths, ports and cache geometry for the two-model RTX 2070 topology."""
+    """Paths, ports and cache geometry for the three-model RTX 2070 topology."""
 
     ornith_url: str = "http://127.0.0.1:19191"
     ornith_expected_model: str = "Ornith 1.5 35b"
@@ -73,6 +73,9 @@ class BackendConfig:
         "gemma4",
     )
     gemma_cpu_unit: str = "llama-gemma-cpu.service"
+    lfm_url: str = "http://127.0.0.1:19197"
+    lfm_expected_model: str = "LFM2.5-2.6B"
+    lfm_unit: str = "llama-lfm25.service"
     ornith_active_slots: int = 2311
     ornith_parked_slots: int = 256
     ornith_kv_tokens: int = 65536
@@ -100,6 +103,10 @@ class BackendLifecycle(Protocol):
     async def cpu_start(self, unit: str) -> None: ...
 
     async def cpu_stop(self, unit: str) -> None: ...
+
+    async def lfm_start(self, unit: str) -> None: ...
+
+    async def lfm_stop(self, unit: str) -> None: ...
 
 
 class SystemBackendLifecycle:
@@ -201,6 +208,12 @@ class SystemBackendLifecycle:
     async def cpu_stop(self, unit: str) -> None:
         await self._systemctl("stop", unit)
 
+    async def lfm_start(self, unit: str) -> None:
+        await self._systemctl("start", unit)
+
+    async def lfm_stop(self, unit: str) -> None:
+        await self._systemctl("stop", unit)
+
 
 class BackendController:
     """Switch and validate private runtimes while holding the arbiter's execution lease."""
@@ -299,6 +312,21 @@ class BackendController:
             ornith_geometry = await self._ornith_cache_geometry() if ornith_ready else None
             ornith_moe = None if ornith_geometry is None else self._geometry_moe(ornith_geometry)
 
+            lfm_ready = await self._is_ready(self.config.lfm_url, self.config.lfm_expected_model)
+            lfm_unit_active = await self._unit_is_active_or_none(self.config.lfm_unit)
+            if lfm_unit_active is True and not lfm_ready:
+                loading_lfm = ActiveBackend(
+                    ModelId.LFM, self.config.lfm_url, self.config.lfm_expected_model, "lfm-gpu"
+                )
+                await self._wait_ready(loading_lfm)
+                lfm_ready = True
+            if lfm_unit_active is False and lfm_ready:
+                raise BackendError(
+                    "LFM endpoint is ready while its service is inactive; refusing stale process"
+                )
+            if sum((gemma_gpu_ready, lfm_ready, ornith_ready)) > 1:
+                raise BackendError("multiple GPU backends are ready; refusing unsafe overlap")
+
             if gemma_gpu_ready:
                 if ornith_ready:
                     raise BackendError(
@@ -339,6 +367,12 @@ class BackendController:
                     )
                 return
 
+            if lfm_ready:
+                self._current = ActiveBackend(
+                    ModelId.LFM, self.config.lfm_url, self.config.lfm_expected_model, "lfm-gpu"
+                )
+                return
+
             self._current = None
 
     async def prepare(self, model_id: ModelId) -> ActiveBackend:
@@ -352,10 +386,13 @@ class BackendController:
                     await self._safe_daemon_stop()
                 elif self._current.runtime == "gemma-cpu":
                     await self._safe_cpu_stop()
+                elif self._current.runtime == "lfm-gpu":
+                    await self._safe_lfm_stop()
                 self._current = None
 
             if model_id is ModelId.ORNITH:
                 await self._stop_gemma_if_needed()
+                await self._stop_lfm_if_needed()
                 try:
                     await self._ensure_ornith_ready()
                     await self._rebuild_ornith(self.config.ornith_active_slots)
@@ -371,6 +408,26 @@ class BackendController:
                 await self._wait_ready(backend)
                 self._current = backend
                 return backend
+
+            if model_id is ModelId.LFM:
+                await self._stop_gemma_if_needed()
+                try:
+                    await self._stop_ornith_for_gemma()
+                    self._current = None
+                    await self.lifecycle.lfm_start(self.config.lfm_unit)
+                    backend = ActiveBackend(
+                        ModelId.LFM,
+                        self.config.lfm_url,
+                        self.config.lfm_expected_model,
+                        "lfm-gpu",
+                    )
+                    await self._wait_ready(backend)
+                    self._current = backend
+                    return backend
+                except Exception:
+                    await self._safe_lfm_stop()
+                    self._current = None
+                    raise
 
             try:
                 ornith_was_active = await self._stop_ornith_for_gemma()
@@ -441,6 +498,11 @@ class BackendController:
             await self.lifecycle.cpu_stop(self.config.gemma_cpu_unit)
         self._current = None
 
+    async def _stop_lfm_if_needed(self) -> None:
+        if self._current is not None and self._current.runtime == "lfm-gpu":
+            await self._safe_lfm_stop()
+            self._current = None
+
     async def _unit_is_active_or_none(self, unit: str) -> bool | None:
         probe = getattr(self.lifecycle, "unit_is_active", None)
         if probe is None:
@@ -505,6 +567,12 @@ class BackendController:
         except Exception:
             # A failed start may have no child.  CPU fallback remains the safe next attempt; the
             # original GPU failure is retained in the eventual BackendError if CPU also fails.
+            pass
+
+    async def _safe_lfm_stop(self) -> None:
+        try:
+            await self.lifecycle.lfm_stop(self.config.lfm_unit)
+        except Exception:
             pass
 
     async def _daemon_status(self) -> dict[str, object]:

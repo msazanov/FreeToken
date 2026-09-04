@@ -1,0 +1,26 @@
+[Unit]
+Description=LFM2.5 2.6B llama.cpp backend for FreeToken
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/random/dev/huggingvoice-llm-bench/models/lfm25-2.6b/LFM2.5-2.6B-Q4_K_M.gguf
+
+[Service]
+Type=simple
+WorkingDirectory=/home/random/dev/qwen/freetoken
+ExecStart=/home/random/.local/src/prism-llama.cpp/build-cuda/bin/llama-server \
+  --model /home/random/dev/huggingvoice-llm-bench/models/lfm25-2.6b/LFM2.5-2.6B-Q4_K_M.gguf \
+  --host 127.0.0.1 \
+  --port 19197 \
+  --alias LFM2.5-2.6B \
+  --n-gpu-layers 999 \
+  --ctx-size 8192 \
+  --parallel 1 \
+  --no-webui
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=300
+TimeoutStopSec=45
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target

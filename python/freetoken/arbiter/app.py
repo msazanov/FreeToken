@@ -1,4 +1,4 @@
-"""Public one-port model arbiter for Ornith and Gemma."""
+"""Public one-port model arbiter for Ornith, Gemma and LFM2.5."""
 
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ def build_arbiter_app(
             "object": "list",
             "data": [
                 {"id": model_id.value, "object": "model", "created": created, "owned_by": "local"}
-                for model_id in (ModelId.ORNITH, ModelId.GEMMA)
+                for model_id in (ModelId.ORNITH, ModelId.GEMMA, ModelId.LFM)
             ],
         }
 
@@ -125,7 +125,11 @@ def build_arbiter_app(
             return _error(400, f"invalid JSON request: {exc}", code="invalid_json")
         model_id = _model_from_body(body)
         if model_id is None:
-            return _error(404, "model must be one of ornith-35b or gemma-4-e2b", code="model_not_found")
+            return _error(
+                404,
+                "model must be one of ornith-35b, gemma-4-e2b or LFM2.5-2.6B",
+                code="model_not_found",
+            )
 
         app.state.counters["requests"] += 1
         try:

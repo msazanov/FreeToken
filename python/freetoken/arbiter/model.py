@@ -7,6 +7,7 @@ from enum import Enum
 class ModelId(str, Enum):
     ORNITH = "ornith-35b"
     GEMMA = "gemma-4-e2b"
+    LFM = "LFM2.5-2.6B"
 
 
 class LeaseState(str, Enum):

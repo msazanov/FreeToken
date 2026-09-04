@@ -96,6 +96,7 @@ def test_cancelled_waiter_is_removed_and_does_not_block_fifo():
         assert scheduler.snapshot()["queue_depths"] == {
             ModelId.ORNITH: 0,
             ModelId.GEMMA: 0,
+            ModelId.LFM: 0,
         }
 
     _run(scenario())
@@ -152,6 +153,7 @@ def test_cancelled_granted_waiter_does_not_leave_active_lease_stuck():
             "queue_depths": {
                 ModelId.ORNITH: 0,
                 ModelId.GEMMA: 0,
+                ModelId.LFM: 0,
             },
         }
 
@@ -192,6 +194,7 @@ def test_waiter_timeout_is_removed_from_snapshot():
         assert snapshot["queue_depths"] == {
             ModelId.ORNITH: 0,
             ModelId.GEMMA: 0,
+            ModelId.LFM: 0,
         }
         await first.release()
 
@@ -211,6 +214,7 @@ def test_async_context_releases_lease_and_snapshot_has_no_overlap():
                 "queue_depths": {
                     ModelId.ORNITH: 0,
                     ModelId.GEMMA: 0,
+                    ModelId.LFM: 0,
                 },
             }
 
@@ -219,8 +223,9 @@ def test_async_context_releases_lease_and_snapshot_has_no_overlap():
             "state": LeaseState.IDLE,
             "active_count": 0,
             "queue_depths": {
-                ModelId.ORNITH: 0,
-                ModelId.GEMMA: 0,
+            ModelId.ORNITH: 0,
+            ModelId.GEMMA: 0,
+            ModelId.LFM: 0,
             },
         }
 

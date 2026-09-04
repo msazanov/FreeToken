@@ -1,5 +1,5 @@
 [Unit]
-Description=FreeToken Ornith/Gemma single-endpoint model arbiter
+Description=FreeToken Ornith/Gemma/LFM2.5 single-endpoint model arbiter
 Requires=freetoken-daemon.service
 Conflicts=huggingvoice-gemma.service
 After=freetoken-ornith.service freetoken-daemon.service network-online.target
@@ -21,6 +21,8 @@ ExecStart=/home/random/freetoken-turing/.venv/bin/ft arbiter \
   --daemon-url http://127.0.0.1:1900 \
   --gemma-model-path /home/random/dev/huggingvoice-llm-bench/models/gemma4-e2b/gemma-4-E2B_q4_0-it.gguf \
   --gemma-cpu-unit llama-gemma-cpu.service \
+  --lfm-url http://127.0.0.1:19197 \
+  --lfm-unit llama-lfm25.service \
   --queue-timeout 1800 \
   --max-queue-depth 16 \
   --request-timeout 1800

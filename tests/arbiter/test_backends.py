@@ -39,6 +39,12 @@ class RecordingLifecycle:
     async def cpu_stop(self, unit: str) -> None:
         self.events.append(("cpu_stop", unit))
 
+    async def lfm_start(self, unit: str) -> None:
+        self.events.append(("lfm_start", unit))
+
+    async def lfm_stop(self, unit: str) -> None:
+        self.events.append(("lfm_stop", unit))
+
 
 def _client(handler):
     return httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://arbiter.test")
@@ -50,6 +56,7 @@ def _ready_handler(
     cpu_ok: bool = True,
     ornith_ok: bool = True,
     gemma_gpu_ok: bool = True,
+    lfm_ok: bool = False,
     moe_size: int = 256,
     daemon_running: bool = False,
     daemon_model: str | None = None,
@@ -108,9 +115,14 @@ def _ready_handler(
                 return httpx.Response(503, json={"status": "error"})
             if "19195" in url and not cpu_ok:
                 return httpx.Response(503, json={"status": "error"})
+            if "19197" in url and not lfm_ok:
+                return httpx.Response(503, json={"status": "error"})
             return httpx.Response(200, json={"status": "ok"})
         if path.endswith("/models"):
-            return httpx.Response(200, json={"data": [{"id": "backend-model"}]})
+            model = "backend-model"
+            if "19197" in url and lfm_ok:
+                model = "LFM2.5-2.6B"
+            return httpx.Response(200, json={"data": [{"id": model}]})
         return httpx.Response(404, json={"error": "not found"})
 
     return handler
@@ -139,6 +151,32 @@ def test_gemma_gpu_failure_selects_cpu_backend_before_readiness_commit():
             "cpu_start",
         ]
         assert any(path.endswith("/health") and "19195" in path for _, path, _ in requests)
+
+    asyncio.run(scenario())
+
+
+def test_lfm_start_stops_ornith_and_commits_only_after_readiness():
+    async def scenario():
+        requests: list[tuple[str, str, dict | None]] = []
+        lifecycle = RecordingLifecycle()
+        config = BackendConfig(
+            ornith_expected_model="backend-model",
+            gemma_expected_model="backend-model",
+            lfm_expected_model="LFM2.5-2.6B",
+            readiness_timeout_s=1,
+            poll_interval_s=0,
+        )
+        async with _client(
+            _ready_handler(requests, lfm_ok=True, ornith_ok=True, gemma_gpu_ok=False)
+        ) as client:
+            controller = BackendController(config, client, lifecycle=lifecycle)
+            backend = await controller.prepare(ModelId.LFM)
+
+        assert backend == ActiveBackend(
+            ModelId.LFM, config.lfm_url, config.lfm_expected_model, "lfm-gpu"
+        )
+        assert ("ornith_stop", config.ornith_unit) in lifecycle.events
+        assert ("lfm_start", config.lfm_unit) in lifecycle.events
 
     asyncio.run(scenario())
 

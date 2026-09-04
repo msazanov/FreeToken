@@ -2890,3 +2890,21 @@ p50, 0.103 s short-Russian TTFT and 0.170 s total. Its final raw report is
   Gemma template/model does not independently emit a thought channel in
   adaptive mode for these prompts; this is not evidence that adaptive model
   selection exists. No HuggingVoice files were changed.
+
+## 2026-09-04 — LFM2.5 FreeToken arbiter integration smoke
+
+Worktree: `feat/qwen4exp-gguf-turing`, dirty with pre-existing benchmark edits.
+LiquidAI `LFM2.5-2.6B` was converted from the local Hugging Face snapshot to
+GGUF F16 and quantized to `Q4_K_M` (1.59 GiB) with the RTX 2070 CUDA build of
+llama.cpp. The managed backend uses `llama-server`, one slot, 8192 context and
+all layers offloaded to GPU at `127.0.0.1:19197`.
+
+Focused scheduler/backend tests passed (`23 passed`). A live request through
+`POST http://127.0.0.1:1919/v1/chat/completions` with `model=LFM2.5-2.6B`
+completed successfully; the arbiter stopped the prior Gemma GPU owner, started
+`llama-lfm25.service`, and reported LFM active. The model artifacts are outside
+this repository under `/home/random/dev/huggingvoice-llm-bench/models/lfm25-2.6b/`.
+
+This is a backend/lifecycle smoke, not a quality comparison or complete TTFT
+benchmark. The short request exhausted its 16-token generation budget in the
+model reasoning field, so response prompting needs separate quality tuning.

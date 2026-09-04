@@ -1,4 +1,4 @@
-"""CLI entry point for the two-model FreeToken arbiter."""
+"""CLI entry point for the three-model FreeToken arbiter."""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ from .backends import BackendConfig, BackendController
 
 
 def build_parser(prog: str = "ft arbiter") -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog, description="Serve Ornith and Gemma behind one endpoint")
+    parser = argparse.ArgumentParser(
+        prog=prog, description="Serve Ornith, Gemma and LFM2.5 behind one endpoint"
+    )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=1919)
     parser.add_argument("--ornith-url", default=BackendConfig.ornith_url)
@@ -22,6 +24,8 @@ def build_parser(prog: str = "ft arbiter") -> argparse.ArgumentParser:
     parser.add_argument("--daemon-token", default=None)
     parser.add_argument("--gemma-model-path", default=BackendConfig.gemma_model_path)
     parser.add_argument("--gemma-cpu-unit", default=BackendConfig.gemma_cpu_unit)
+    parser.add_argument("--lfm-url", default=BackendConfig.lfm_url)
+    parser.add_argument("--lfm-unit", default=BackendConfig.lfm_unit)
     parser.add_argument("--queue-timeout", type=float, default=ArbiterConfig.queue_timeout_s)
     parser.add_argument("--max-queue-depth", type=int, default=ArbiterConfig.max_queue_depth)
     parser.add_argument("--request-timeout", type=float, default=ArbiterConfig.request_timeout_s)
@@ -38,6 +42,8 @@ def main(argv: list[str] | None = None, *, prog: str = "ft arbiter") -> int:
         daemon_token=args.daemon_token,
         gemma_model_path=args.gemma_model_path,
         gemma_cpu_unit=args.gemma_cpu_unit,
+        lfm_url=args.lfm_url,
+        lfm_unit=args.lfm_unit,
     )
     arbiter_config = ArbiterConfig(
         queue_timeout_s=args.queue_timeout,
